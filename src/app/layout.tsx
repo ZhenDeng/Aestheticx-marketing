@@ -55,20 +55,18 @@ export const metadata: Metadata = {
       "Patient records, consent forms, the nurse-to-doctor authorisation workflow, appointments, teleconsults, and authorisation-based billing — in one calm, precise iOS app.",
     url: SITE_URL,
     locale: "en_AU",
-    // TODO: add a 1200x630 og-image.png to /public and reference it here.
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "AestheticX" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "AestheticX — Practice software for Australian aesthetic medicine",
     description:
       "A clinical instrument with the manner of a private atelier. Built for Australian aesthetic practices.",
+    images: ["/og-image.png"],
   },
   robots: { index: true, follow: true },
-  icons: {
-    icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-    ],
-  },
+  // Favicon and Apple touch icon are provided by src/app/icon.png and
+  // src/app/apple-icon.png via Next's file-based metadata convention.
 };
 
 export default function RootLayout({

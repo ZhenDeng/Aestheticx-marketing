@@ -1,5 +1,5 @@
 import { Reveal } from "./Reveal";
-import { SealMark } from "./SealMark";
+import { BrandMark } from "./BrandMark";
 import { APP_STORE_URL } from "@/lib/site";
 
 const TEAM = [
@@ -55,7 +55,7 @@ export function Hero() {
         <Reveal delay={200} className="justify-self-center">
           <div className="relative w-full max-w-sm">
             <div className="absolute -right-4 -top-6 hidden sm:block">
-              <SealMark size={72} />
+              <BrandMark size={72} />
             </div>
 
             <article className="overflow-hidden rounded-card border border-line bg-card p-7 shadow-phone">

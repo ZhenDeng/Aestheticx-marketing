@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Reveal } from "./Reveal";
-import { SealMark } from "./SealMark";
+import { BrandMark } from "./BrandMark";
 import { APP_STORE_URL } from "@/lib/site";
 
 export function FinalCta() {
@@ -9,7 +9,7 @@ export function FinalCta() {
       <div className="mx-auto max-w-6xl px-5 py-24 sm:px-8 lg:py-32">
         <Reveal className="mx-auto max-w-2xl text-center">
           <div className="mx-auto mb-8 w-fit">
-            <SealMark size={64} />
+            <BrandMark size={64} />
           </div>
           <h2 className="font-display text-[clamp(2.2rem,5vw,3.6rem)] font-[430] leading-[1.05] tracking-[-0.02em] text-ink">
             A clinical instrument with the

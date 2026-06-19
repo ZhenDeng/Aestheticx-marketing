@@ -32,9 +32,10 @@ npm run lint
 These are clearly marked in code:
 
 - [ ] `src/lib/site.ts` — real **App Store URL** and **contact email**
-- [ ] `src/app/layout.tsx` — production **domain** (`SITE_URL`) and an **OG image** (`/public/og-image.png`, 1200×630)
+- [ ] `src/app/layout.tsx` — production **domain** (`SITE_URL`)
 - [ ] `src/components/SiteFooter.tsx` — real **Privacy** and **Terms** pages
 - [ ] Add real **app screenshots** to replace the stylised UI mocks
+- [x] Brand icon — `public/logo-mark.png` (in-page logo), `src/app/icon.png` (favicon), `src/app/apple-icon.png`, and `public/og-image.png`
 
 ## Notes
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { SealMark } from "./SealMark";
+import { BrandMark } from "./BrandMark";
 import { APP_STORE_URL, NAV_LINKS, PRODUCT_NAME } from "@/lib/site";
 
 export function SiteNav() {
@@ -12,7 +12,7 @@ export function SiteNav() {
     <header className="sticky top-0 z-50 border-b border-line/70 bg-paper/80 backdrop-blur-md">
       <nav className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-5 sm:px-8">
         <Link href="/" className="flex items-center gap-3" aria-label={`${PRODUCT_NAME} home`}>
-          <SealMark size={34} />
+          <BrandMark size={34} />
           <span className="font-display text-[1.35rem] leading-none tracking-tight text-ink">
             {PRODUCT_NAME}
           </span>
