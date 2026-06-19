@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { SealMark } from "./SealMark";
 import { APP_STORE_URL, NAV_LINKS, PRODUCT_NAME } from "@/lib/site";
 
@@ -10,22 +11,22 @@ export function SiteNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-line/70 bg-paper/80 backdrop-blur-md">
       <nav className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-5 sm:px-8">
-        <a href="#top" className="flex items-center gap-3" aria-label={`${PRODUCT_NAME} home`}>
+        <Link href="/" className="flex items-center gap-3" aria-label={`${PRODUCT_NAME} home`}>
           <SealMark size={34} />
           <span className="font-display text-[1.35rem] leading-none tracking-tight text-ink">
             {PRODUCT_NAME}
           </span>
-        </a>
+        </Link>
 
         <ul className="hidden items-center gap-9 md:flex">
           {NAV_LINKS.map((link) => (
             <li key={link.href}>
-              <a
+              <Link
                 href={link.href}
                 className="text-sm text-ink-soft transition-colors hover:text-ink"
               >
                 {link.label}
-              </a>
+              </Link>
             </li>
           ))}
         </ul>
@@ -56,13 +57,13 @@ export function SiteNav() {
           <ul className="mx-auto flex max-w-6xl flex-col px-5 py-2 sm:px-8">
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
-                <a
+                <Link
                   href={link.href}
                   className="block py-3 text-ink-soft"
                   onClick={() => setOpen(false)}
                 >
                   {link.label}
-                </a>
+                </Link>
               </li>
             ))}
             <li>

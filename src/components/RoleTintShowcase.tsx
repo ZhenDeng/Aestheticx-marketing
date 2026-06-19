@@ -11,8 +11,8 @@ const TINT: Record<RoleKey, { tint: string; soft: string }> = {
   umber: { tint: "var(--color-umber)", soft: "var(--color-umber-soft)" },
 };
 
-export function RoleTintShowcase() {
-  const [active, setActive] = useState<RoleKey>("rose");
+export function RoleTintShowcase({ initial = "rose" }: { initial?: RoleKey }) {
+  const [active, setActive] = useState<RoleKey>(initial);
   const role = ROLES.find((r) => r.key === active) ?? ROLES[0];
 
   const tintStyle = {

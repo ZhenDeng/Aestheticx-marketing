@@ -8,11 +8,12 @@ export const CONTACT_EMAIL = "hello@aestheticx.com.au";
 
 export const PRODUCT_NAME = "AestheticX";
 
-// Anchor sections used by the nav.
+// Primary navigation: role subpages + homepage anchors.
+// Leading "/" links resolve from any page; "/#id" jumps to a homepage section.
 export const NAV_LINKS = [
-  { href: "#identity", label: "Identity" },
-  { href: "#features", label: "Features" },
-  { href: "#compliance", label: "Compliance" },
-  { href: "#who", label: "Who it's for" },
-  { href: "#faq", label: "FAQ" },
+  { href: "/for-doctors", label: "Doctors" },
+  { href: "/for-nurses", label: "Nurses" },
+  { href: "/for-clinics", label: "Clinics" },
+  { href: "/#features", label: "Features" },
+  { href: "/#faq", label: "FAQ" },
 ] as const;
