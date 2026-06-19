@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SealMark } from "./SealMark";
+import { BrandMark } from "./BrandMark";
 import { CONTACT_EMAIL, NAV_LINKS, PRODUCT_NAME } from "@/lib/site";
 
 export function SiteFooter() {
@@ -9,7 +9,7 @@ export function SiteFooter() {
         <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
           <div className="max-w-sm">
             <div className="flex items-center gap-3">
-              <SealMark size={32} />
+              <BrandMark size={32} />
               <span className="font-display text-xl text-ink">{PRODUCT_NAME}</span>
             </div>
             <p className="mt-4 text-sm leading-relaxed text-ink-soft">
