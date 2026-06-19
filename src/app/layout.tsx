@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Albert_Sans, Fragment_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -79,7 +81,11 @@ export default function RootLayout({
       lang="en-AU"
       className={`${fraunces.variable} ${albertSans.variable} ${fragmentMono.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
