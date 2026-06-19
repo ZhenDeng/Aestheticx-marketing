@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+/* ============================================================
+   AestheticX — "Porcelain & Ink" design tokens
+   Mirrors AestheticX/design/ui/DESIGN.md
+   ============================================================ */
+@theme {
+  /* Surfaces */
+  --color-paper: #f5f0e8;
+  --color-paper-deep: #ede6da;
+  --color-card: #fffdf8;
+
+  /* Ink (text) */
+  --color-ink: #211c16;
+  --color-ink-soft: #71665a;
+  --color-ink-faint: #a99c8c;
+
+  /* Lines */
+  --color-line: #e3d9c8;
+  --color-line-soft: #eee7da;
+
+  /* Gold — consequence: authorisations, signatures, legal, CTAs */
+  --color-gold: #ae8a50;
+  --color-gold-deep: #8f6f3c;
+  --color-gold-soft: #efe3cb;
+
+  /* Danger — allergies, expiry, failures */
+  --color-danger: #a14034;
+  --color-danger-soft: #f6e4e0;
+
+  /* Role tints */
+  --color-rose: #a65b5b;
+  --color-rose-soft: #f3e2df;
+  --color-sage: #56705f;
+  --color-sage-soft: #e2e9e1;
+  --color-slate: #56657f;
+  --color-slate-soft: #e2e6ee;
+  --color-umber: #3a322a;
+  --color-umber-soft: #e8e2d9;
+
+  /* Type families (wired to next/font CSS vars in layout.tsx) */
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-body: var(--font-albert), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-fragment), ui-monospace, "SF Mono", monospace;
+
+  /* Radii */
+  --radius-card: 22px;
+  --radius-inner: 14px;
+  --radius-field: 9px;
+  --radius-btn: 16px;
+
+  /* Shadows — soft, warm-tinted */
+  --shadow-card: 0 1px 2px rgba(33, 28, 22, 0.05), 0 12px 32px -12px rgba(33, 28, 22, 0.18);
+  --shadow-phone: 0 2px 4px rgba(33, 28, 22, 0.12), 0 40px 80px -24px rgba(33, 28, 22, 0.38);
+  --shadow-lift: 0 1px 2px rgba(33, 28, 22, 0.05), 0 24px 56px -20px rgba(33, 28, 22, 0.28);
+
+  /* Session tint (re-pointed by the role-tint demo) */
+  --color-tint: var(--color-rose);
+  --color-tint-soft: var(--color-rose-soft);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* Grain + gold/rose atmosphere — fixed, behind everything */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 500px at 85% -5%, rgba(174, 138, 80, 0.14), transparent 60%),
+    radial-gradient(700px 600px at -10% 30%, rgba(166, 91, 91, 0.07), transparent 60%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--color-gold-soft);
+  color: var(--color-ink);
+}
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+
+/* Mono micro-label — the system's signature texture */
+.micro {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-ink-faint);
+}
+
+/* Kicker — gold hairline + mono label */
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-gold-deep);
+}
+.kicker::before {
+  content: "";
+  width: 42px;
+  height: 1px;
+  background: var(--color-gold);
+}
+
+/* ============================================================
+   Motion — single orchestrated staggered reveal
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal,
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
