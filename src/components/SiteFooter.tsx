@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SealMark } from "./SealMark";
 import { CONTACT_EMAIL, NAV_LINKS, PRODUCT_NAME } from "@/lib/site";
 
@@ -21,9 +22,9 @@ export function SiteFooter() {
             <ul className="space-y-2.5">
               {NAV_LINKS.map((link) => (
                 <li key={link.href}>
-                  <a href={link.href} className="text-sm text-ink-soft hover:text-ink">
+                  <Link href={link.href} className="text-sm text-ink-soft hover:text-ink">
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

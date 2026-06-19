@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Reveal } from "./Reveal";
 import { SealMark } from "./SealMark";
 import { APP_STORE_URL } from "@/lib/site";
@@ -26,12 +27,12 @@ export function FinalCta() {
             >
               Get the app
             </a>
-            <a
-              href="#features"
+            <Link
+              href="/#features"
               className="rounded-btn border border-line bg-card px-7 py-3.5 text-sm font-medium text-ink transition-colors hover:border-gold"
             >
               Explore features
-            </a>
+            </Link>
           </div>
         </Reveal>
       </div>

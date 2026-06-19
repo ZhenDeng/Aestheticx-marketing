@@ -1,8 +1,7 @@
 import { SiteNav } from "@/components/SiteNav";
 import { Hero } from "@/components/Hero";
 import { TrustStrip } from "@/components/TrustStrip";
-import { RoleTintShowcase } from "@/components/RoleTintShowcase";
-import { FeatureSections } from "@/components/FeatureSections";
+import { KeyPoints } from "@/components/KeyPoints";
 import { ComplianceSection } from "@/components/ComplianceSection";
 import { WhoForSection } from "@/components/WhoForSection";
 import { FaqSection } from "@/components/FaqSection";
@@ -43,10 +42,9 @@ export default function Home() {
       <main className="flex-1">
         <Hero />
         <TrustStrip />
-        <RoleTintShowcase />
-        <FeatureSections />
-        <ComplianceSection />
+        <KeyPoints />
         <WhoForSection />
+        <ComplianceSection />
         <FaqSection />
         <FinalCta />
       </main>
