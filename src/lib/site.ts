@@ -16,4 +16,5 @@ export const NAV_LINKS = [
   { href: "/for-clinics", label: "Clinics" },
   { href: "/#features", label: "Features" },
   { href: "/#faq", label: "FAQ" },
+  { href: "/login", label: "Log in" },
 ] as const;

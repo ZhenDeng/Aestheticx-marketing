@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Albert_Sans, Fragment_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { DemoAuthProvider } from "@/lib/demo/auth";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -80,7 +81,7 @@ export default function RootLayout({
       className={`${fraunces.variable} ${albertSans.variable} ${fragmentMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        <DemoAuthProvider>{children}</DemoAuthProvider>
         <Analytics />
         <SpeedInsights />
       </body>
