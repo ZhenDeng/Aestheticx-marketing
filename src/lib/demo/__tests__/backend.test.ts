@@ -166,7 +166,7 @@ describe("approveRequest", () => {
 
 describe("requireEdit", () => {
   it("sends the request back without approving (no flat reject)", () => {
-    let state = stateWith(nursePatient("p1", "u-sarah"));
+    const state = stateWith(nursePatient("p1", "u-sarah"));
     const submitted = submitRequest(
       state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
     );

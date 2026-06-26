@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { calendarName, displayName, hasAlert } from "@/lib/demo/types";
+import { displayName, hasAlert } from "@/lib/demo/types";
 
 export default function PatientsPage() {
   const { identity } = useDemoAuth();

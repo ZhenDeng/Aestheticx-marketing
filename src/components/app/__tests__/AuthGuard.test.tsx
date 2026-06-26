@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 
-import { DemoAuthProvider, useDemoAuth } from "@/lib/demo/auth";
+import { DemoAuthProvider } from "@/lib/demo/auth";
 import { AuthGuard } from "@/components/app/AuthGuard";
 
 function SignedOut() {

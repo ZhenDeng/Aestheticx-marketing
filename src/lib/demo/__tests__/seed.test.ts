@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildSeedState, SEED_NOW } from "@/lib/demo/seed";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
-import { searchPatients, pendingRequestsForDoctor, activeAuthorisations } from "@/lib/demo/backend";
+import { pendingRequestsForDoctor, activeAuthorisations } from "@/lib/demo/backend";
 
 describe("demo accounts", () => {
   it("includes the four primary roles", () => {
