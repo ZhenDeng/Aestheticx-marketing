@@ -19,16 +19,28 @@ export function SiteNav() {
         </Link>
 
         <ul className="hidden items-center gap-9 md:flex">
-          {NAV_LINKS.map((link) => (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className="text-sm text-ink-soft transition-colors hover:text-ink"
-              >
-                {link.label}
-              </Link>
-            </li>
-          ))}
+          {NAV_LINKS.map((link) =>
+            link.href === "/login" ? (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="rounded-btn px-4 py-2 text-sm font-medium text-card"
+                  style={{ background: "var(--color-umber)" }}
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ) : (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  className="text-sm text-ink-soft transition-colors hover:text-ink"
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ),
+          )}
         </ul>
 
         <div className="flex items-center gap-3">
