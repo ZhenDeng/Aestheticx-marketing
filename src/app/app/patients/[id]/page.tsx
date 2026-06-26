@@ -13,6 +13,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const store = useDemoStore();
   const [noteBody, setNoteBody] = useState("");
   if (!identity) return null;
+  const me = identity; // non-null, captured by the handlers below
 
   const patient = store.state.patients[id];
   if (!patient || !patientPermissions(identity, patient).canView) {
@@ -25,7 +26,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   function addNote(e: React.FormEvent) {
     e.preventDefault();
     if (!noteBody.trim()) return;
-    store.saveGeneralNote({ patientID: id, title: "", body: noteBody.trim(), identity: identity! });
+    store.saveGeneralNote({ patientID: id, title: "", body: noteBody.trim(), identity: me });
     setNoteBody("");
   }
 
@@ -35,7 +36,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
       patientID: id,
       doctorID: "u-voss",
       items: [{ name: "Profhilo", dosage: "2", category: "skinBooster", unit: "millilitres", areas: ["Full Face"] }],
-      identity: identity!,
+      identity: me,
     });
   }
 

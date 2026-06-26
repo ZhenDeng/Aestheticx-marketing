@@ -50,9 +50,7 @@ function nursePatient(id: string, ownerID: string): Patient {
 }
 
 function stateWith(...patients: Patient[]): DemoState {
-  const s = emptyState();
-  for (const p of patients) s.patients[p.id] = p;
-  return s;
+  return { ...emptyState(), patients: Object.fromEntries(patients.map((p) => [p.id, p])) };
 }
 
 const profhilo: MedicationItem = {

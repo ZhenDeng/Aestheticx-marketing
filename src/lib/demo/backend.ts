@@ -173,10 +173,9 @@ export function activeAuthorisations(state: DemoState, patientID: string, now: n
     .sort((a, b) => a.expiresAt - b.expiresAt);
 }
 
-let counter = 0;
 function makeID(prefix: string): string {
-  counter += 1;
-  return `${prefix}-${counter}`;
+  // Collision-safe across sessions, tabs, and repeat provider mounts.
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 export interface SubmitRequestInput {

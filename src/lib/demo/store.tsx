@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import type { DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
-import { buildSeedState } from "./seed";
+import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 
 interface StoreValue {
@@ -27,7 +27,7 @@ const StoreContext = createContext<StoreValue | null>(null);
 export function DemoStoreProvider({ children }: { children: ReactNode }) {
   // Built once per mount; a hard reload remounts and resets to the seed.
   const [state, setState] = useState<DemoState>(() => buildSeedState());
-  const now = Date.UTC(2026, 5, 26); // SEED_NOW — keeps seeded expiries "active"
+  const now = SEED_NOW; // keeps seeded expiries "active"
 
   const value = useMemo<StoreValue>(
     () => ({

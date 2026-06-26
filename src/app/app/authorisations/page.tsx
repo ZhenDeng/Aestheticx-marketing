@@ -44,7 +44,20 @@ export default function AuthorisationsPage() {
     );
   }
 
-  // Nurse / admin view: surface own open requests across visible patients.
+  // Clinic admins don't raise authorisation requests.
+  if (identity.role === "clinicAdmin" || identity.role === "superAdmin") {
+    return (
+      <div>
+        <h1 className="font-display text-3xl text-ink">Authorisation requests</h1>
+        <p className="mt-2 text-ink-soft">
+          Admins don&apos;t raise authorisation requests — that&apos;s the injecting nurse&apos;s job.
+          Sign in as a nurse to raise one, or as Dr Voss to review.
+        </p>
+      </div>
+    );
+  }
+
+  // Nurse view: surface own open requests across visible patients.
   const patients = store.searchPatients("", identity);
   const rows = patients.flatMap((p) =>
     store.openRequestsForPatient(p.id, identity.user.id).map((r) => ({ patient: p, request: r })),
