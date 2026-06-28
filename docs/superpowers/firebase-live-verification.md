@@ -72,6 +72,23 @@ With `.env.local` set (live mode), signed in as a **TEST** account scoped to tes
    the `mergePatients` Function moved notes/forms/authorisations onto the kept patient and deleted the
    duplicate (re-hydrate to see the result). The control only appears for clinic admins.
 
+## Consent signing — live checks (manual, owner-run, TEST account only)
+
+With `.env.local` set (live mode), signed in as a **TEST** account that can send forms for a test patient:
+1. Open the test patient → **Consent forms** → "Sign a consent" → pick a template → answer the
+   screening questions → draw a signature → "Record signed consent".
+2. Confirm in the Firestore console a new **`patients/{id}/forms/{formId}`** doc (with `template`,
+   `channel: onDevice`, `intro`/`clauses` snapshot, `answers`, `signatureImageFileId`), and a
+   **`patients/{id}/signatures/{formId}.png`** object in Storage.
+3. Open the signed form's read-only view → the signature image loads via the Storage download URL, and
+   the responses + full consent text render.
+4. Delete a form signed in error → the `forms` doc is removed.
+   ⚠️ **Known caveat:** the `patients/{id}/signatures/{formId}.png` Storage object is **not** cleaned up
+   on delete (client deletes don't cascade to Storage). A cleanup Function is a later follow-up.
+
+Note: PDF download and remote signing channels (email/QR/link) are **not** in this increment — the view
+renders the full text + signature instead.
+
 ## Safety reminder
 
 This wires a public-origin web client to a production clinical (PHI) database. Keep it pointed at the

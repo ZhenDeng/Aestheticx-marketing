@@ -29,6 +29,9 @@ interface StoreValue {
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
   mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
+  formsForPatient: (patientID: string) => ReturnType<typeof backend.formsForPatient>;
+  recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
+  deleteForm: (patientID: string, formId: string, identity: Identity) => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -166,6 +169,16 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror((s) => backend.deletePatient(s, id, identity), (m) => m.mirrorDeletePatient(id)),
       mergePatients: (keepId, removeId, identity) =>
         applyAndMirror((s) => backend.mergePatients(s, keepId, removeId, identity), (m) => m.mirrorMergePatients(keepId, removeId)),
+      formsForPatient: (pid) => backend.formsForPatient(state, pid),
+      recordForm: (input, identity) => {
+        let form: ReturnType<typeof backend.recordSignedForm>["form"] | null = null;
+        applyAndMirror(
+          (s) => { const r = backend.recordSignedForm(s, input, identity, now); form = r.form; return r.state; },
+          (m) => (form ? m.mirrorCreateForm(form) : Promise.resolve()),
+        );
+      },
+      deleteForm: (patientID, formId, identity) =>
+        applyAndMirror((s) => backend.deleteForm(s, patientID, formId, identity), (m) => m.mirrorDeleteForm(patientID, formId)),
     }),
     [state, now, status, lastSyncError, applyAndMirror, live],
   );

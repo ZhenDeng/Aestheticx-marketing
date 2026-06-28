@@ -3,8 +3,8 @@
 import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
-import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits } from "./mappers";
-import type { AuthorisationRequest, Note, Patient, TreatmentMedication } from "@/lib/demo/types";
+import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm } from "./mappers";
+import type { AuthorisationRequest, Note, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -60,4 +60,11 @@ export async function mirrorDeletePatient(id: string): Promise<void> {
 }
 export async function mirrorMergePatients(keepId: string, removeId: string): Promise<void> {
   await httpsCallable(functions(), "mergePatients")({ keepId, removeId });
+}
+
+export async function mirrorCreateForm(form: SignedFormRecord): Promise<void> {
+  await setDoc(doc(firestore(), `patients/${form.patientID}/forms`, form.id), encodeForm(form));
+}
+export async function mirrorDeleteForm(patientID: string, formId: string): Promise<void> {
+  await deleteDoc(doc(firestore(), `patients/${patientID}/forms`, formId));
 }

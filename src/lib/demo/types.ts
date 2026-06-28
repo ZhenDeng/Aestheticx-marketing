@@ -2,6 +2,8 @@
 // Source of truth: AestheticXKit/Sources/AXDomain/{Models,Authorisations}.swift.
 // Enum raw values match the Swift `rawValue`s so the shapes stay wire-compatible.
 
+import type { FormTemplateKind, SigningChannel } from "./forms";
+
 export type Role = "doctor" | "nurse" | "clinicAdmin" | "superAdmin";
 
 export interface UserRef {
@@ -163,6 +165,26 @@ export interface RepeatUsage {
   date: number;
 }
 
+export interface FormAnswer {
+  questionID: string;
+  answer: boolean;
+  detail: string;
+}
+
+export interface SignedFormRecord {
+  id: string;
+  patientID: string;
+  template: FormTemplateKind;
+  channel: SigningChannel;
+  signedAt: number;
+  answers: FormAnswer[];
+  intro: string;       // snapshot of the template text at signing
+  clauses: string[];   // snapshot
+  signatureFileId?: string;   // live: Storage path
+  signatureDataUrl?: string;  // demo only: inline PNG data URL (never written to Firestore)
+  pdfFileId?: string;
+}
+
 export interface DemoState {
   patients: Record<string, Patient>;
   requests: Record<string, AuthorisationRequest>;
@@ -171,6 +193,7 @@ export interface DemoState {
   appointments: Record<string, Appointment>;
   ledger: BillingEvent[];
   usages: RepeatUsage[];
+  formsByPatient: Record<string, SignedFormRecord[]>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

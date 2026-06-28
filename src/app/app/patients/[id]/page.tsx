@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
+import { templateDisplayName } from "@/lib/demo/forms";
 import { displayName, fullName, hasAlert } from "@/lib/demo/types";
 
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,6 +29,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const perms = patientPermissions(identity, patient);
   const notes = store.notesForPatient(id);
   const active = store.activeAuthorisations(id);
+  const forms = store.formsForPatient(id);
   const canEdit = perms.canEditDetails;
   const canDelete = perms.canDelete;
   const canMerge = perms.canMerge;
@@ -111,6 +113,26 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             </li>
           ))}
           {notes.length === 0 && <li className="text-sm text-ink-soft">No notes yet.</li>}
+        </ul>
+
+        <div className="mt-8 flex items-center justify-between gap-4">
+          <h2 className="font-display text-xl text-ink">Consent forms</h2>
+          {perms.canSendForms && (
+            <Link href={`/app/patients/${id}/consent`} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+              Sign a consent
+            </Link>
+          )}
+        </div>
+        <ul className="mt-3 flex flex-col gap-2">
+          {forms.map((f) => (
+            <li key={f.id}>
+              <Link href={`/app/patients/${id}/forms/${f.id}`} className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3 hover:border-tint">
+                <span className="text-sm font-medium text-ink">{templateDisplayName(f.template)}</span>
+                <span className="micro">{new Date(f.signedAt).toLocaleDateString()} · {f.channel}</span>
+              </Link>
+            </li>
+          ))}
+          {forms.length === 0 && <li className="text-sm text-ink-soft">No signed forms yet.</li>}
         </ul>
       </div>
 

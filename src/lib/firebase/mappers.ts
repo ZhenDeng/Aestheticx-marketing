@@ -3,8 +3,9 @@
 import type {
   Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
-  ProductUnit, RequestStatus, NoteKind, TreatmentMedication,
+  ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
 } from "@/lib/demo/types";
+import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 
 type Doc = Record<string, unknown>;
 
@@ -217,4 +218,34 @@ export function encodePatientForCreate(p: Patient): Doc {
 // Update: editable demographics only; owner/prescribers are server-maintained (rules block changes).
 export function encodePatientEdits(p: Patient): Doc {
   return patientCore(p);
+}
+
+export function encodeForm(f: SignedFormRecord): Doc {
+  return {
+    template: f.template,
+    channel: f.channel,
+    signedAt: f.signedAt,
+    intro: f.intro,
+    clauses: f.clauses,
+    answers: f.answers.map((a) => ({ questionId: a.questionID, answer: a.answer, detail: a.detail })),
+    signatureImageFileId: f.signatureFileId ?? null,
+    pdfFileId: f.pdfFileId ?? null,
+  };
+}
+
+export function mapForm(id: string, patientID: string, data: Doc): SignedFormRecord {
+  const answers = (Array.isArray(data.answers) ? (data.answers as Doc[]) : []).map((a): FormAnswer => ({
+    questionID: str(a.questionId), answer: a.answer === true, detail: str(a.detail),
+  }));
+  return {
+    id, patientID,
+    template: (str(data.template) || "aestheticHistory") as FormTemplateKind,
+    channel: (str(data.channel) || "onDevice") as SigningChannel,
+    signedAt: toMillis(data.signedAt),
+    answers,
+    intro: str(data.intro),
+    clauses: strArray(data.clauses),
+    signatureFileId: typeof data.signatureImageFileId === "string" ? data.signatureImageFileId : undefined,
+    pdfFileId: typeof data.pdfFileId === "string" ? data.pdfFileId : undefined,
+  };
 }

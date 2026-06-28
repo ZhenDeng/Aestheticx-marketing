@@ -11,6 +11,8 @@ import {
   formatDob,
 } from "@/lib/firebase/mappers";
 import { encodePatientForCreate, encodePatientEdits } from "@/lib/firebase/mappers";
+import { mapForm, encodeForm } from "@/lib/firebase/mappers";
+import type { SignedFormRecord } from "@/lib/demo/types";
 import type { Patient } from "@/lib/demo/types";
 
 const patient: Patient = {
@@ -152,5 +154,24 @@ describe("encoders", () => {
     expect(doc.kind).toBe("general");
     expect(doc.authorId).toBe("u-sarah");
     expect(doc.body).toBe("hi");
+  });
+});
+
+describe("form mappers", () => {
+  it("round-trips a signed form", () => {
+    const form: SignedFormRecord = {
+      id: "f1", patientID: "p1", template: "antiwrinkleConsent", channel: "onDevice",
+      signedAt: 1750000000000, answers: [{ questionID: "q", answer: true, detail: "d" }],
+      intro: "intro", clauses: ["c1", "off-label"], signatureFileId: "patients/p1/signatures/f1.png",
+    };
+    const doc = encodeForm(form);
+    expect(doc.template).toBe("antiwrinkleConsent");
+    expect(doc.signatureImageFileId).toBe("patients/p1/signatures/f1.png");
+    expect((doc.answers as unknown[]).length).toBe(1);
+    const back = mapForm("f1", "p1", doc as Record<string, unknown>);
+    expect(back.template).toBe("antiwrinkleConsent");
+    expect(back.clauses).toEqual(["c1", "off-label"]);
+    expect(back.answers[0].questionID).toBe("q");
+    expect(back.signatureFileId).toBe("patients/p1/signatures/f1.png");
   });
 });

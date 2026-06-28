@@ -15,6 +15,7 @@ const rows: HydrationRows = {
   appointments: [
     { id: "ap1", data: { type: "treatment", ownerId: "clinic-lumiere", dateISO: "2026-06-26", startMinute: 540, endMinute: 570, status: "confirmed" } },
   ],
+  formsByPatient: { p1: [{ id: "fm1", data: { template: "antiwrinkleConsent", channel: "onDevice", signedAt: 3, intro: "i", clauses: ["c"], answers: [] } }] },
 };
 
 describe("assembleState", () => {
@@ -27,5 +28,6 @@ describe("assembleState", () => {
     expect(state.appointments.ap1.startMinute).toBe(540);
     expect(state.ledger).toEqual([]);
     expect(state.usages).toEqual([]);
+    expect(state.formsByPatient.p1).toHaveLength(1);
   });
 });
