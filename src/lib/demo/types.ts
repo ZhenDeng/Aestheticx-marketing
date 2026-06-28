@@ -203,3 +203,38 @@ export function identityBadge(identity: Identity): string {
     ? `${identity.user.name} @ ${identity.context.clinic.name}`
     : identity.user.name;
 }
+
+export type PatientField =
+  | "givenName" | "lastName" | "dateOfBirth" | "gender"
+  | "address" | "phone" | "email" | "allergies" | "currentMedications";
+
+// All-string form state for the intake/edit form (dob held separately).
+export interface PatientDraft {
+  givenName: string;
+  lastName: string;
+  preferredName: string;
+  dateOfBirth: DateOfBirth | null;
+  gender: string; // "" | "Male" | "Female" | "Other"
+  address: string;
+  phone: string;
+  email: string;
+  allergies: string;
+  currentMedications: string;
+  alert: string;
+}
+
+export function emptyDraft(): PatientDraft {
+  return {
+    givenName: "", lastName: "", preferredName: "", dateOfBirth: null, gender: "",
+    address: "", phone: "", email: "", allergies: "", currentMedications: "", alert: "",
+  };
+}
+
+export function draftFromPatient(p: Patient): PatientDraft {
+  return {
+    givenName: p.givenName, lastName: p.lastName, preferredName: p.preferredName ?? "",
+    dateOfBirth: p.dateOfBirth, gender: p.gender, address: p.address, phone: p.phone,
+    email: p.email, allergies: p.allergies, currentMedications: p.currentMedications,
+    alert: p.alert ?? "",
+  };
+}

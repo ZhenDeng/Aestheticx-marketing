@@ -10,6 +10,37 @@ import {
   parseDob,
   formatDob,
 } from "@/lib/firebase/mappers";
+import { encodePatientForCreate, encodePatientEdits } from "@/lib/firebase/mappers";
+import type { Patient } from "@/lib/demo/types";
+
+const patient: Patient = {
+  id: "p1", givenName: "Amara", lastName: "Boyd", dateOfBirth: { year: 1991, month: 3, day: 12 },
+  gender: "Female", address: "x", phone: "0401", email: "a@x.com", allergies: "NKDA",
+  currentMedications: "Nil", owner: { kind: "clinic", id: "clinic-lumiere" },
+  prescribingDoctorIDs: ["u-voss"], alert: "anaphylaxis", preferredName: "Mara",
+};
+
+describe("encodePatientForCreate", () => {
+  it("writes ownerType/ownerId + dob string and omits prescribingDoctorIds", () => {
+    const doc = encodePatientForCreate(patient);
+    expect(doc.ownerType).toBe("clinic");
+    expect(doc.ownerId).toBe("clinic-lumiere");
+    expect(doc.dateOfBirth).toBe("1991-03-12");
+    expect("prescribingDoctorIds" in doc).toBe(false);
+    expect(doc.alert).toBe("anaphylaxis");
+  });
+});
+
+describe("encodePatientEdits", () => {
+  it("omits owner + prescribers (rules block changing them)", () => {
+    const doc = encodePatientEdits(patient);
+    expect("ownerType" in doc).toBe(false);
+    expect("ownerId" in doc).toBe(false);
+    expect("prescribingDoctorIds" in doc).toBe(false);
+    expect(doc.givenName).toBe("Amara");
+    expect(doc.preferredName).toBe("Mara");
+  });
+});
 
 describe("parseDob / formatDob", () => {
   it("round-trips yyyy-MM-dd", () => {

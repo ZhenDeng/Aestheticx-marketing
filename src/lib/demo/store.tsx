@@ -25,6 +25,10 @@ interface StoreValue {
   requireEdit: (requestID: string, identity: Identity) => void;
   saveGeneralNote: (input: { patientID: string; title: string; body: string; identity: Identity }) => void;
   saveTreatmentNote: (input: { patientID: string; tickedIDs: string[]; title: string; body: string; medications: TreatmentMedication[]; identity: Identity }) => void;
+  createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
+  updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
+  deletePatient: (id: string, identity: Identity) => void;
+  mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -140,8 +144,30 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           },
         );
       },
+      createPatient: (draft, identity) => {
+        // Compute the patient eagerly so we can return its id synchronously (the page
+        // navigates to it) and surface validation/permission throws to the caller. The
+        // new patient is independent of existing records, so this is never "stale" — but
+        // we apply it through a functional setState so the patients-map spread always
+        // merges into the freshest state rather than a stale closure snapshot.
+        const { patient } = backend.createPatient(state, draft, identity, now);
+        setState((s) => ({ ...s, patients: { ...s.patients, [patient.id]: patient } }));
+        if (live) {
+          void (async () => {
+            try { const m = await import("@/lib/firebase/mirror"); await m.mirrorCreatePatient(patient); }
+            catch (e) { setLastSyncError(String(e)); }
+          })();
+        }
+        return patient.id;
+      },
+      updatePatient: (patient, identity) =>
+        applyAndMirror((s) => backend.updatePatient(s, patient, identity), (m) => m.mirrorUpdatePatient(patient)),
+      deletePatient: (id, identity) =>
+        applyAndMirror((s) => backend.deletePatient(s, id, identity), (m) => m.mirrorDeletePatient(id)),
+      mergePatients: (keepId, removeId, identity) =>
+        applyAndMirror((s) => backend.mergePatients(s, keepId, removeId, identity), (m) => m.mirrorMergePatients(keepId, removeId)),
     }),
-    [state, now, status, lastSyncError, applyAndMirror],
+    [state, now, status, lastSyncError, applyAndMirror, live],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

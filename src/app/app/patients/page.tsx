@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
+import { canCreatePatient } from "@/lib/demo/backend";
 import { displayName, hasAlert } from "@/lib/demo/types";
 
 export default function PatientsPage() {
@@ -18,7 +19,14 @@ export default function PatientsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-ink">Patients</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="font-display text-3xl text-ink">Patients</h1>
+        {canCreatePatient(identity) && (
+          <Link href="/app/patients/new" className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+            New patient
+          </Link>
+        )}
+      </div>
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}

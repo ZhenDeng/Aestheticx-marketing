@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
@@ -12,6 +13,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const [noteBody, setNoteBody] = useState("");
+  const router = useRouter();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [mergeFrom, setMergeFrom] = useState("");
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
@@ -24,6 +28,23 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const perms = patientPermissions(identity, patient);
   const notes = store.notesForPatient(id);
   const active = store.activeAuthorisations(id);
+  const canEdit = perms.canEditDetails;
+  const canDelete = perms.canDelete;
+  const canMerge = perms.canMerge;
+  // Other same-clinic patients that can be merged INTO this one (clinic admins only).
+  const mergeCandidates = canMerge && patient.owner.kind === "clinic"
+    ? store.searchPatients("", identity).filter((p) => p.id !== id && p.owner.kind === "clinic" && p.owner.id === patient.owner.id)
+    : [];
+
+  function doDelete() {
+    store.deletePatient(id, identity!);
+    router.push("/app/patients");
+  }
+  function doMerge() {
+    if (!mergeFrom) return;
+    store.mergePatients(id, mergeFrom, identity!); // keep this file, remove the duplicate
+    setMergeFrom("");
+  }
 
   function addNote(e: React.FormEvent) {
     e.preventDefault();
@@ -117,6 +138,46 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             </button>
           )}
         </div>
+        {(canEdit || canDelete || canMerge) && (
+          <div className="mt-4 rounded-card border border-line bg-card p-5 shadow-card">
+            <h2 className="font-display text-lg text-ink">Manage</h2>
+            <div className="mt-3 flex flex-col gap-2">
+              {canEdit && (
+                <Link href={`/app/patients/${id}/edit`} className="rounded-btn border border-line px-4 py-2 text-center text-sm text-ink hover:border-tint">
+                  Edit details
+                </Link>
+              )}
+              {canDelete && !confirmingDelete && (
+                <button onClick={() => setConfirmingDelete(true)} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint">
+                  Delete patient
+                </button>
+              )}
+              {canDelete && confirmingDelete && (
+                <div className="rounded-inner border border-line p-3">
+                  <p className="text-sm text-ink">Delete this patient and their notes? This cannot be undone.</p>
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={doDelete} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-rose)" }}>Delete</button>
+                    <button onClick={() => setConfirmingDelete(false)} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {canMerge && mergeCandidates.length > 0 && (
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="micro">Merge a duplicate into this file</p>
+                <select value={mergeFrom} onChange={(e) => setMergeFrom(e.target.value)} className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-sm text-ink">
+                  <option value="">Select duplicate…</option>
+                  {mergeCandidates.map((p) => <option key={p.id} value={p.id}>{p.givenName} {p.lastName}</option>)}
+                </select>
+                {mergeFrom && (
+                  <button onClick={doMerge} className="mt-2 w-full rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                    Merge (moves notes &amp; authorisations, removes the duplicate)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <p className="mt-3 text-xs text-ink-faint">Formal name on documents: {fullName(patient)}</p>
       </aside>
     </div>

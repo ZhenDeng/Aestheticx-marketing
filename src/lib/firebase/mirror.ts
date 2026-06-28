@@ -1,10 +1,10 @@
 "use client";
 
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
-import { encodeAuthRequest, encodeNote } from "./mappers";
-import type { AuthorisationRequest, Note, TreatmentMedication } from "@/lib/demo/types";
+import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits } from "./mappers";
+import type { AuthorisationRequest, Note, Patient, TreatmentMedication } from "@/lib/demo/types";
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -47,4 +47,17 @@ export async function mirrorConsumeRepeats(input: ConsumeRepeatsInput): Promise<
       })),
     },
   });
+}
+
+export async function mirrorCreatePatient(p: Patient): Promise<void> {
+  await setDoc(doc(firestore(), "patients", p.id), encodePatientForCreate(p));
+}
+export async function mirrorUpdatePatient(p: Patient): Promise<void> {
+  await updateDoc(doc(firestore(), "patients", p.id), encodePatientEdits(p));
+}
+export async function mirrorDeletePatient(id: string): Promise<void> {
+  await deleteDoc(doc(firestore(), "patients", id));
+}
+export async function mirrorMergePatients(keepId: string, removeId: string): Promise<void> {
+  await httpsCallable(functions(), "mergePatients")({ keepId, removeId });
 }

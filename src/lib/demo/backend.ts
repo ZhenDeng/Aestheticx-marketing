@@ -9,6 +9,9 @@ import type {
   MedicationItem,
   Note,
   Patient,
+  PatientDraft,
+  PatientField,
+  PatientOwner,
   PatientSummary,
   TreatmentMedication,
 } from "./types";
@@ -377,4 +380,112 @@ function appendNote(state: DemoState, note: Note): { state: DemoState; note: Not
     state: { ...state, notesByPatient: { ...state.notesByPatient, [note.patientID]: [...existing, note] } },
     note,
   };
+}
+
+// --- Patient CRUD + merge ---
+
+export const PATIENT_FIELDS: PatientField[] = [
+  "givenName", "lastName", "dateOfBirth", "gender",
+  "address", "phone", "email", "allergies", "currentMedications",
+];
+
+export function missingFields(draft: PatientDraft): Set<PatientField> {
+  const missing = new Set<PatientField>();
+  const check = (v: string, f: PatientField) => { if (!v.trim()) missing.add(f); };
+  check(draft.givenName, "givenName");
+  check(draft.lastName, "lastName");
+  if (!draft.dateOfBirth) missing.add("dateOfBirth");
+  if (!draft.gender.trim()) missing.add("gender");
+  check(draft.address, "address");
+  check(draft.phone, "phone");
+  check(draft.email, "email");
+  check(draft.allergies, "allergies");
+  check(draft.currentMedications, "currentMedications");
+  return missing;
+}
+
+export function canCreatePatient(identity: Identity): boolean {
+  return identity.role !== "superAdmin";
+}
+
+function ownerFor(identity: Identity): PatientOwner {
+  if (identity.context.kind === "clinic") return { kind: "clinic", id: identity.context.clinic.id };
+  if (identity.role === "doctor") return { kind: "doctor", id: identity.user.id };
+  return { kind: "nurse", id: identity.user.id };
+}
+
+export function createPatient(
+  state: DemoState, draft: PatientDraft, identity: Identity, _now: number,
+): { state: DemoState; patient: Patient } {
+  if (!canCreatePatient(identity)) throw new BackendError("notPermitted");
+  if (missingFields(draft).size > 0) throw new BackendError("validationFailed");
+  const patient: Patient = {
+    id: makeID("p"),
+    givenName: draft.givenName.trim(),
+    lastName: draft.lastName.trim(),
+    dateOfBirth: draft.dateOfBirth!,
+    gender: draft.gender,
+    address: draft.address.trim(),
+    phone: draft.phone.trim(),
+    email: draft.email.trim(),
+    allergies: draft.allergies.trim(),
+    currentMedications: draft.currentMedications.trim(),
+    owner: ownerFor(identity),
+    prescribingDoctorIDs: [],
+    alert: draft.alert.trim() ? draft.alert.trim() : undefined,
+    preferredName: draft.preferredName.trim() ? draft.preferredName.trim() : undefined,
+  };
+  return { state: { ...state, patients: { ...state.patients, [patient.id]: patient } }, patient };
+}
+
+export function updatePatient(state: DemoState, patient: Patient, identity: Identity): DemoState {
+  const existing = state.patients[patient.id];
+  if (!existing) throw new BackendError("notFound");
+  if (!patientPermissions(identity, existing).canEditDetails) throw new BackendError("notPermitted");
+  const merged: Patient = { ...patient, owner: existing.owner, prescribingDoctorIDs: existing.prescribingDoctorIDs };
+  return { ...state, patients: { ...state.patients, [patient.id]: merged } };
+}
+
+export function deletePatient(state: DemoState, id: string, identity: Identity): DemoState {
+  const existing = state.patients[id];
+  if (!existing) throw new BackendError("notFound");
+  if (!patientPermissions(identity, existing).canDelete) throw new BackendError("notPermitted");
+  const patients = { ...state.patients };
+  delete patients[id];
+  const notesByPatient = { ...state.notesByPatient };
+  delete notesByPatient[id];
+  // Drop the patient's relational records so no orphaned rows drive the UI.
+  const authorisations = Object.fromEntries(
+    Object.entries(state.authorisations).filter(([, a]) => a.patientID !== id),
+  );
+  const requests = Object.fromEntries(
+    Object.entries(state.requests).filter(([, r]) => r.patientID !== id),
+  );
+  const usages = state.usages.filter((u) => u.patientID !== id);
+  return { ...state, patients, notesByPatient, authorisations, requests, usages };
+}
+
+export function mergePatients(state: DemoState, keepId: string, removeId: string, identity: Identity): DemoState {
+  const keep = state.patients[keepId];
+  const remove = state.patients[removeId];
+  if (!keep || !remove) throw new BackendError("notFound");
+  if (!patientPermissions(identity, keep).canMerge || !patientPermissions(identity, remove).canMerge) {
+    throw new BackendError("notPermitted");
+  }
+  const movedNotes = (state.notesByPatient[removeId] ?? []).map((n) => ({ ...n, patientID: keepId }));
+  const notesByPatient = { ...state.notesByPatient, [keepId]: [...(state.notesByPatient[keepId] ?? []), ...movedNotes] };
+  delete notesByPatient[removeId];
+
+  const authorisations = { ...state.authorisations };
+  for (const [id, a] of Object.entries(authorisations)) {
+    if (a.patientID === removeId) authorisations[id] = { ...a, patientID: keepId };
+  }
+  // Re-point usage records too, so billing/usage history follows the merged file.
+  const usages = state.usages.map((u) => (u.patientID === removeId ? { ...u, patientID: keepId } : u));
+
+  const mergedKeep: Patient = { ...keep, prescribingDoctorIDs: [...new Set([...keep.prescribingDoctorIDs, ...remove.prescribingDoctorIDs])] };
+  const patients = { ...state.patients, [keepId]: mergedKeep };
+  delete patients[removeId];
+
+  return { ...state, patients, notesByPatient, authorisations, usages };
 }
