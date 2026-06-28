@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -15,6 +15,7 @@ export interface HydrationRows {
   authorisations: Row[];
   requests: Row[];
   appointments: Row[];
+  formsByPatient: Record<string, Row[]>;
 }
 
 // Pure: rows -> DemoState (testable, no Firebase).
@@ -36,7 +37,12 @@ export function assembleState(rows: HydrationRows): DemoState {
   const appointments: DemoState["appointments"] = {};
   for (const r of rows.appointments) appointments[r.id] = mapAppointment(r.id, r.data);
 
-  return { patients, notesByPatient, authorisations, requests, appointments, ledger: [], usages: [], formsByPatient: {} };
+  const formsByPatient: DemoState["formsByPatient"] = {};
+  for (const [pid, list] of Object.entries(rows.formsByPatient)) {
+    formsByPatient[pid] = list.map((f) => mapForm(f.id, pid, f.data));
+  }
+
+  return { patients, notesByPatient, authorisations, requests, appointments, ledger: [], usages: [], formsByPatient };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -55,12 +61,15 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     const all = await runQuery("patients");
     const notes: Record<string, Row[]> = {};
     await Promise.all(all.map(async (p) => { notes[p.id] = await runQuery(`patients/${p.id}/notes`); }));
+    const forms: Record<string, Row[]> = {};
+    await Promise.all(all.map(async (p) => { forms[p.id] = await runQuery(`patients/${p.id}/forms`); }));
     return assembleState({
       patients: all,
       notesByPatient: notes,
       authorisations: await runQuery("authorisations"),
       requests: await runQuery("authRequests"),
       appointments: await runQuery("appointments"),
+      formsByPatient: forms,
     });
   }
 
@@ -83,6 +92,9 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   await Promise.all(
     patients.map(async (p) => { notesByPatient[p.id] = await runQuery(`patients/${p.id}/notes`); }),
   );
+
+  const formsByPatient: Record<string, Row[]> = {};
+  await Promise.all(patients.map(async (p) => { formsByPatient[p.id] = await runQuery(`patients/${p.id}/forms`); }));
 
   // Authorisations + requests scoped to this user (nurse-owned or clinic-shared).
   const authConstraints: QueryConstraint[][] = [
@@ -110,5 +122,6 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     authorisations: [...authsById.values()],
     requests: [...reqsById.values()],
     appointments: [...apptsById.values()],
+    formsByPatient,
   });
 }
