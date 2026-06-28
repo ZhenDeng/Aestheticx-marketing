@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
+import { useDemoStore } from "@/lib/demo/store";
 import { identityBadge } from "@/lib/demo/types";
 import { tintStyle } from "@/lib/demo/tint";
 
@@ -16,6 +17,7 @@ const NAV = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { identity, signOut } = useDemoAuth();
+  const { status, lastSyncError } = useDemoStore();
   const pathname = usePathname();
   if (!identity) return null;
 
@@ -29,7 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <span className="font-display text-lg">AestheticX</span>
             <span className="micro rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
-              Demo · resets on refresh
+              {status === "demo" ? "Demo · resets on refresh" : "Live"}
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -57,6 +59,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
       </header>
+      {lastSyncError && (
+        <div className="border-b px-5 py-2 text-center text-sm sm:px-8" style={{ background: "var(--color-rose-soft)", color: "var(--color-rose)" }}>
+          A change could not be saved to the server. It will reconcile on refresh.
+        </div>
+      )}
       <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:px-8">{children}</main>
     </div>
   );
