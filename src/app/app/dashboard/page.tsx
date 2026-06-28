@@ -8,6 +8,17 @@ export default function DashboardPage() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   if (!identity) return null;
+  if (store.status === "loading") return <p className="text-ink-soft">Loading your data…</p>;
+  if (store.status === "error") {
+    return (
+      <div>
+        <p className="text-ink-soft">Could not load your data.</p>
+        <button onClick={store.rehydrate} className="mt-3 rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   const patients = store.searchPatients("", identity);
   const pending =
