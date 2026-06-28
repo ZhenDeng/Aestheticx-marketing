@@ -5,6 +5,7 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getFunctions, type Functions } from "firebase/functions";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 export interface FirebaseConfig {
@@ -69,4 +70,7 @@ export function firestore(): Firestore {
 }
 export function functions(): Functions {
   return getFunctions(getFirebaseApp());
+}
+export function storage(): FirebaseStorage {
+  return getStorage(getFirebaseApp());
 }
