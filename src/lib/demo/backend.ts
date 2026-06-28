@@ -458,6 +458,8 @@ export function deletePatient(state: DemoState, id: string, identity: Identity):
   delete patients[id];
   const notesByPatient = { ...state.notesByPatient };
   delete notesByPatient[id];
+  const formsByPatient = { ...state.formsByPatient };
+  delete formsByPatient[id];
   // Drop the patient's relational records so no orphaned rows drive the UI.
   const authorisations = Object.fromEntries(
     Object.entries(state.authorisations).filter(([, a]) => a.patientID !== id),
@@ -466,7 +468,7 @@ export function deletePatient(state: DemoState, id: string, identity: Identity):
     Object.entries(state.requests).filter(([, r]) => r.patientID !== id),
   );
   const usages = state.usages.filter((u) => u.patientID !== id);
-  return { ...state, patients, notesByPatient, authorisations, requests, usages };
+  return { ...state, patients, notesByPatient, formsByPatient, authorisations, requests, usages };
 }
 
 export function mergePatients(state: DemoState, keepId: string, removeId: string, identity: Identity): DemoState {
@@ -480,6 +482,11 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   const notesByPatient = { ...state.notesByPatient, [keepId]: [...(state.notesByPatient[keepId] ?? []), ...movedNotes] };
   delete notesByPatient[removeId];
 
+  // Move signed forms onto the kept file too.
+  const movedForms = (state.formsByPatient[removeId] ?? []).map((f) => ({ ...f, patientID: keepId }));
+  const formsByPatient = { ...state.formsByPatient, [keepId]: [...(state.formsByPatient[keepId] ?? []), ...movedForms] };
+  delete formsByPatient[removeId];
+
   const authorisations = { ...state.authorisations };
   for (const [id, a] of Object.entries(authorisations)) {
     if (a.patientID === removeId) authorisations[id] = { ...a, patientID: keepId };
@@ -491,7 +498,7 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
-  return { ...state, patients, notesByPatient, authorisations, usages };
+  return { ...state, patients, notesByPatient, formsByPatient, authorisations, usages };
 }
 
 // --- Signed forms ---
