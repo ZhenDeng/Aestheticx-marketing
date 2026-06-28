@@ -454,7 +454,15 @@ export function deletePatient(state: DemoState, id: string, identity: Identity):
   delete patients[id];
   const notesByPatient = { ...state.notesByPatient };
   delete notesByPatient[id];
-  return { ...state, patients, notesByPatient };
+  // Drop the patient's relational records so no orphaned rows drive the UI.
+  const authorisations = Object.fromEntries(
+    Object.entries(state.authorisations).filter(([, a]) => a.patientID !== id),
+  );
+  const requests = Object.fromEntries(
+    Object.entries(state.requests).filter(([, r]) => r.patientID !== id),
+  );
+  const usages = state.usages.filter((u) => u.patientID !== id);
+  return { ...state, patients, notesByPatient, authorisations, requests, usages };
 }
 
 export function mergePatients(state: DemoState, keepId: string, removeId: string, identity: Identity): DemoState {
@@ -472,10 +480,12 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   for (const [id, a] of Object.entries(authorisations)) {
     if (a.patientID === removeId) authorisations[id] = { ...a, patientID: keepId };
   }
+  // Re-point usage records too, so billing/usage history follows the merged file.
+  const usages = state.usages.map((u) => (u.patientID === removeId ? { ...u, patientID: keepId } : u));
 
   const mergedKeep: Patient = { ...keep, prescribingDoctorIDs: [...new Set([...keep.prescribingDoctorIDs, ...remove.prescribingDoctorIDs])] };
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
-  return { ...state, patients, notesByPatient, authorisations };
+  return { ...state, patients, notesByPatient, authorisations, usages };
 }

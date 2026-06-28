@@ -83,19 +83,35 @@ describe("deletePatient", () => {
   });
 });
 
+describe("deletePatient drops relational records", () => {
+  it("removes the patient's authorisations, requests, and usages", () => {
+    const state: DemoState = { ...emptyState(),
+      patients: { p1: clinicPatient("p1") },
+      authorisations: { a1: { id: "a1", requestID: "r", patientID: "p1", doctorID: "d", nurseID: "n", clinicID: "c1", medication: { name: "x", dosage: "1", category: "other", unit: "freeText", areas: [] }, repeatsRemaining: 5, expiresAt: NOW + 1 } },
+      requests: { r1: { id: "r1", patientID: "p1", nurse: { id: "n", name: "N" }, doctorID: "d", context: { kind: "independent" }, items: [], status: "pending", createdAt: 1 } },
+      usages: [{ authorisationID: "a1", patientID: "p1", clinicID: "c1", nurseID: "n", date: 1 }] };
+    const next = deletePatient(state, "p1", admin);
+    expect(next.authorisations.a1).toBeUndefined();
+    expect(next.requests.r1).toBeUndefined();
+    expect(next.usages).toHaveLength(0);
+  });
+});
+
 describe("mergePatients", () => {
-  it("re-points notes + authorisations, unions prescribers, drops the duplicate", () => {
+  it("re-points notes + authorisations + usages, unions prescribers, drops the duplicate", () => {
     const keep: Patient = { ...clinicPatient("keep"), prescribingDoctorIDs: ["d1"] };
     const remove: Patient = { ...clinicPatient("remove"), prescribingDoctorIDs: ["d2"] };
     const state: DemoState = { ...emptyState(),
       patients: { keep, remove },
       notesByPatient: { remove: [{ id: "n1", patientID: "remove", kind: "general", title: "", body: "x", createdAt: 1, authorID: "a", authorBadge: "b", consumedAuthorisationIDs: [], medications: [] }] },
-      authorisations: { a1: { id: "a1", requestID: "r", patientID: "remove", doctorID: "d", nurseID: "n", clinicID: "c1", medication: { name: "x", dosage: "1", category: "other", unit: "freeText", areas: [] }, repeatsRemaining: 5, expiresAt: NOW + 1 } } };
+      authorisations: { a1: { id: "a1", requestID: "r", patientID: "remove", doctorID: "d", nurseID: "n", clinicID: "c1", medication: { name: "x", dosage: "1", category: "other", unit: "freeText", areas: [] }, repeatsRemaining: 5, expiresAt: NOW + 1 } },
+      usages: [{ authorisationID: "a1", patientID: "remove", clinicID: "c1", nurseID: "n", date: 1 }] };
     const next = mergePatients(state, "keep", "remove", admin);
     expect(next.patients.remove).toBeUndefined();
     expect(next.notesByPatient.keep).toHaveLength(1);
     expect(next.notesByPatient.keep[0].patientID).toBe("keep");
     expect(next.authorisations.a1.patientID).toBe("keep");
+    expect(next.usages[0].patientID).toBe("keep");
     expect(next.patients.keep.prescribingDoctorIDs.sort()).toEqual(["d1", "d2"]);
   });
 });

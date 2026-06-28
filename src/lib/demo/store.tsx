@@ -145,15 +145,20 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         );
       },
       createPatient: (draft, identity) => {
-        const result = backend.createPatient(state, draft, identity, now);
-        setState(result.state);
+        // Compute the patient eagerly so we can return its id synchronously (the page
+        // navigates to it) and surface validation/permission throws to the caller. The
+        // new patient is independent of existing records, so this is never "stale" — but
+        // we apply it through a functional setState so the patients-map spread always
+        // merges into the freshest state rather than a stale closure snapshot.
+        const { patient } = backend.createPatient(state, draft, identity, now);
+        setState((s) => ({ ...s, patients: { ...s.patients, [patient.id]: patient } }));
         if (live) {
           void (async () => {
-            try { const m = await import("@/lib/firebase/mirror"); await m.mirrorCreatePatient(result.patient); }
+            try { const m = await import("@/lib/firebase/mirror"); await m.mirrorCreatePatient(patient); }
             catch (e) { setLastSyncError(String(e)); }
           })();
         }
-        return result.patient.id;
+        return patient.id;
       },
       updatePatient: (patient, identity) =>
         applyAndMirror((s) => backend.updatePatient(s, patient, identity), (m) => m.mirrorUpdatePatient(patient)),
