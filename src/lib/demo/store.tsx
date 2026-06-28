@@ -1,20 +1,25 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
+import { isFirebaseConfigured } from "@/lib/firebase/client";
+import { useDemoAuth } from "./auth";
+
+type Status = "demo" | "loading" | "ready" | "error";
 
 interface StoreValue {
   state: DemoState;
   now: number;
-  // Reads
+  status: Status;
+  lastSyncError: string | null;
+  rehydrate: () => void;
   searchPatients: (query: string, identity: Identity) => ReturnType<typeof backend.searchPatients>;
   notesForPatient: (patientID: string) => ReturnType<typeof backend.notesForPatient>;
   activeAuthorisations: (patientID: string) => ReturnType<typeof backend.activeAuthorisations>;
   pendingRequestsForDoctor: (doctorID: string) => ReturnType<typeof backend.pendingRequestsForDoctor>;
   openRequestsForPatient: (patientID: string, nurseID: string) => ReturnType<typeof backend.openRequestsForPatient>;
-  // Writes
   submitRequest: (input: { patientID: string; doctorID: string; items: MedicationItem[]; identity: Identity }) => void;
   approveRequest: (requestID: string, identity: Identity) => void;
   requireEdit: (requestID: string, identity: Identity) => void;
@@ -24,27 +29,109 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
+function clinicMap(identity: Identity): Record<string, string> {
+  return identity.context.kind === "clinic"
+    ? { [identity.context.clinic.id]: identity.role === "clinicAdmin" ? "admin" : "employee" }
+    : {};
+}
+
+function clinicId(identity: Identity): string | null {
+  return identity.context.kind === "clinic" ? identity.context.clinic.id : null;
+}
+
 export function DemoStoreProvider({ children }: { children: ReactNode }) {
-  // Built once per mount; a hard reload remounts and resets to the seed.
-  const [state, setState] = useState<DemoState>(() => buildSeedState());
-  const now = SEED_NOW; // keeps seeded expiries "active"
+  const live = isFirebaseConfigured();
+  const { identity } = useDemoAuth();
+  const [state, setState] = useState<DemoState>(() => (live ? backend.emptyState() : buildSeedState()));
+  const [status, setStatus] = useState<Status>(live ? "loading" : "demo");
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const now = live ? Date.now() : SEED_NOW;
+
+  // Live hydrate whenever the signed-in user changes or a refresh is requested.
+  useEffect(() => {
+    if (!live || !identity) return;
+    let cancelled = false;
+    setStatus("loading");
+    (async () => {
+      try {
+        const { hydrate } = await import("@/lib/firebase/hydrate");
+        const next = await hydrate({ uid: identity.user.id, roles: [identity.role], clinics: clinicMap(identity) });
+        if (!cancelled) { setState(next); setStatus("ready"); }
+      } catch (e) {
+        if (!cancelled) { setStatus("error"); setLastSyncError(String(e)); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [live, identity, refreshTick]);
+
+  // Optimistic local apply, then mirror to Firestore/Functions (live only).
+  function applyAndMirror(
+    apply: (s: DemoState) => DemoState,
+    mirror: (m: typeof import("@/lib/firebase/mirror")) => Promise<void>,
+  ) {
+    setState((s) => apply(s));
+    if (!live) return;
+    void (async () => {
+      try {
+        const m = await import("@/lib/firebase/mirror");
+        await mirror(m);
+      } catch (e) {
+        setLastSyncError(String(e));
+      }
+    })();
+  }
 
   const value = useMemo<StoreValue>(
     () => ({
       state,
       now,
-      searchPatients: (query, identity) => backend.searchPatients(state, query, identity),
-      notesForPatient: (patientID) => backend.notesForPatient(state, patientID),
-      activeAuthorisations: (patientID) => backend.activeAuthorisations(state, patientID, now),
-      pendingRequestsForDoctor: (doctorID) => backend.pendingRequestsForDoctor(state, doctorID),
-      openRequestsForPatient: (patientID, nurseID) => backend.openRequestsForPatient(state, patientID, nurseID),
-      submitRequest: (input) => setState((s) => backend.submitRequest(s, input, now).state),
-      approveRequest: (requestID, identity) => setState((s) => backend.approveRequest(s, requestID, identity, now).state),
-      requireEdit: (requestID, identity) => setState((s) => backend.requireEdit(s, requestID, identity)),
-      saveGeneralNote: (input) => setState((s) => backend.saveGeneralNote(s, input, now).state),
-      saveTreatmentNote: (input) => setState((s) => backend.saveTreatmentNote(s, input, now).state),
+      status,
+      lastSyncError,
+      rehydrate: () => setRefreshTick((t) => t + 1),
+      searchPatients: (q, id) => backend.searchPatients(state, q, id),
+      notesForPatient: (pid) => backend.notesForPatient(state, pid),
+      activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
+      pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
+      openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
+      submitRequest: (input) => {
+        let created: ReturnType<typeof backend.submitRequest>["request"] | null = null;
+        applyAndMirror(
+          (s) => { const r = backend.submitRequest(s, input, now); created = r.request; return r.state; },
+          (m) => created ? m.mirrorCreateRequest(created) : Promise.resolve(),
+        );
+      },
+      approveRequest: (requestID, id) =>
+        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now).state, (m) => m.mirrorApproveRequest(requestID)),
+      requireEdit: (requestID, id) =>
+        applyAndMirror((s) => backend.requireEdit(s, requestID, id), (m) => m.mirrorRequireEdit(requestID)),
+      saveGeneralNote: (input) => {
+        let note: ReturnType<typeof backend.saveGeneralNote>["note"] | null = null;
+        applyAndMirror(
+          (s) => { const r = backend.saveGeneralNote(s, input, now); note = r.note; return r.state; },
+          (m) => note ? m.mirrorCreateNote(input.patientID, note) : Promise.resolve(),
+        );
+      },
+      saveTreatmentNote: (input) => {
+        let note: ReturnType<typeof backend.saveTreatmentNote>["note"] | null = null;
+        applyAndMirror(
+          (s) => { const r = backend.saveTreatmentNote(s, input, now); note = r.note; return r.state; },
+          async (m) => {
+            if (input.tickedIDs.length) {
+              await m.mirrorConsumeRepeats({
+                patientId: input.patientID,
+                clinicId: clinicId(input.identity),
+                authorisationIds: input.tickedIDs,
+                note: { title: input.title, body: input.body, medications: input.medications },
+              });
+            } else if (note) {
+              await m.mirrorCreateNote(input.patientID, note);
+            }
+          },
+        );
+      },
     }),
-    [state, now],
+    [state, now, status, lastSyncError],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
