@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
@@ -46,14 +46,16 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>(live ? "loading" : "demo");
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
-  const now = live ? Date.now() : SEED_NOW;
+  // Captured once per provider mount (live: session start; demo: fixed SEED_NOW).
+  // Lazy initializer keeps the impure Date.now() out of the render path.
+  const [now] = useState(() => (live ? Date.now() : SEED_NOW));
 
   // Live hydrate whenever the signed-in user changes or a refresh is requested.
   useEffect(() => {
     if (!live || !identity) return;
     let cancelled = false;
-    setStatus("loading");
     (async () => {
+      setStatus("loading");
       try {
         const { hydrate } = await import("@/lib/firebase/hydrate");
         const next = await hydrate({ uid: identity.user.id, roles: [identity.role], clinics: clinicMap(identity) });
@@ -66,21 +68,24 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   }, [live, identity, refreshTick]);
 
   // Optimistic local apply, then mirror to Firestore/Functions (live only).
-  function applyAndMirror(
-    apply: (s: DemoState) => DemoState,
-    mirror: (m: typeof import("@/lib/firebase/mirror")) => Promise<void>,
-  ) {
-    setState((s) => apply(s));
-    if (!live) return;
-    void (async () => {
-      try {
-        const m = await import("@/lib/firebase/mirror");
-        await mirror(m);
-      } catch (e) {
-        setLastSyncError(String(e));
-      }
-    })();
-  }
+  const applyAndMirror = useCallback(
+    (
+      apply: (s: DemoState) => DemoState,
+      mirror: (m: typeof import("@/lib/firebase/mirror")) => Promise<void>,
+    ) => {
+      setState((s) => apply(s));
+      if (!live) return;
+      void (async () => {
+        try {
+          const m = await import("@/lib/firebase/mirror");
+          await mirror(m);
+        } catch (e) {
+          setLastSyncError(String(e));
+        }
+      })();
+    },
+    [live],
+  );
 
   const value = useMemo<StoreValue>(
     () => ({
@@ -131,7 +136,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         );
       },
     }),
-    [state, now, status, lastSyncError],
+    [state, now, status, lastSyncError, applyAndMirror],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
