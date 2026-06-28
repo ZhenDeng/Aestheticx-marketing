@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { identityBadge } from "@/lib/demo/types";
@@ -11,12 +11,20 @@ export function LoginForm() {
 }
 
 function LiveLogin() {
-  const { signInLive } = useDemoAuth();
+  const { signInLive, identity } = useDemoAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // In live mode the identity is resolved asynchronously by the Firebase auth
+  // listener (after sign-in + the user-doc read), so redirect reactively once it
+  // lands — pushing immediately after signInLive() would race the AuthGuard and
+  // bounce back to /login. This also forwards an already-signed-in user.
+  useEffect(() => {
+    if (identity) router.replace("/app/dashboard");
+  }, [identity, router]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,7 +32,7 @@ function LiveLogin() {
     setError(null);
     try {
       await signInLive(email, password);
-      router.push("/app/dashboard");
+      // Redirect handled by the effect above once the identity resolves.
     } catch {
       setError("Sign-in failed. Check your email and password.");
       setBusy(false);

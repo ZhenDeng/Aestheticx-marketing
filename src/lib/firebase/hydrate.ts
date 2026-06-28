@@ -49,6 +49,21 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const uid = claims.uid;
   const clinicIds = Object.keys(claims.clinics);
 
+  // Super admin reads everything (the rules allow unconstrained queries for that
+  // role) — mirrors iOS LiveBackend.hydrateEverything().
+  if (claims.roles.includes("superAdmin")) {
+    const all = await runQuery("patients");
+    const notes: Record<string, Row[]> = {};
+    await Promise.all(all.map(async (p) => { notes[p.id] = await runQuery(`patients/${p.id}/notes`); }));
+    return assembleState({
+      patients: all,
+      notesByPatient: notes,
+      authorisations: await runQuery("authorisations"),
+      requests: await runQuery("authRequests"),
+      appointments: await runQuery("appointments"),
+    });
+  }
+
   // Patients: union the visibility-edge queries by id (rules are "not filters").
   const patientQueries: QueryConstraint[][] = [
     [where("ownerType", "==", "nurse"), where("ownerId", "==", uid)],
