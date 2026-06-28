@@ -13,9 +13,12 @@ import type {
   PatientField,
   PatientOwner,
   PatientSummary,
+  SignedFormRecord,
+  FormAnswer,
   TreatmentMedication,
 } from "./types";
 import { fullName, identityBadge } from "./types";
+import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -31,6 +34,7 @@ export function emptyState(): DemoState {
     appointments: {},
     ledger: [],
     usages: [],
+    formsByPatient: {},
   };
 }
 
@@ -488,4 +492,53 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   delete patients[removeId];
 
   return { ...state, patients, notesByPatient, authorisations, usages };
+}
+
+// --- Signed forms ---
+
+export function formsForPatient(state: DemoState, patientID: string): SignedFormRecord[] {
+  return [...(state.formsByPatient[patientID] ?? [])].sort((a, b) => b.signedAt - a.signedAt);
+}
+
+export interface RecordFormInput {
+  patientID: string;
+  template: FormTemplateKind;
+  channel: SigningChannel;
+  answers: FormAnswer[];
+  signatureFileId?: string;
+  signatureDataUrl?: string;
+}
+
+export function recordSignedForm(
+  state: DemoState, input: RecordFormInput, identity: Identity, now: number,
+): { state: DemoState; form: SignedFormRecord } {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (!patientPermissions(identity, patient).canSendForms) throw new BackendError("notPermitted");
+  const t = formTemplate(input.template);
+  const form: SignedFormRecord = {
+    id: makeID("f"),
+    patientID: input.patientID,
+    template: input.template,
+    channel: input.channel,
+    signedAt: now,
+    answers: input.answers,
+    intro: t.intro,
+    clauses: t.clauses,
+    signatureFileId: input.signatureFileId,
+    signatureDataUrl: input.signatureDataUrl,
+  };
+  const existing = state.formsByPatient[input.patientID] ?? [];
+  return {
+    state: { ...state, formsByPatient: { ...state.formsByPatient, [input.patientID]: [...existing, form] } },
+    form,
+  };
+}
+
+export function deleteForm(state: DemoState, patientID: string, formId: string, identity: Identity): DemoState {
+  const patient = state.patients[patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (!patientPermissions(identity, patient).canSendForms) throw new BackendError("notPermitted");
+  const list = (state.formsByPatient[patientID] ?? []).filter((f) => f.id !== formId);
+  return { ...state, formsByPatient: { ...state.formsByPatient, [patientID]: list } };
 }

@@ -36,7 +36,7 @@ export function assembleState(rows: HydrationRows): DemoState {
   const appointments: DemoState["appointments"] = {};
   for (const r of rows.appointments) appointments[r.id] = mapAppointment(r.id, r.data);
 
-  return { patients, notesByPatient, authorisations, requests, appointments, ledger: [], usages: [] };
+  return { patients, notesByPatient, authorisations, requests, appointments, ledger: [], usages: [], formsByPatient: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
