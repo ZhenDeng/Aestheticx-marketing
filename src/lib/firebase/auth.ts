@@ -21,10 +21,14 @@ export async function signOutUser(): Promise<void> {
 export async function identitiesForUser(user: User): Promise<Identity[]> {
   const tokenResult = await user.getIdTokenResult();
   const raw = tokenResult.claims as Record<string, unknown>;
+  const rawClinics = raw.clinics;
   const claims: DemoClaims = {
     uid: user.uid,
-    roles: Array.isArray(raw.roles) ? (raw.roles as string[]) : [],
-    clinics: (raw.clinics as Record<string, string>) ?? {},
+    roles: Array.isArray(raw.roles) ? (raw.roles as string[]).filter((r) => typeof r === "string") : [],
+    clinics:
+      rawClinics && typeof rawClinics === "object" && !Array.isArray(rawClinics)
+        ? (rawClinics as Record<string, string>)
+        : {},
   };
   let userDoc: { name?: string } | null = null;
   try {

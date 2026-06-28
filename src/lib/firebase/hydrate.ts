@@ -63,8 +63,11 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   }
   const patients = [...patientsById.values()];
 
+  // Each patient's notes subcollection is independent — fetch them concurrently.
   const notesByPatient: Record<string, Row[]> = {};
-  for (const p of patients) notesByPatient[p.id] = await runQuery(`patients/${p.id}/notes`);
+  await Promise.all(
+    patients.map(async (p) => { notesByPatient[p.id] = await runQuery(`patients/${p.id}/notes`); }),
+  );
 
   // Authorisations + requests scoped to this user (nurse-owned or clinic-shared).
   const authConstraints: QueryConstraint[][] = [

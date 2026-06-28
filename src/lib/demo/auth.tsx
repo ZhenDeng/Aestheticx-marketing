@@ -33,9 +33,9 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (mode !== "live") return;
     let cancelled = false;
-    let unsub = () => {};
-    (async () => {
-      const { watchUser, identitiesForUser } = await import("@/lib/firebase/auth");
+    let unsub: (() => void) | undefined;
+    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser }) => {
+      if (cancelled) return; // cleanup ran before the import resolved — don't subscribe
       unsub = watchUser(async (user) => {
         if (!user) {
           if (!cancelled) { setIdentity(null); setAvailableIdentities([]); }
@@ -46,8 +46,8 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         setAvailableIdentities(ids);
         setIdentity((cur) => cur ?? ids[0] ?? null);
       });
-    })();
-    return () => { cancelled = true; unsub(); };
+    });
+    return () => { cancelled = true; unsub?.(); };
   }, [mode]);
 
   const value = useMemo<AuthValue>(
@@ -65,7 +65,11 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
       signOut: () => {
         setIdentity(null);
         setAvailableIdentities([]);
-        if (mode === "live") void import("@/lib/firebase/auth").then((m) => m.signOutUser());
+        if (mode === "live") {
+          void import("@/lib/firebase/auth")
+            .then((m) => m.signOutUser())
+            .catch((e) => console.error("Sign-out failed on the server:", e));
+        }
       },
     }),
     [mode, identity, availableIdentities],

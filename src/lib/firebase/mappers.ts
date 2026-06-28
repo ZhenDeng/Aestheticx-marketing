@@ -171,6 +171,7 @@ export function encodeAuthRequest(r: AuthorisationRequest): Doc {
         dateOfBirth: formatDob(r.patientSummary.dateOfBirth),
         allergies: r.patientSummary.allergies,
         currentMedications: r.patientSummary.currentMedications,
+        alert: r.patientSummary.alert ?? null, // clinical safety flag — must persist
       }
     : null;
   return {

@@ -41,7 +41,7 @@ function clinicId(identity: Identity): string | null {
 
 export function DemoStoreProvider({ children }: { children: ReactNode }) {
   const live = isFirebaseConfigured();
-  const { identity } = useDemoAuth();
+  const { identity, availableIdentities } = useDemoAuth();
   const [state, setState] = useState<DemoState>(() => (live ? backend.emptyState() : buildSeedState()));
   const [status, setStatus] = useState<Status>(live ? "loading" : "demo");
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
@@ -58,14 +58,19 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       setStatus("loading");
       try {
         const { hydrate } = await import("@/lib/firebase/hydrate");
-        const next = await hydrate({ uid: identity.user.id, roles: [identity.role], clinics: clinicMap(identity) });
+        // Hydrate across ALL of the user's identities (roles + clinics), not just the
+        // selected one, so a multi-clinic user sees their full visible data set.
+        const ids = availableIdentities.length ? availableIdentities : [identity];
+        const allClinics = Object.assign({}, ...ids.map(clinicMap));
+        const allRoles = [...new Set(ids.map((i) => i.role))];
+        const next = await hydrate({ uid: identity.user.id, roles: allRoles, clinics: allClinics });
         if (!cancelled) { setState(next); setStatus("ready"); }
       } catch (e) {
         if (!cancelled) { setStatus("error"); setLastSyncError(String(e)); }
       }
     })();
     return () => { cancelled = true; };
-  }, [live, identity, refreshTick]);
+  }, [live, identity, availableIdentities, refreshTick]);
 
   // Optimistic local apply, then mirror to Firestore/Functions (live only).
   const applyAndMirror = useCallback(
