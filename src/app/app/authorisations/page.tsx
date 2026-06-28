@@ -8,6 +8,8 @@ export default function AuthorisationsPage() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   if (!identity) return null;
+  if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
+  if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   if (identity.role === "doctor") {
     const pending = store.pendingRequestsForDoctor(identity.user.id);

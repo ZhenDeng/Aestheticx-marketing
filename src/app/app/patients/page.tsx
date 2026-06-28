@@ -11,6 +11,8 @@ export default function PatientsPage() {
   const store = useDemoStore();
   const [query, setQuery] = useState("");
   if (!identity) return null;
+  if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
+  if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   const results = store.searchPatients(query, identity);
 

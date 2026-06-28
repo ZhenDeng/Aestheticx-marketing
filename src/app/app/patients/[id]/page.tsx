@@ -13,6 +13,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const store = useDemoStore();
   const [noteBody, setNoteBody] = useState("");
   if (!identity) return null;
+  if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
+  if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
   const me = identity; // non-null, captured by the handlers below
 
   const patient = store.state.patients[id];

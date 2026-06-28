@@ -14,6 +14,8 @@ export default function CalendarPage() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   if (!identity) return null;
+  if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
+  if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   // Show the calendar for the identity's owner scope (clinic or self).
   const ownerID = identity.context.kind === "clinic" ? identity.context.clinic.id : identity.user.id;
