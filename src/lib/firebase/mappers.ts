@@ -199,3 +199,22 @@ export function encodeNote(n: Note): Doc {
     medications: n.medications.map((m) => ({ name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "" })),
   };
 }
+
+function patientCore(p: Patient): Doc {
+  return {
+    givenName: p.givenName, lastName: p.lastName, dateOfBirth: formatDob(p.dateOfBirth),
+    gender: p.gender, address: p.address, phone: p.phone, email: p.email,
+    allergies: p.allergies, currentMedications: p.currentMedications,
+    alert: p.alert ?? null, preferredName: p.preferredName ?? null,
+  };
+}
+
+// Create: mandatory keys + owner; never prescribingDoctorIds (rules block it on create).
+export function encodePatientForCreate(p: Patient): Doc {
+  return { ...patientCore(p), ownerType: p.owner.kind, ownerId: p.owner.id };
+}
+
+// Update: editable demographics only; owner/prescribers are server-maintained (rules block changes).
+export function encodePatientEdits(p: Patient): Doc {
+  return patientCore(p);
+}
