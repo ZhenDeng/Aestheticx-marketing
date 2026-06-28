@@ -55,6 +55,23 @@ have the change.
 4. Watch App Check **metrics** (verified vs unverified requests) for **both web AND iOS**.
 5. **Do NOT enable enforcement** until the iOS app also ships App Check — enforcement is project-wide and will block any unattested client (including the iOS app) from Firestore/Functions.
 
+## Patient CRUD — live checks (manual, owner-run, TEST account only)
+
+With `.env.local` set (live mode), signed in as a **TEST** account scoped to test data:
+1. **Create:** Patients → "New patient" → fill all 9 mandatory fields → Create. Confirm a new
+   `patients/{id}` doc appears in the Firestore console with `ownerType`/`ownerId` set and **no**
+   `prescribingDoctorIds`.
+2. **Edit:** open the test patient → Manage → Edit details → change a field → Save. Confirm the doc
+   updated and `ownerType`/`ownerId`/`prescribingDoctorIds` were **not** changed.
+3. **Delete:** Manage → Delete patient → confirm. The `patients/{id}` doc is removed.
+   ⚠️ **Known caveat:** client deletes do not cascade — any `notes`/`forms` subcollection docs under
+   the deleted patient remain orphaned in Firestore. A cascade-cleanup Cloud Function is a later
+   follow-up; for now, delete test patients that have no notes, or clean up the subcollection manually.
+4. **Merge (clinic-admin only):** sign in as a **clinic-admin** TEST account; on a clinic test patient,
+   Manage → "Merge a duplicate into this file" → pick another same-clinic test patient → Merge. Confirm
+   the `mergePatients` Function moved notes/forms/authorisations onto the kept patient and deleted the
+   duplicate (re-hydrate to see the result). The control only appears for clinic admins.
+
 ## Safety reminder
 
 This wires a public-origin web client to a production clinical (PHI) database. Keep it pointed at the
