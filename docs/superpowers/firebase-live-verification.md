@@ -47,6 +47,14 @@ If a write fails to mirror, the app keeps the optimistic local change, shows the
 authoritative; a re-hydrate reconciles. No data is silently lost locally, but the server simply won't
 have the change.
 
+## App Check (reCAPTCHA v3) — owner steps
+
+1. Firebase console → App Check → register the Web app with the **reCAPTCHA v3** provider; create a v3 site key.
+2. Put the key in `.env.local` and Vercel as `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY`.
+3. Local dev: set `NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=true`, run the app, and copy the debug token the SDK prints to the browser console into **App Check → Apps → Manage debug tokens**.
+4. Watch App Check **metrics** (verified vs unverified requests) for **both web AND iOS**.
+5. **Do NOT enable enforcement** until the iOS app also ships App Check — enforcement is project-wide and will block any unattested client (including the iOS app) from Firestore/Functions.
+
 ## Safety reminder
 
 This wires a public-origin web client to a production clinical (PHI) database. Keep it pointed at the

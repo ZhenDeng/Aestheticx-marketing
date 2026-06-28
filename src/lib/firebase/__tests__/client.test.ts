@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { isFirebaseConfigured, firebaseConfig } from "@/lib/firebase/client";
+import { isAppCheckConfigured } from "@/lib/firebase/client";
 
 const KEYS = [
   "NEXT_PUBLIC_FIREBASE_API_KEY",
@@ -33,5 +34,22 @@ describe("isFirebaseConfigured", () => {
     for (const k of KEYS) process.env[k] = "x";
     expect(isFirebaseConfigured()).toBe(true);
     expect(firebaseConfig().projectId).toBe("x");
+  });
+});
+
+describe("isAppCheckConfigured", () => {
+  const KEY = "NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY";
+  const saved = process.env[KEY];
+  afterEach(() => {
+    if (saved === undefined) delete process.env[KEY];
+    else process.env[KEY] = saved;
+  });
+  it("is false when no site key is set", () => {
+    delete process.env[KEY];
+    expect(isAppCheckConfigured()).toBe(false);
+  });
+  it("is true when a site key is present", () => {
+    process.env[KEY] = "site-key-123";
+    expect(isAppCheckConfigured()).toBe(true);
   });
 });
