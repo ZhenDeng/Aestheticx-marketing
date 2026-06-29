@@ -144,9 +144,9 @@ With `.env.local` set (live mode), signed in as a **TEST** account:
 3. Confirm the role scoping reflects the deployed `billingEvents` rules (doctor / counterparty-nurse /
    clinic-member reads only their own).
 
-⚠️ **Notes:** counts are the **approved-request** grain (not per-medication line items). Party names are
-resolved from the demo accounts, so live may show raw ids until a directory exists. Pricing and GST tax
-invoices are a later increment (3b) — this dashboard is counts-only.
+⚠️ **Notes:** counts are **un-invoiced authorisations** (line items) and decrement as invoices are
+generated (grain reconciled with invoicing). Party names are resolved from the demo accounts, so live may
+show raw ids until a directory exists. Pricing and GST tax invoices are in increment 3b.
 
 ## GST invoices — live checks (manual, owner-run, TEST account only)
 
@@ -164,10 +164,9 @@ With `.env.local` set (live mode), signed in as a **TEST doctor**:
 line); only the **PDF/email** are server-side (demo shows "available in live mode"). Invoices are
 immutable (no void/delete). `scriptPricing` is doctor-readable only.
 
-⚠️ **Known grain mismatch (follow-up):** the dashboard's "total billable authorisations" counts
-`billingEvents` (one per approved request) and does **not** decrement when authorisations are invoiced,
-whereas invoicing operates per authorisation (line item). Reconciling the dashboard count to un-invoiced
-authorisations is a follow-up.
+✅ **Grain reconciled:** the dashboard's "total billable authorisations" counts **un-invoiced
+authorisations** (line items), matching invoicing — generating an invoice decrements the count and drops
+the row once a month/counterparty has no un-invoiced authorisations left.
 
 ## Safety reminder
 
