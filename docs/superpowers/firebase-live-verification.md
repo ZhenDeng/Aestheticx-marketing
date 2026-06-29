@@ -86,7 +86,26 @@ With `.env.local` set (live mode), signed in as a **TEST** account that can send
    ⚠️ **Known caveat:** the `patients/{id}/signatures/{formId}.png` Storage object is **not** cleaned up
    on delete (client deletes don't cascade to Storage). A cleanup Function is a later follow-up.
 
-Note: PDF download ships separately (increment 2a). Remote signing channels are covered next.
+## Consent PDF download — live checks (manual, owner-run, TEST account only)
+
+With `.env.local` set (live mode), signed in as a **TEST** account that can view a test patient's forms:
+1. Sign a consent for a TEST patient (or open one signed moments ago) → on the form's read-only view,
+   the **Document** section shows **"Preparing the PDF…"** with a **"Check again"** button while the
+   `finalizeSignedForm` Function renders (typically a few seconds).
+2. Click **Check again** until it flips to an enabled **"Download PDF"** (or reload the page once the
+   Function has run — re-hydrate picks up `pdfFileId`).
+3. Click **Download PDF** → the browser downloads the server-rendered PDF named like
+   `Antiwrinkle Consent — <Patient> — <date>.pdf`. Confirm it contains the template name, patient,
+   signing timestamp, the full clause text, the responses, and the **embedded signature**.
+4. Confirm in the Firebase console: the form doc `patients/{id}/forms/{formId}` now has
+   `pdfFileId: patients/{id}/forms/{formId}.pdf`, and that object exists in Storage.
+
+⚠️ **Timing note:** the PDF is rendered asynchronously on form-create, so it is normal for the section
+to show "Preparing the PDF…" immediately after signing. It is read-only here — the web client never
+writes the PDF (Storage rules make `patients/{id}/forms/**` Function-only).
+
+In **demo** mode the **Document** section instead shows a disabled **"Download PDF"** with the caption
+*"The server-rendered PDF is available in live mode."* (no Cloud Function, so no server PDF exists).
 
 ## Remote consent signing — live checks (manual, owner-run, TEST account only)
 
