@@ -3,7 +3,6 @@
 import type {
   Authorisation,
   AuthorisationRequest,
-  BillingEvent,
   DemoState,
   Identity,
   MedicationItem,
@@ -34,7 +33,6 @@ export function emptyState(): DemoState {
     authorisations: {},
     notesByPatient: {},
     appointments: {},
-    ledger: [],
     usages: [],
     formsByPatient: {},
     invoices: [],
@@ -262,17 +260,6 @@ export function approveRequest(
   const authorisations = { ...state.authorisations };
   for (const a of granted) authorisations[a.id] = a;
 
-  const event: BillingEvent = {
-    id: makeID("ev"),
-    requestID: request.id,
-    patientID: request.patientID,
-    doctorID: request.doctorID,
-    counterpartyType: clinicID ? "clinic" : "nurse",
-    counterpartyID: clinicID ?? request.nurse.id,
-    monthKey: monthKey(now),
-    createdAt: now,
-  };
-
   const patient = state.patients[request.patientID];
   const patients = { ...state.patients };
   if (patient && !patient.prescribingDoctorIDs.includes(identity.user.id)) {
@@ -285,7 +272,6 @@ export function approveRequest(
       patients,
       authorisations,
       requests: { ...state.requests, [requestID]: { ...request, status: "approved" } },
-      ledger: [...state.ledger, event],
     },
     granted,
   };

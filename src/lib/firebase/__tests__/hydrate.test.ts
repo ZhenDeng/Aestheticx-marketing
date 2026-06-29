@@ -16,7 +16,6 @@ const rows: HydrationRows = {
     { id: "ap1", data: { type: "treatment", ownerId: "clinic-lumiere", dateISO: "2026-06-26", startMinute: 540, endMinute: 570, status: "confirmed" } },
   ],
   formsByPatient: { p1: [{ id: "fm1", data: { template: "antiwrinkleConsent", channel: "onDevice", signedAt: 3, intro: "i", clauses: ["c"], answers: [] } }] },
-  billingEvents: [{ id: "ev1", data: { requestId: "r2", patientId: "p1", doctorId: "u-voss", counterpartyType: "clinic", counterpartyId: "clinic-lumiere", monthKey: "2026-06", createdAt: 5 } }],
   invoices: [{ id: "inv1", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", counterpartyType: "clinic", periodLabel: "June 2026", lines: [{ authorisationId: "a1", dateISO: "2026-06-26", patientName: "Mara", feeCents: 2500, gstCents: 250 }], subtotalCents: 2500, gstCents: 250, totalCents: 2750, authorisationIds: ["a1"], pdfFileId: "invoices/u-voss/inv1.pdf", createdAt: 6 } }],
   scriptPricing: [{ id: "u-voss_clinic-lumiere", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", priceCents: 3000 } }],
 };
@@ -29,11 +28,6 @@ describe("assembleState", () => {
     expect(state.authorisations.a1.repeatsRemaining).toBe(4);
     expect(state.requests.r2.status).toBe("pending");
     expect(state.appointments.ap1.startMinute).toBe(540);
-    expect(state.ledger).toHaveLength(1);
-    expect(state.ledger[0].counterpartyType).toBe("clinic");
-    expect(state.ledger[0].counterpartyID).toBe("clinic-lumiere");
-    expect(state.ledger[0].patientID).toBe("p1");
-    expect(state.ledger[0].monthKey).toBe("2026-06");
     expect(state.invoices).toHaveLength(1);
     expect(state.invoices[0].totalCents).toBe(2750);
     expect(state.scriptPricing["u-voss_clinic-lumiere"]).toBe(3000);
