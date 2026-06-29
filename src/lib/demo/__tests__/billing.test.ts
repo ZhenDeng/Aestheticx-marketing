@@ -1,39 +1,43 @@
 import { describe, it, expect } from "vitest";
 import { billingSummary, partyLabel, monthKey, monthLabel } from "@/lib/demo/billing";
-import type { BillingEvent, Identity } from "@/lib/demo/types";
+import type { Authorisation, Identity, MedicationItem } from "@/lib/demo/types";
 import { DEMO_ACCOUNTS, LUMIERE } from "@/lib/demo/accounts";
 
 const doctor: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
 const nurseIndep: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
 const clinicAdmin: Identity = { user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin", context: { kind: "clinic", clinic: LUMIERE } };
 
-const clinicEvent: BillingEvent = {
-  id: "ev1", requestID: "r1", patientID: "p1", doctorID: "u-voss",
-  counterpartyType: "clinic", counterpartyID: LUMIERE.id, monthKey: "2026-06", createdAt: Date.UTC(2026, 5, 26),
-};
+const med: MedicationItem = { name: "Profhilo", dosage: "2", category: "skinBooster", unit: "millilitres", areas: [] };
+function auth(over: Partial<Authorisation>): Authorisation {
+  return {
+    id: "a", requestID: "r", patientID: "p", doctorID: "u-voss", nurseID: "u-sarah", clinicID: LUMIERE.id,
+    medication: med, repeatsRemaining: 5, expiresAt: 0, createdAt: Date.UTC(2026, 5, 26), invoiced: false, ...over,
+  };
+}
 
-describe("billingSummary", () => {
-  it("a doctor sees the event grouped by counterparty (the clinic)", () => {
-    const s = billingSummary([clinicEvent], doctor);
-    expect(s.totalCount).toBe(1);
-    expect(s.months).toHaveLength(1);
+describe("billingSummary (authorisation-based)", () => {
+  it("a doctor sees un-invoiced auths grouped by counterparty", () => {
+    const s = billingSummary([auth({ id: "a1" }), auth({ id: "a2" })], doctor);
+    expect(s.totalCount).toBe(2);
     expect(s.months[0].monthKey).toBe("2026-06");
-    expect(s.months[0].byParty).toEqual([{ id: LUMIERE.id, type: "clinic", count: 1 }]);
+    expect(s.months[0].byParty).toEqual([{ id: LUMIERE.id, type: "clinic", count: 2 }]);
   });
-  it("a clinic admin sees it grouped by the doctor", () => {
-    const s = billingSummary([clinicEvent], clinicAdmin);
+  it("excludes invoiced authorisations", () => {
+    const s = billingSummary([auth({ id: "a1", invoiced: true }), auth({ id: "a2" })], doctor);
     expect(s.totalCount).toBe(1);
+  });
+  it("a clinic admin groups by the doctor", () => {
+    const s = billingSummary([auth({ id: "a1" })], clinicAdmin);
     expect(s.months[0].byParty).toEqual([{ id: "u-voss", type: "doctor", count: 1 }]);
   });
-  it("an independent nurse sees nothing (the event is billable to the clinic)", () => {
-    const s = billingSummary([clinicEvent], nurseIndep);
+  it("an independent nurse sees clinic-billed auths as not theirs", () => {
+    const s = billingSummary([auth({ id: "a1" })], nurseIndep);
     expect(s.totalCount).toBe(0);
-    expect(s.months).toEqual([]);
   });
-  it("sorts months descending", () => {
-    const older: BillingEvent = { ...clinicEvent, id: "ev0", monthKey: "2026-05" };
-    const s = billingSummary([clinicEvent, older], doctor);
-    expect(s.months.map((m) => m.monthKey)).toEqual(["2026-06", "2026-05"]);
+  it("an independent nurse sees nurse-counterparty auths (no clinic)", () => {
+    const s = billingSummary([auth({ id: "a1", clinicID: null })], nurseIndep);
+    expect(s.totalCount).toBe(1);
+    expect(s.months[0].byParty).toEqual([{ id: "u-voss", type: "doctor", count: 1 }]);
   });
 });
 

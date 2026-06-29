@@ -4,7 +4,6 @@ import type {
   Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
-  BillingEvent,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import type { Invoice, InvoiceLine } from "@/lib/demo/invoicing";
@@ -257,21 +256,6 @@ export function mapInvoice(id: string, data: Doc): Invoice {
     totalCents: intValue(data.totalCents),
     authorisationIDs: strArray(data.authorisationIds),
     pdfFileId: typeof data.pdfFileId === "string" ? data.pdfFileId : undefined,
-    createdAt: toMillis(data.createdAt),
-  };
-}
-
-export function mapBillingEvent(id: string, data: Doc): BillingEvent {
-  return {
-    id,
-    requestID: str(data.requestId),
-    // The backend billingEvents doc has no patientId, so this is "" in live —
-    // intentional; the billing dashboard never reads patientID.
-    patientID: str(data.patientId),
-    doctorID: str(data.doctorId),
-    counterpartyType: data.counterpartyType === "clinic" ? "clinic" : "nurse",
-    counterpartyID: str(data.counterpartyId),
-    monthKey: str(data.monthKey),
     createdAt: toMillis(data.createdAt),
   };
 }

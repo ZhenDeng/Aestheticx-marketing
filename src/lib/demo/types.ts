@@ -151,17 +151,6 @@ export interface Appointment {
   appointmentNote?: string;
 }
 
-export interface BillingEvent {
-  id: string;
-  requestID: string;
-  patientID: string;
-  doctorID: string;
-  counterpartyType: "nurse" | "clinic";
-  counterpartyID: string; // clinic id, or nurse id when independent
-  monthKey: string;       // "YYYY-MM" (UTC), matches backend billingEvents
-  createdAt: number;
-}
-
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -196,7 +185,6 @@ export interface DemoState {
   authorisations: Record<string, Authorisation>;
   notesByPatient: Record<string, Note[]>;
   appointments: Record<string, Appointment>;
-  ledger: BillingEvent[];
   usages: RepeatUsage[];
   formsByPatient: Record<string, SignedFormRecord[]>;
   invoices: import("./invoicing").Invoice[];

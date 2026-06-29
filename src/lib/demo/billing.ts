@@ -1,4 +1,4 @@
-import type { BillingEvent, ClinicRef, Identity } from "./types";
+import type { Authorisation, ClinicRef, Identity } from "./types";
 import type { DemoAccount } from "./accounts";
 
 // UTC "YYYY-MM", matching the backend domain.monthKey.
@@ -11,30 +11,41 @@ export interface BillingParty { id: string; type: "doctor" | "nurse" | "clinic";
 export interface BillingMonth { monthKey: string; count: number; byParty: BillingParty[]; }
 export interface BillingSummary { totalCount: number; months: BillingMonth[]; }
 
-function isVisible(e: BillingEvent, identity: Identity): boolean {
-  if (identity.role === "doctor") return e.doctorID === identity.user.id;
+interface BillableRow { doctorID: string; counterpartyType: "nurse" | "clinic"; counterpartyID: string; monthKey: string; }
+
+function isVisible(r: BillableRow, identity: Identity): boolean {
+  if (identity.role === "doctor") return r.doctorID === identity.user.id;
   const clinicId = identity.context.kind === "clinic" ? identity.context.clinic.id : null;
-  // Clinic-context users (nurse or admin) see their clinic's events; a clinic
-  // nurse's own requests bill the clinic, so they never appear as a nurse-type
-  // counterparty. Independent nurses match nurse-type events by their user id.
-  if (e.counterpartyType === "clinic") return clinicId !== null && e.counterpartyID === clinicId;
-  return e.counterpartyType === "nurse" && e.counterpartyID === identity.user.id;
+  // Clinic-context users see their clinic's rows; a clinic nurse's own requests bill
+  // the clinic, so they never appear as a nurse-type counterparty. Independent nurses
+  // match nurse-type rows by their user id.
+  if (r.counterpartyType === "clinic") return clinicId !== null && r.counterpartyID === clinicId;
+  return r.counterpartyType === "nurse" && r.counterpartyID === identity.user.id;
 }
 
-// Doctors group by the counterparty they bill; everyone else groups by the doctor billing them.
-export function billingSummary(ledger: BillingEvent[], identity: Identity): BillingSummary {
-  const visible = ledger.filter((e) => isVisible(e, identity));
+// Counts un-invoiced authorisations (line items). Doctors group by the counterparty
+// they bill; everyone else groups by the doctor billing them.
+export function billingSummary(authorisations: Authorisation[], identity: Identity): BillingSummary {
+  const rows: BillableRow[] = authorisations
+    .filter((a) => !a.invoiced)
+    .map((a) => ({
+      doctorID: a.doctorID,
+      counterpartyType: a.clinicID ? "clinic" : "nurse",
+      counterpartyID: a.clinicID ?? a.nurseID,
+      monthKey: monthKey(a.createdAt),
+    }));
+  const visible = rows.filter((r) => isVisible(r, identity));
   const byMonth = new Map<string, Map<string, BillingParty>>();
-  for (const e of visible) {
+  for (const r of visible) {
     const party: BillingParty = identity.role === "doctor"
-      ? { id: e.counterpartyID, type: e.counterpartyType, count: 0 }
-      : { id: e.doctorID, type: "doctor", count: 0 };
-    const month = byMonth.get(e.monthKey) ?? new Map<string, BillingParty>();
+      ? { id: r.counterpartyID, type: r.counterpartyType, count: 0 }
+      : { id: r.doctorID, type: "doctor", count: 0 };
+    const month = byMonth.get(r.monthKey) ?? new Map<string, BillingParty>();
     const key = `${party.type}:${party.id}`;
     const existing = month.get(key);
     if (existing) existing.count += 1;
     else month.set(key, { ...party, count: 1 });
-    byMonth.set(e.monthKey, month);
+    byMonth.set(r.monthKey, month);
   }
   const months: BillingMonth[] = [...byMonth.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))

@@ -144,12 +144,6 @@ describe("approveRequest", () => {
     expect(granted).toHaveLength(1);
     expect(granted[0].repeatsRemaining).toBe(REPEATS_PER_AUTHORISATION);
     expect(next.requests[submitted.request.id].status).toBe("approved");
-    expect(next.ledger).toHaveLength(1); // one approved request == one billable count
-    const event = next.ledger[0];
-    expect(event.doctorID).toBe("u-voss");
-    expect(event.counterpartyType).toBe("nurse"); // sarahIndependent → billed to the nurse
-    expect(event.counterpartyID).toBe("u-sarah");
-    expect(event.monthKey).toMatch(/^\d{4}-\d{2}$/);
     expect(next.patients["p1"].prescribingDoctorIDs).toContain("u-voss");
 
     const expiry = new Date(granted[0].expiresAt);
