@@ -75,7 +75,9 @@ export default function FormViewPage({ params }: { params: Promise<{ id: string;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        URL.revokeObjectURL(objUrl);
+        // Defer revocation: some browsers start the download asynchronously from
+        // the click, and revoking synchronously can abort it (0-byte download).
+        setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
       } catch {
         // Cross-origin/CORS or transient failure: open the URL so the browser
         // can still render/save the PDF (named from the Storage response).
