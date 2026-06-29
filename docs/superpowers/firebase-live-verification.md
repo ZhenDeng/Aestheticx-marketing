@@ -132,6 +132,22 @@ Aesthetic History intake). The app cannot show link status (the `formLinks` coll
 This increment also pins the web client's callables to the **australia-southeast1** region — verify the
 existing callables (approve request, consume repeats, merge) still work after deploying.
 
+## Billing dashboard — live checks (manual, owner-run, TEST account only)
+
+With `.env.local` set (live mode), signed in as a **TEST** account:
+1. As a TEST **doctor**, approve a request for a TEST patient (raise it as a TEST nurse first), then open
+   **Billing** → confirm the **total billable authorisations** count increments and the approval appears
+   under the right **month** (UTC `YYYY-MM`) grouped by the **counterparty** (the billing nurse or clinic),
+   matching the new `patients`-adjacent `billingEvents/{id}` doc in the Firestore console.
+2. Sign in as the **counterparty** (the TEST nurse, or a TEST clinic-admin) → Billing shows the same
+   event **grouped by the prescribing doctor** ("Billable to you"). Confirm an unrelated nurse sees **0**.
+3. Confirm the role scoping reflects the deployed `billingEvents` rules (doctor / counterparty-nurse /
+   clinic-member reads only their own).
+
+⚠️ **Notes:** counts are the **approved-request** grain (not per-medication line items). Party names are
+resolved from the demo accounts, so live may show raw ids until a directory exists. Pricing and GST tax
+invoices are a later increment (3b) — this dashboard is counts-only.
+
 ## Safety reminder
 
 This wires a public-origin web client to a production clinical (PHI) database. Keep it pointed at the
