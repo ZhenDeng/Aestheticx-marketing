@@ -238,6 +238,8 @@ export function mapBillingEvent(id: string, data: Doc): BillingEvent {
   return {
     id,
     requestID: str(data.requestId),
+    // The backend billingEvents doc has no patientId, so this is "" in live —
+    // intentional; the billing dashboard never reads patientID.
     patientID: str(data.patientId),
     doctorID: str(data.doctorId),
     counterpartyType: data.counterpartyType === "clinic" ? "clinic" : "nurse",

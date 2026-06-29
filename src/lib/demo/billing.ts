@@ -14,6 +14,9 @@ export interface BillingSummary { totalCount: number; months: BillingMonth[]; }
 function isVisible(e: BillingEvent, identity: Identity): boolean {
   if (identity.role === "doctor") return e.doctorID === identity.user.id;
   const clinicId = identity.context.kind === "clinic" ? identity.context.clinic.id : null;
+  // Clinic-context users (nurse or admin) see their clinic's events; a clinic
+  // nurse's own requests bill the clinic, so they never appear as a nurse-type
+  // counterparty. Independent nurses match nurse-type events by their user id.
   if (e.counterpartyType === "clinic") return clinicId !== null && e.counterpartyID === clinicId;
   return e.counterpartyType === "nurse" && e.counterpartyID === identity.user.id;
 }
