@@ -117,7 +117,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
-      billingSummary: (id) => billing.billingSummary(state.ledger, id),
+      billingSummary: (id) => billing.billingSummary(Object.values(state.authorisations), id),
       invoicesFor: (id) => invoicing.invoicesFor(state.invoices, id),
       scriptPrice: (did, cid) => state.scriptPricing[backend.scriptPriceKey(did, cid)] ?? invoicing.DEFAULT_SCRIPT_PRICE_CENTS,
       billableAuthorisations: (did) => backend.billableAuthorisations(state, did),
