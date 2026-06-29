@@ -7,6 +7,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
 import { templateDisplayName, formTemplate } from "@/lib/demo/forms";
+import { pdfAvailability, pdfFilename } from "@/lib/demo/formPdf";
 
 export default function FormViewPage({ params }: { params: Promise<{ id: string; formId: string }> }) {
   const { id, formId } = use(params);
@@ -15,6 +16,10 @@ export default function FormViewPage({ params }: { params: Promise<{ id: string;
   const router = useRouter();
   const [sigUrl, setSigUrl] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [pdfPath, setPdfPath] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const form = store.formsForPatient(id).find((f) => f.id === formId);
 
@@ -38,9 +43,64 @@ export default function FormViewPage({ params }: { params: Promise<{ id: string;
   const perms = patientPermissions(identity, patient);
   const questions = formTemplate(form.template).questions;
 
+  const isLive = store.status !== "demo";
+  const effectivePdfPath = pdfPath ?? form.pdfFileId ?? null;
+  const pdfState = pdfAvailability({ pdfFileId: effectivePdfPath ?? undefined }, isLive);
+
   function doDelete() {
     store.deleteForm(id, formId, identity!);
     router.push(`/app/patients/${id}`);
+  }
+
+  async function downloadPdf() {
+    if (!effectivePdfPath) return;
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      const { fileDownloadUrl } = await import("@/lib/firebase/storage");
+      const url = await fileDownloadUrl(effectivePdfPath);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("fetch failed");
+        const blob = await res.blob();
+        const name = pdfFilename(
+          templateDisplayName(form!.template),
+          `${patient!.givenName} ${patient!.lastName}`.trim(),
+          form!.signedAt,
+        );
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objUrl;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objUrl);
+      } catch {
+        // Cross-origin/CORS or transient failure: open the URL so the browser
+        // can still render/save the PDF (named from the Storage response).
+        window.open(url, "_blank", "noopener");
+      }
+    } catch {
+      setPdfError("Could not download the PDF. Please try again.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  async function checkAgain() {
+    setChecking(true);
+    setPdfError(null);
+    try {
+      const { fetchSignedFormPdfPath } = await import("@/lib/firebase/forms");
+      const path = await fetchSignedFormPdfPath(id, formId);
+      if (path) setPdfPath(path);
+      else setPdfError("The PDF is still being prepared. Try again in a moment.");
+    } catch {
+      setPdfError("Could not check the PDF status. Please try again.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   return (
@@ -72,6 +132,33 @@ export default function FormViewPage({ params }: { params: Promise<{ id: string;
         <img src={resolvedSigUrl} alt="Signature" className="mt-2 max-h-40 rounded-inner border border-line bg-card" />
       ) : (
         <p className="mt-2 text-sm text-ink-soft">Signature unavailable.</p>
+      )}
+
+      <h2 className="mt-6 font-display text-lg text-ink">Document</h2>
+      {pdfState === "unavailable" ? (
+        <div className="mt-2">
+          <button type="button" disabled className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft opacity-50">
+            Download PDF
+          </button>
+          <p className="mt-1.5 text-sm text-ink-soft">The server-rendered PDF is available in live mode.</p>
+        </div>
+      ) : pdfState === "ready" ? (
+        <div className="mt-2">
+          <button type="button" onClick={downloadPdf} disabled={pdfBusy}
+            className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
+            {pdfBusy ? "Downloading…" : "Download PDF"}
+          </button>
+          {pdfError && <p className="mt-1.5 text-sm" style={{ color: "var(--color-rose)" }}>{pdfError}</p>}
+        </div>
+      ) : (
+        <div className="mt-2">
+          <p className="text-sm text-ink-soft">Preparing the PDF…</p>
+          <button type="button" onClick={checkAgain} disabled={checking}
+            className="mt-2 rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint disabled:opacity-50">
+            {checking ? "Checking…" : "Check again"}
+          </button>
+          {pdfError && <p className="mt-1.5 text-sm" style={{ color: "var(--color-rose)" }}>{pdfError}</p>}
+        </div>
       )}
 
       {perms.canSendForms && (
