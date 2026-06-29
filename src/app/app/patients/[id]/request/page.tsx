@@ -112,6 +112,9 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   if (identity.role !== "nurse") {
     return <p className="text-ink-soft">Only a nurse can raise an authorisation request.</p>;
   }
+  if (doctors.length === 0) {
+    return <p className="text-ink-soft">No prescribing doctors are available to send this request to.</p>;
+  }
   const me = identity;
 
   const defaultDoctor = patient.prescribingDoctorIDs.find((d) => doctors.some((x) => x.id === d)) ?? doctors[0]?.id ?? "";

@@ -141,6 +141,8 @@ export function treatmentAreasFor(category: ProductCategory, unit: ProductUnit):
     case "haFiller": return FILLER_AREAS;
     case "skinBooster":
     case "prpPrf": return SKINBOOSTER_AREAS;
+    // mL collagen (Ellanse) uses filler-like areas; vial/syringe collagen
+    // (Sculptra/Lenisna/AestheFill/Radiesse/HarmonyCa) uses the body-area list — per iOS.
     case "collagenStimulator": return unit === "millilitres" ? FILLER_AREAS : VIAL_COLLAGEN_AREAS;
     case "other": return [OTHER];
   }
