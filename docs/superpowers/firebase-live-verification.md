@@ -64,9 +64,11 @@ With `.env.local` set (live mode), signed in as a **TEST** account scoped to tes
 2. **Edit:** open the test patient → Manage → Edit details → change a field → Save. Confirm the doc
    updated and `ownerType`/`ownerId`/`prescribingDoctorIds` were **not** changed.
 3. **Delete:** Manage → Delete patient → confirm. The `patients/{id}` doc is removed.
-   ⚠️ **Known caveat:** client deletes do not cascade — any `notes`/`forms` subcollection docs under
-   the deleted patient remain orphaned in Firestore. A cascade-cleanup Cloud Function is a later
-   follow-up; for now, delete test patients that have no notes, or clean up the subcollection manually.
+   ✅ **Cascade cleanup:** the `onPatientDeleted` Cloud Function (backend `cascadeDelete.ts`, PR
+   ZhenDeng/Aestheticx#39) now removes the patient's `notes`/`forms` subcollection docs **and** all of
+   its `patients/{id}/…` Storage objects. Confirm in the console that the subcollections and Storage
+   folder are gone shortly after delete. (Requires the backend Functions to be deployed; if you still
+   see orphans, the Functions haven't been deployed to this project yet.)
 4. **Merge (clinic-admin only):** sign in as a **clinic-admin** TEST account; on a clinic test patient,
    Manage → "Merge a duplicate into this file" → pick another same-clinic test patient → Merge. Confirm
    the `mergePatients` Function moved notes/forms/authorisations onto the kept patient and deleted the
@@ -83,8 +85,10 @@ With `.env.local` set (live mode), signed in as a **TEST** account that can send
 3. Open the signed form's read-only view → the signature image loads via the Storage download URL, and
    the responses + full consent text render.
 4. Delete a form signed in error → the `forms` doc is removed.
-   ⚠️ **Known caveat:** the `patients/{id}/signatures/{formId}.png` Storage object is **not** cleaned up
-   on delete (client deletes don't cascade to Storage). A cleanup Function is a later follow-up.
+   ✅ **Cascade cleanup:** the `onSignedFormDeleted` Cloud Function (backend `cascadeDelete.ts`, PR
+   ZhenDeng/Aestheticx#39) now deletes the form's `patients/{id}/signatures/{formId}.png` signature and
+   its rendered `patients/{id}/forms/{formId}.pdf` from Storage. Confirm those objects disappear shortly
+   after delete. (Requires the backend Functions to be deployed.)
 
 ## Consent PDF download — live checks (manual, owner-run, TEST account only)
 
