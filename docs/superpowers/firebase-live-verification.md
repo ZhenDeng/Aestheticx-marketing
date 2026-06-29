@@ -148,6 +148,27 @@ With `.env.local` set (live mode), signed in as a **TEST** account:
 resolved from the demo accounts, so live may show raw ids until a directory exists. Pricing and GST tax
 invoices are a later increment (3b) — this dashboard is counts-only.
 
+## GST invoices — live checks (manual, owner-run, TEST account only)
+
+With `.env.local` set (live mode), signed in as a **TEST doctor**:
+1. On **Billing**, open a counterparty/month row → **Generate invoice** → set a **price** → **Save price**
+   (writes `scriptPricing/{doctorId}_{counterpartyId}`) → confirm the preview total (price × selectable +
+   10% GST). **Generate** → a new `invoices/{id}` doc appears with `lines`/`subtotalCents`/`gstCents`/
+   `totalCents`, the included `authorisations` flip to `invoiced: true`, and the PDF lands at
+   `invoices/{doctorId}/{id}.pdf`.
+2. The invoice shows under **Invoices**; **Download PDF** calls `mintDownloadUrl` and opens the signed URL.
+3. Sign in as the **counterparty** (TEST nurse / clinic-admin) → they can list + download their invoice.
+4. Re-open the same counterparty/month → the invoiced authorisations are **excluded** (no double-billing).
+
+⚠️ **Notes:** the demo invoice math is the **ported** server math ($25 default + 10% GST, rounded per
+line); only the **PDF/email** are server-side (demo shows "available in live mode"). Invoices are
+immutable (no void/delete). `scriptPricing` is doctor-readable only.
+
+⚠️ **Known grain mismatch (follow-up):** the dashboard's "total billable authorisations" counts
+`billingEvents` (one per approved request) and does **not** decrement when authorisations are invoiced,
+whereas invoicing operates per authorisation (line item). Reconciling the dashboard count to un-invoiced
+authorisations is a follow-up.
+
 ## Safety reminder
 
 This wires a public-origin web client to a production clinical (PHI) database. Keep it pointed at the
