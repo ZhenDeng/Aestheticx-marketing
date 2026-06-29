@@ -16,6 +16,7 @@ const rows: HydrationRows = {
     { id: "ap1", data: { type: "treatment", ownerId: "clinic-lumiere", dateISO: "2026-06-26", startMinute: 540, endMinute: 570, status: "confirmed" } },
   ],
   formsByPatient: { p1: [{ id: "fm1", data: { template: "antiwrinkleConsent", channel: "onDevice", signedAt: 3, intro: "i", clauses: ["c"], answers: [] } }] },
+  billingEvents: [{ id: "ev1", data: { requestId: "r2", doctorId: "u-voss", counterpartyType: "clinic", counterpartyId: "clinic-lumiere", monthKey: "2026-06", createdAt: 5 } }],
 };
 
 describe("assembleState", () => {
@@ -26,7 +27,9 @@ describe("assembleState", () => {
     expect(state.authorisations.a1.repeatsRemaining).toBe(4);
     expect(state.requests.r2.status).toBe("pending");
     expect(state.appointments.ap1.startMinute).toBe(540);
-    expect(state.ledger).toEqual([]);
+    expect(state.ledger).toHaveLength(1);
+    expect(state.ledger[0].counterpartyType).toBe("clinic");
+    expect(state.ledger[0].monthKey).toBe("2026-06");
     expect(state.usages).toEqual([]);
     expect(state.formsByPatient.p1).toHaveLength(1);
   });
