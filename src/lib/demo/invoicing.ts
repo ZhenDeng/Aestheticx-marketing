@@ -30,6 +30,7 @@ export function computeInvoice(input: {
   authorisations: InvoiceAuthInput[];
 }): ComputedInvoice {
   if (!(input.pricePerScriptCents > 0)) throw new Error("price per script must be a positive amount of cents");
+  if (input.authorisations.length === 0) throw new Error("an invoice needs at least one authorisation");
   const lines: InvoiceLine[] = input.authorisations.map((a) => ({
     authorisationID: a.id,
     dateISO: a.dateISO,
@@ -55,12 +56,16 @@ export function selectableForInvoice<T extends BillableAuthRow>(
 export function formatAUD(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(cents);
+  // "en-US" grouping (comma thousands) is deterministic across runtimes and matches
+  // AUD conventions; we format manually rather than via Intl currency to avoid ICU variance.
   const dollars = Math.floor(abs / 100).toLocaleString("en-US");
   const c = String(abs % 100).padStart(2, "0");
   return `${sign}$${dollars}.${c}`;
 }
 
 // Invoices the identity may see (mirrors the backend invoices read rules).
+// Non-doctors see clinic-typed invoices for their clinic (clinicAdmin always acts in
+// clinic context here) or nurse-typed invoices addressed to their own user id.
 export function invoicesFor(invoices: Invoice[], identity: Identity): Invoice[] {
   if (identity.role === "doctor") return invoices.filter((i) => i.doctorID === identity.user.id);
   const clinicId = identity.context.kind === "clinic" ? identity.context.clinic.id : null;

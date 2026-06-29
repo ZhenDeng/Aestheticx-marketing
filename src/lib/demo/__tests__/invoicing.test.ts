@@ -20,7 +20,10 @@ describe("computeInvoice", () => {
     expect(r.totalCents).toBe(5500);
   });
   it("throws on a non-positive price", () => {
-    expect(() => computeInvoice({ pricePerScriptCents: 0, gstRate: GST_RATE, authorisations: [] })).toThrow();
+    expect(() => computeInvoice({ pricePerScriptCents: 0, gstRate: GST_RATE, authorisations: [{ id: "a", dateISO: "d", patientName: "n" }] })).toThrow();
+  });
+  it("throws when there are no authorisations", () => {
+    expect(() => computeInvoice({ pricePerScriptCents: 2500, gstRate: GST_RATE, authorisations: [] })).toThrow();
   });
 });
 

@@ -559,6 +559,8 @@ export function deleteForm(state: DemoState, patientID: string, formId: string, 
   return { ...state, formsByPatient: { ...state.formsByPatient, [patientID]: list } };
 }
 
+// Key for a doctor's per-counterparty price. Safe with the project's id charset
+// (uuids/hyphenated ids never contain "_"); matches the backend scriptPricing doc id.
 export function scriptPriceKey(doctorID: string, counterpartyID: string): string {
   return `${doctorID}_${counterpartyID}`;
 }
