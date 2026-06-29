@@ -153,7 +153,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         // new patient is independent of existing records, so this is never "stale" — but
         // we apply it through a functional setState so the patients-map spread always
         // merges into the freshest state rather than a stale closure snapshot.
-        const { patient } = backend.createPatient(state, draft, identity, now);
+        const { patient } = backend.createPatient(state, draft, identity);
         setState((s) => ({ ...s, patients: { ...s.patients, [patient.id]: patient } }));
         if (live) {
           void (async () => {

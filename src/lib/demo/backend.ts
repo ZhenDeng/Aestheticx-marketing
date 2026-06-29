@@ -419,7 +419,7 @@ function ownerFor(identity: Identity): PatientOwner {
 }
 
 export function createPatient(
-  state: DemoState, draft: PatientDraft, identity: Identity, _now: number,
+  state: DemoState, draft: PatientDraft, identity: Identity,
 ): { state: DemoState; patient: Patient } {
   if (!canCreatePatient(identity)) throw new BackendError("notPermitted");
   if (missingFields(draft).size > 0) throw new BackendError("validationFailed");
