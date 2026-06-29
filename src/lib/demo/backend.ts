@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import { fullName, identityBadge } from "./types";
 import { monthKey } from "./billing";
+import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 
 export const REPEATS_PER_AUTHORISATION = 5;
@@ -556,4 +557,76 @@ export function deleteForm(state: DemoState, patientID: string, formId: string, 
   if (!patientPermissions(identity, patient).canSendForms) throw new BackendError("notPermitted");
   const list = (state.formsByPatient[patientID] ?? []).filter((f) => f.id !== formId);
   return { ...state, formsByPatient: { ...state.formsByPatient, [patientID]: list } };
+}
+
+export function scriptPriceKey(doctorID: string, counterpartyID: string): string {
+  return `${doctorID}_${counterpartyID}`;
+}
+
+export function setScriptPrice(state: DemoState, doctorID: string, counterpartyID: string, priceCents: number): DemoState {
+  if (!Number.isInteger(priceCents) || priceCents <= 0) throw new BackendError("validationFailed");
+  return { ...state, scriptPricing: { ...state.scriptPricing, [scriptPriceKey(doctorID, counterpartyID)]: priceCents } };
+}
+
+export interface BillableAuthorisation {
+  id: string;
+  counterpartyID: string;
+  counterpartyType: "nurse" | "clinic";
+  monthKey: string;
+  invoiced: boolean;
+  patientName: string;
+  dateISO: string;
+}
+
+export function billableAuthorisations(state: DemoState, doctorID: string): BillableAuthorisation[] {
+  return Object.values(state.authorisations)
+    .filter((a) => a.doctorID === doctorID && !a.invoiced)
+    .map((a) => {
+      const patient = state.patients[a.patientID];
+      return {
+        id: a.id,
+        counterpartyID: a.clinicID ?? a.nurseID,
+        counterpartyType: a.clinicID ? "clinic" as const : "nurse" as const,
+        monthKey: monthKey(a.createdAt),
+        invoiced: a.invoiced,
+        patientName: patient ? fullName(patient) : "",
+        dateISO: new Date(a.createdAt).toISOString().slice(0, 10),
+      };
+    });
+}
+
+export interface GenerateInvoiceInput {
+  doctorID: string;
+  counterpartyID: string;
+  counterpartyType: "nurse" | "clinic";
+  periodLabel: string;
+  authIDs: string[];
+}
+
+export function generateInvoice(
+  state: DemoState, input: GenerateInvoiceInput, identity: Identity, now: number,
+): { state: DemoState; invoice: Invoice } {
+  if (identity.role !== "doctor" || identity.user.id !== input.doctorID) throw new BackendError("notPermitted");
+  const rows = billableAuthorisations(state, input.doctorID)
+    .filter((r) => input.authIDs.includes(r.id) && r.counterpartyID === input.counterpartyID && !r.invoiced);
+  if (rows.length === 0) throw new BackendError("validationFailed");
+  const priceCents = state.scriptPricing[scriptPriceKey(input.doctorID, input.counterpartyID)] ?? DEFAULT_SCRIPT_PRICE_CENTS;
+  const computed = computeInvoice({
+    pricePerScriptCents: priceCents, gstRate: GST_RATE,
+    authorisations: rows.map((r) => ({ id: r.id, dateISO: r.dateISO, patientName: r.patientName })),
+  });
+  const invoice: Invoice = {
+    id: makeID("inv"),
+    doctorID: input.doctorID,
+    counterpartyID: input.counterpartyID,
+    counterpartyType: input.counterpartyType,
+    periodLabel: input.periodLabel,
+    ...computed,
+    authorisationIDs: rows.map((r) => r.id),
+    createdAt: now,
+  };
+  const invoicedIDs = new Set(rows.map((r) => r.id));
+  const authorisations = { ...state.authorisations };
+  for (const id of invoicedIDs) authorisations[id] = { ...authorisations[id], invoiced: true };
+  return { state: { ...state, authorisations, invoices: [...state.invoices, invoice] }, invoice };
 }
