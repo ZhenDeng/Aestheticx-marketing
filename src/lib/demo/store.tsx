@@ -5,6 +5,7 @@ import type { DemoState, Identity, MedicationItem, TreatmentMedication } from ".
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 import * as billing from "./billing";
+import * as invoicing from "./invoicing";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useDemoAuth } from "./auth";
 
@@ -32,6 +33,11 @@ interface StoreValue {
   mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
   formsForPatient: (patientID: string) => ReturnType<typeof backend.formsForPatient>;
   billingSummary: (identity: Identity) => ReturnType<typeof billing.billingSummary>;
+  invoicesFor: (identity: Identity) => ReturnType<typeof invoicing.invoicesFor>;
+  scriptPrice: (doctorID: string, counterpartyID: string) => number;
+  billableAuthorisations: (doctorID: string) => ReturnType<typeof backend.billableAuthorisations>;
+  setScriptPrice: (counterpartyID: string, priceCents: number, identity: Identity) => void;
+  generateInvoice: (input: import("./backend").GenerateInvoiceInput, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
 }
@@ -112,6 +118,26 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
       billingSummary: (id) => billing.billingSummary(state.ledger, id),
+      invoicesFor: (id) => invoicing.invoicesFor(state.invoices, id),
+      scriptPrice: (did, cid) => state.scriptPricing[backend.scriptPriceKey(did, cid)] ?? invoicing.DEFAULT_SCRIPT_PRICE_CENTS,
+      billableAuthorisations: (did) => backend.billableAuthorisations(state, did),
+      setScriptPrice: (cid, priceCents, id) => {
+        if (!live) { setState((s) => backend.setScriptPrice(s, id.user.id, cid, priceCents)); return; }
+        void (async () => {
+          try { const m = await import("@/lib/firebase/invoices"); await m.setScriptPrice(cid, priceCents); setRefreshTick((t) => t + 1); }
+          catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      generateInvoice: (input, id) => {
+        if (!live) { setState((s) => backend.generateInvoice(s, input, id, now).state); return; }
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/invoices");
+            await m.generateInvoice({ counterpartyID: input.counterpartyID, counterpartyType: input.counterpartyType, periodLabel: input.periodLabel, authorisationIDs: input.authIDs });
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
       submitRequest: (input) => {

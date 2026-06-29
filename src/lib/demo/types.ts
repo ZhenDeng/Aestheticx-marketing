@@ -106,6 +106,8 @@ export interface Authorisation {
   medication: MedicationItem;
   repeatsRemaining: number;
   expiresAt: number; // epoch ms
+  createdAt: number; // epoch ms — when approved (for invoice month grouping)
+  invoiced: boolean; // set true when an invoice includes it
 }
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";
@@ -197,6 +199,8 @@ export interface DemoState {
   ledger: BillingEvent[];
   usages: RepeatUsage[];
   formsByPatient: Record<string, SignedFormRecord[]>;
+  invoices: import("./invoicing").Invoice[];
+  scriptPricing: Record<string, number>; // "{doctorID}_{counterpartyID}" -> cents
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

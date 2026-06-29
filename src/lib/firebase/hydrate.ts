@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapBillingEvent } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapBillingEvent, mapInvoice } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -17,6 +17,8 @@ export interface HydrationRows {
   appointments: Row[];
   formsByPatient: Record<string, Row[]>;
   billingEvents: Row[];
+  invoices: Row[];
+  scriptPricing: Row[];
 }
 
 // Pure: rows -> DemoState (testable, no Firebase).
@@ -44,7 +46,13 @@ export function assembleState(rows: HydrationRows): DemoState {
   }
 
   const ledger = rows.billingEvents.map((r) => mapBillingEvent(r.id, r.data));
-  return { patients, notesByPatient, authorisations, requests, appointments, ledger, usages: [], formsByPatient };
+  const invoices = rows.invoices.map((r) => mapInvoice(r.id, r.data));
+  const scriptPricing: DemoState["scriptPricing"] = {};
+  for (const r of rows.scriptPricing) {
+    const cents = typeof r.data.priceCents === "number" ? r.data.priceCents : 0;
+    if (cents > 0) scriptPricing[r.id] = cents; // doc id is "{doctorId}_{counterpartyId}"
+  }
+  return { patients, notesByPatient, authorisations, requests, appointments, ledger, usages: [], formsByPatient, invoices, scriptPricing };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -73,6 +81,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       appointments: await runQuery("appointments"),
       formsByPatient: forms,
       billingEvents: await runQuery("billingEvents"),
+      invoices: await runQuery("invoices"),
+      scriptPricing: await runQuery("scriptPricing"),
     });
   }
 
@@ -130,6 +140,18 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     for (const row of await runQuery("billingEvents", ...constraints)) billingById.set(row.id, row);
   }
 
+  // Invoices (same read scope as billingEvents); scriptPricing is doctor-readable.
+  const invoiceConstraints: QueryConstraint[][] = [
+    [where("doctorId", "==", uid)],
+    [where("counterpartyType", "==", "nurse"), where("counterpartyId", "==", uid)],
+    ...clinicIds.map((cid) => [where("counterpartyType", "==", "clinic"), where("counterpartyId", "==", cid)]),
+  ];
+  const invoicesById = new Map<string, Row>();
+  for (const constraints of invoiceConstraints) {
+    for (const row of await runQuery("invoices", ...constraints)) invoicesById.set(row.id, row);
+  }
+  const scriptPricingRows = await runQuery("scriptPricing", where("doctorId", "==", uid));
+
   return assembleState({
     patients,
     notesByPatient,
@@ -138,5 +160,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     appointments: [...apptsById.values()],
     formsByPatient,
     billingEvents: [...billingById.values()],
+    invoices: [...invoicesById.values()],
+    scriptPricing: scriptPricingRows,
   });
 }

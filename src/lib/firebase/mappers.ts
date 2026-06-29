@@ -7,6 +7,7 @@ import type {
   BillingEvent,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
+import type { Invoice, InvoiceLine } from "@/lib/demo/invoicing";
 
 type Doc = Record<string, unknown>;
 
@@ -111,6 +112,8 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     medication: mapMedication((data.medication as Doc) ?? {}),
     repeatsRemaining: intValue(data.repeatsRemaining),
     expiresAt,
+    createdAt: toMillis(data.createdAt),
+    invoiced: data.invoiced === true,
   };
 }
 
@@ -231,6 +234,30 @@ export function encodeForm(f: SignedFormRecord): Doc {
     answers: f.answers.map((a) => ({ questionId: a.questionID, answer: a.answer, detail: a.detail })),
     signatureImageFileId: f.signatureFileId ?? null,
     pdfFileId: f.pdfFileId ?? null,
+  };
+}
+
+export function mapInvoice(id: string, data: Doc): Invoice {
+  const lines = (Array.isArray(data.lines) ? (data.lines as Doc[]) : []).map((l): InvoiceLine => ({
+    authorisationID: str(l.authorisationId),
+    dateISO: str(l.dateISO),
+    patientName: str(l.patientName),
+    feeCents: intValue(l.feeCents),
+    gstCents: intValue(l.gstCents),
+  }));
+  return {
+    id,
+    doctorID: str(data.doctorId),
+    counterpartyID: str(data.counterpartyId),
+    counterpartyType: data.counterpartyType === "clinic" ? "clinic" : "nurse",
+    periodLabel: str(data.periodLabel),
+    lines,
+    subtotalCents: intValue(data.subtotalCents),
+    gstCents: intValue(data.gstCents),
+    totalCents: intValue(data.totalCents),
+    authorisationIDs: strArray(data.authorisationIds),
+    pdfFileId: typeof data.pdfFileId === "string" ? data.pdfFileId : undefined,
+    createdAt: toMillis(data.createdAt),
   };
 }
 
