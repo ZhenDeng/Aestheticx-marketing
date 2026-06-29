@@ -86,8 +86,28 @@ With `.env.local` set (live mode), signed in as a **TEST** account that can send
    ⚠️ **Known caveat:** the `patients/{id}/signatures/{formId}.png` Storage object is **not** cleaned up
    on delete (client deletes don't cascade to Storage). A cleanup Function is a later follow-up.
 
-Note: PDF download and remote signing channels (email/QR/link) are **not** in this increment — the view
-renders the full text + signature instead.
+Note: PDF download ships separately (increment 2a). Remote signing channels are covered next.
+
+## Remote consent signing — live checks (manual, owner-run, TEST account only)
+
+With `.env.local` set (live mode), signed in as a **TEST** account that can send forms for a test patient:
+1. Open the test patient → **Consent forms** → **Send a link** → pick a consent template →
+   **Generate signing link**. Confirm in the Firestore console a new **`formLinks/{token}`** doc with
+   `used: false`, `patientId`, `template`, `createdAtMillis`, and an `autofill` block.
+2. **Copy** the link (or scan the **QR**) and open `https://aestheticx-91e6b.web.app/s/{token}` in a
+   separate browser/incognito (no app login) → the public page loads the consent with the patient's
+   autofill; answer the questions, draw a signature, submit → "Signed — thank you".
+3. Confirm the `formLinks/{token}` doc flips to `used: true` (`usedAtMillis` set), and a new
+   **`patients/{id}/forms/{formId}`** doc appears with `channel: webLink`. Re-open the link → it shows
+   expired/used (single-use burn).
+4. Re-hydrate the app (re-sign-in) → the signed form appears under the patient's **Consent forms**.
+5. The **Email** button opens the local mail client prefilled to the patient with the link in the body
+   (the app does not send email itself).
+
+⚠️ **Notes:** remote links are offered for **consent templates only** (the public page does not render the
+Aesthetic History intake). The app cannot show link status (the `formLinks` collection is Functions-only).
+This increment also pins the web client's callables to the **australia-southeast1** region — verify the
+existing callables (approve request, consume repeats, merge) still work after deploying.
 
 ## Safety reminder
 
