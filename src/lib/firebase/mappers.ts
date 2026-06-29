@@ -111,6 +111,8 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     medication: mapMedication((data.medication as Doc) ?? {}),
     repeatsRemaining: intValue(data.repeatsRemaining),
     expiresAt,
+    createdAt: toMillis(data.createdAt),
+    invoiced: data.invoiced === true,
   };
 }
 

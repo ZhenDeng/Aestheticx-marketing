@@ -36,6 +36,8 @@ export function emptyState(): DemoState {
     ledger: [],
     usages: [],
     formsByPatient: {},
+    invoices: [],
+    scriptPricing: {},
   };
 }
 
@@ -252,6 +254,8 @@ export function approveRequest(
     medication: item,
     repeatsRemaining: REPEATS_PER_AUTHORISATION,
     expiresAt: expiry,
+    createdAt: now,
+    invoiced: false,
   }));
 
   const authorisations = { ...state.authorisations };

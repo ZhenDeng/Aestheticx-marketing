@@ -44,7 +44,7 @@ export function assembleState(rows: HydrationRows): DemoState {
   }
 
   const ledger = rows.billingEvents.map((r) => mapBillingEvent(r.id, r.data));
-  return { patients, notesByPatient, authorisations, requests, appointments, ledger, usages: [], formsByPatient };
+  return { patients, notesByPatient, authorisations, requests, appointments, ledger, usages: [], formsByPatient, invoices: [], scriptPricing: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
