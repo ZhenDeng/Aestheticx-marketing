@@ -28,7 +28,7 @@ describe("consentEmail", () => {
     expect(body).toContain("once");
   });
   it("falls back to a generic greeting when no name", () => {
-    expect(consentEmail("", "https://x/s/t").body.startsWith("Hi,")).toBe(true);
+    expect(consentEmail("", "https://x/s/t").body.split("\n")[0]).toBe("Hi,");
   });
 });
 

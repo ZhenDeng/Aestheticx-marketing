@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
@@ -19,6 +19,7 @@ export default function RemoteConsentPage({ params }: { params: Promise<{ id: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const inFlight = useRef(false);
 
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
@@ -36,6 +37,8 @@ export default function RemoteConsentPage({ params }: { params: Promise<{ id: st
   }
 
   async function generate() {
+    if (inFlight.current) return; // guard against a double-tap minting two links
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     setCopied(false);
@@ -57,6 +60,7 @@ export default function RemoteConsentPage({ params }: { params: Promise<{ id: st
       setError("Could not generate a signing link. Please try again.");
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   }
 
@@ -121,11 +125,11 @@ export default function RemoteConsentPage({ params }: { params: Promise<{ id: st
             </div>
           )}
 
-          {email && (
+          {email && patient.email && (
             <div className="mt-5">
               <a href={mailtoHref(patient.email, email.subject, email.body)}
                 className="inline-block rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint">
-                Email to {patient.email || "patient"}
+                Email to {patient.email}
               </a>
             </div>
           )}
