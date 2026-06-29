@@ -55,16 +55,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
     setNoteBody("");
   }
 
-  function raiseRequest() {
-    // Demo: raise a request to Dr Voss for the first active medication area.
-    store.submitRequest({
-      patientID: id,
-      doctorID: "u-voss",
-      items: [{ name: "Profhilo", dosage: "2", category: "skinBooster", unit: "millilitres", areas: ["Full Face"] }],
-      identity: me,
-    });
-  }
-
   return (
     <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
       <div>
@@ -160,9 +150,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           </ul>
 
           {identity.role === "nurse" && (
-            <button onClick={raiseRequest} className="mt-4 w-full rounded-btn border border-line px-4 py-2 text-sm text-ink hover:border-tint">
-              Raise authorisation request → Dr Voss
-            </button>
+            <Link href={`/app/patients/${id}/request`} className="mt-4 block w-full rounded-btn border border-line px-4 py-2 text-center text-sm text-ink hover:border-tint">
+              Raise authorisation request
+            </Link>
           )}
         </div>
         {(canEdit || canDelete || canMerge) && (
