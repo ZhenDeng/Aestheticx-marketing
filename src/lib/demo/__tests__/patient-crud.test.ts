@@ -40,17 +40,17 @@ describe("canCreatePatient", () => {
 
 describe("createPatient", () => {
   it("derives a nurse-self owner and never sets prescribers", () => {
-    const { state, patient } = createPatient(emptyState(), fullDraft(), nurse, NOW);
+    const { state, patient } = createPatient(emptyState(), fullDraft(), nurse);
     expect(patient.owner).toEqual({ kind: "nurse", id: "u-sarah" });
     expect(patient.prescribingDoctorIDs).toEqual([]);
     expect(state.patients[patient.id]).toBeDefined();
   });
   it("derives a clinic owner from clinic context", () => {
-    const { patient } = createPatient(emptyState(), fullDraft(), admin, NOW);
+    const { patient } = createPatient(emptyState(), fullDraft(), admin);
     expect(patient.owner).toEqual({ kind: "clinic", id: "c1" });
   });
   it("throws on an incomplete draft", () => {
-    expect(() => createPatient(emptyState(), emptyDraft(), nurse, NOW)).toThrow();
+    expect(() => createPatient(emptyState(), emptyDraft(), nurse)).toThrow();
   });
 });
 
