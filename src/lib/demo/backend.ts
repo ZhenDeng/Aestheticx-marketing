@@ -18,6 +18,7 @@ import type {
   TreatmentMedication,
 } from "./types";
 import { fullName, identityBadge } from "./types";
+import { monthKey } from "./billing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 
 export const REPEATS_PER_AUTHORISATION = 5;
@@ -260,7 +261,10 @@ export function approveRequest(
     id: makeID("ev"),
     requestID: request.id,
     patientID: request.patientID,
+    doctorID: request.doctorID,
+    counterpartyType: clinicID ? "clinic" : "nurse",
     counterpartyID: clinicID ?? request.nurse.id,
+    monthKey: monthKey(now),
     createdAt: now,
   };
 

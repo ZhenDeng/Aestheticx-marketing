@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
+import * as billing from "./billing";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useDemoAuth } from "./auth";
 
@@ -30,6 +31,7 @@ interface StoreValue {
   deletePatient: (id: string, identity: Identity) => void;
   mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
   formsForPatient: (patientID: string) => ReturnType<typeof backend.formsForPatient>;
+  billingSummary: (identity: Identity) => ReturnType<typeof billing.billingSummary>;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
 }
@@ -109,6 +111,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
+      billingSummary: (id) => billing.billingSummary(state.ledger, id),
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
       submitRequest: (input) => {

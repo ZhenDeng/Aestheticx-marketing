@@ -153,7 +153,10 @@ export interface BillingEvent {
   id: string;
   requestID: string;
   patientID: string;
+  doctorID: string;
+  counterpartyType: "nurse" | "clinic";
   counterpartyID: string; // clinic id, or nurse id when independent
+  monthKey: string;       // "YYYY-MM" (UTC), matches backend billingEvents
   createdAt: number;
 }
 
