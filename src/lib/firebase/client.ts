@@ -68,8 +68,12 @@ export function firebaseAuth(): Auth {
 export function firestore(): Firestore {
   return getFirestore(getFirebaseApp());
 }
+// All Cloud Functions are pinned to australia-southeast1 (data residency; see
+// backend globalOptions.ts and the iOS client). The web client must target the
+// same region or every callable resolves to the wrong (default) region.
+const FUNCTIONS_REGION = "australia-southeast1";
 export function functions(): Functions {
-  return getFunctions(getFirebaseApp());
+  return getFunctions(getFirebaseApp(), FUNCTIONS_REGION);
 }
 export function storage(): FirebaseStorage {
   return getStorage(getFirebaseApp());

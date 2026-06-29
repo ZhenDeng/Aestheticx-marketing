@@ -118,9 +118,14 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         <div className="mt-8 flex items-center justify-between gap-4">
           <h2 className="font-display text-xl text-ink">Consent forms</h2>
           {perms.canSendForms && (
-            <Link href={`/app/patients/${id}/consent`} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
-              Sign a consent
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href={`/app/patients/${id}/consent/remote`} className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
+                Send a link
+              </Link>
+              <Link href={`/app/patients/${id}/consent`} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                Sign a consent
+              </Link>
+            </div>
           )}
         </div>
         <ul className="mt-3 flex flex-col gap-2">
