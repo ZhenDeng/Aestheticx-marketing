@@ -4,7 +4,7 @@ import type {
   Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
-  NoteTemplate, FollowUpTask, FollowUpStatus,
+  NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -98,6 +98,12 @@ export function mapNote(id: string, patientID: string, data: Doc): Note {
     medications: meds.map((m): TreatmentMedication => ({
       name: str(m.name), batch: str(m.batch), expiry: str(m.expiry), dosage: str(m.dosage),
     })),
+    deliveryStatus: ((): DeliveryStatus | undefined => {
+      const s = str(data.deliveryStatus);
+      return s === "queued" || s === "delivered" || s === "failed" ? s : undefined;
+    })(),
+    aftercareCategories: strArray(data.aftercareCategories)
+      .filter((c): c is AftercareCategory => (AFTERCARE_CATEGORIES as readonly string[]).includes(c)),
   };
 }
 
@@ -203,6 +209,9 @@ export function encodeNote(n: Note): Doc {
     authorBadge: n.authorBadge,
     consumedAuthorisationIds: n.consumedAuthorisationIDs,
     medications: n.medications.map((m) => ({ name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "" })),
+    // Aftercare-only fields — omitted on general/treatment notes (iOS parity, no schema noise).
+    ...(n.deliveryStatus !== undefined && { deliveryStatus: n.deliveryStatus }),
+    ...(n.aftercareCategories !== undefined && { aftercareCategories: n.aftercareCategories }),
   };
 }
 

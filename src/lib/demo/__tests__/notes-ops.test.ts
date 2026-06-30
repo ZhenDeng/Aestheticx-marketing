@@ -66,7 +66,7 @@ describe("recordAftercareSend", () => {
     const state = stateWith(nursePatient("p1", "u-sarah"));
     const meds = [{ name: "Botox", batch: "B1", expiry: "12/26", dosage: "20u" }];
     const { state: next, note } = recordAftercareSend(
-      state, { patientID: "p1", content: "Sent text", medications: meds, identity: nurse }, 1_000,
+      state, { patientID: "p1", content: "Sent text", medications: meds, categories: [], identity: nurse }, 1_000,
     );
     expect(note.kind).toBe("aftercareRecord");
     expect(note.title).toBe("Aftercare sent");
@@ -83,12 +83,12 @@ describe("recordAftercareSend", () => {
       context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
     };
     const state = stateWith(clinicPatient);
-    expect(() => recordAftercareSend(state, { patientID: "p1", content: "x", medications: [], identity: admin }, 1))
+    expect(() => recordAftercareSend(state, { patientID: "p1", content: "x", medications: [], categories: [], identity: admin }, 1))
       .toThrow(BackendError);
   });
 
   it("rejects a missing patient", () => {
-    expect(() => recordAftercareSend(emptyState(), { patientID: "nope", content: "x", medications: [], identity: nurse }, 1))
+    expect(() => recordAftercareSend(emptyState(), { patientID: "nope", content: "x", medications: [], categories: [], identity: nurse }, 1))
       .toThrow(BackendError);
   });
 });
