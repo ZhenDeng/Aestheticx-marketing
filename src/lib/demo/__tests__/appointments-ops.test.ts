@@ -20,13 +20,12 @@ describe("bookTreatmentAppointment", () => {
     const { state, appt } = bookTreatmentAppointment(
       emptyState(),
       { dateISO: "2026-06-26", startMinute: 600, durationMinutes: 30, patientID: "p1", patientName: "Mara Boyd", note: "Antiwrinkle", identity: voss },
-      Date.UTC(2026, 5, 26),
     );
     expect(appt).toMatchObject({ type: "treatment", status: "confirmed", ownerID: "u-voss", startMinute: 600, endMinute: 630, patientID: "p1", patientName: "Mara Boyd", appointmentNote: "Antiwrinkle" });
     expect(state.appointments[appt.id]).toEqual(appt);
   });
   it("allows a block-time appointment with no patient", () => {
-    const { appt } = bookTreatmentAppointment(emptyState(), { dateISO: "2026-06-26", startMinute: 720, durationMinutes: 60, note: "Lunch", identity: voss }, 0);
+    const { appt } = bookTreatmentAppointment(emptyState(), { dateISO: "2026-06-26", startMinute: 720, durationMinutes: 60, note: "Lunch", identity: voss });
     expect(appt.patientID).toBeUndefined();
     expect(appt.endMinute).toBe(780);
   });
@@ -55,6 +54,9 @@ describe("rescheduleAppointment", () => {
   });
   it("rejects another owner's appointment", () => {
     expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", 660, 30, sarah)).toThrow(BackendError);
+  });
+  it("rejects rescheduling a terminal (completed) appointment", () => {
+    expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "completed")), "a1", 660, 30, voss)).toThrow(BackendError);
   });
 });
 

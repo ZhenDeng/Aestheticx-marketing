@@ -42,7 +42,7 @@ interface StoreValue {
   confirmAppointment: (id: string, identity: Identity) => void;
   appointmentsForOwnerOnDay: (ownerID: string, dateISO: string) => ReturnType<typeof backend.appointmentsForOwnerOnDay>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
-  rescheduleAppointment: (id: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
+  rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
@@ -267,7 +267,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       appointmentsForOwnerOnDay: (ownerID, dateISO) => backend.appointmentsForOwnerOnDay(state, ownerID, dateISO),
       bookTreatmentAppointment: (input) => {
         // Demo adds locally. Live calls bookTreatment (server-authoritative id) then rehydrates.
-        if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input, now).state); return; }
+        if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input).state); return; }
         void (async () => {
           try {
             const m = await import("@/lib/firebase/mirror");
@@ -280,10 +280,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           } catch (e) { setLastSyncError(String(e)); }
         })();
       },
-      rescheduleAppointment: (id, startMinute, durationMinutes, identity) =>
+      rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) =>
         applyAndMirror(
           (s) => backend.rescheduleAppointment(s, id, startMinute, durationMinutes, identity),
-          (m) => m.mirrorRescheduleAppointment(id, state.appointments[id]?.dateISO ?? "", startMinute, durationMinutes),
+          (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
         ),
       markAppointment: (id, status, identity) =>
         applyAndMirror(

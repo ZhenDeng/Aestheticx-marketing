@@ -4,7 +4,11 @@ import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay } from "@/lib/demo/backend";
-import type { Appointment, Identity } from "@/lib/demo/types";
+import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
+
+const STATUS_LABEL: Record<AppointmentStatus, string> = {
+  awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
+};
 
 function timeLabel(minute: number): string {
   const h = Math.floor(minute / 60);
@@ -14,6 +18,9 @@ function timeLabel(minute: number): string {
 function minutesFromTime(value: string): number {
   const [h, m] = value.split(":").map((x) => parseInt(x, 10));
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+function timeValue(minute: number): string {
+  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
 export default function CalendarPage() {
@@ -63,9 +70,9 @@ export default function CalendarPage() {
                   <span className="block font-medium text-ink">{a.patientName ?? "Blocked time"}</span>
                   {a.appointmentNote && <span className="block text-sm text-ink-soft">{a.appointmentNote}</span>}
                 </span>
-                <span className="micro ml-auto self-center" style={{ color: statusColor }}>{a.status}</span>
+                <span className="micro ml-auto self-center" style={{ color: statusColor }}>{STATUS_LABEL[a.status]}</span>
               </button>
-              {isOpen && <AppointmentActions appt={a} me={me} onDone={() => setExpanded((p) => { const n = new Set(p); n.delete(a.id); return n; })} />}
+              {isOpen && <AppointmentActions key={`${a.startMinute}-${a.endMinute}-${a.status}`} appt={a} me={me} onDone={() => setExpanded((p) => { const n = new Set(p); n.delete(a.id); return n; })} />}
             </li>
           );
         })}
@@ -121,10 +128,6 @@ export default function CalendarPage() {
       </div>
     </div>
   );
-}
-
-function timeValue(minute: number): string {
-  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
 function NewAppointmentForm({ todayISO, me, onDone }: { todayISO: string; me: Identity; onDone: () => void }) {
@@ -210,27 +213,29 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
 
   return (
     <div className="mt-2 border-t border-line pt-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-field border border-line px-2 py-1 text-sm text-ink" />
-        <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="rounded-field border border-line px-2 py-1 text-sm text-ink">
-          {[15, 30, 45, 60].map((d) => <option key={d} value={d}>{d} min</option>)}
-        </select>
-        <button onClick={() => { store.rescheduleAppointment(appt.id, minutesFromTime(time), duration, me); onDone(); }}
-                className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Reschedule</button>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {appt.status === "awaitingConfirmation" && (
-          <button onClick={() => { store.confirmAppointment(appt.id, me); onDone(); }}
-                  className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Confirm</button>
-        )}
-        {canMark && (
-          <>
+      {canMark ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-field border border-line px-2 py-1 text-sm text-ink" />
+            <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="rounded-field border border-line px-2 py-1 text-sm text-ink">
+              {[15, 30, 45, 60].map((d) => <option key={d} value={d}>{d} min</option>)}
+            </select>
+            <button onClick={() => { store.rescheduleAppointment(appt.id, appt.dateISO, minutesFromTime(time), duration, me); onDone(); }}
+                    className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Reschedule</button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {appt.status === "awaitingConfirmation" && (
+              <button onClick={() => { store.confirmAppointment(appt.id, me); onDone(); }}
+                      className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Confirm</button>
+            )}
             <button onClick={() => { store.markAppointment(appt.id, "completed", me); onDone(); }} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
             <button onClick={() => { store.markAppointment(appt.id, "noShow", me); onDone(); }} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
             <button onClick={() => { store.markAppointment(appt.id, "cancelled", me); onDone(); }} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>Cancel</button>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-ink-soft">No actions available for a {STATUS_LABEL[appt.status].toLowerCase()} appointment.</p>
+      )}
     </div>
   );
 }

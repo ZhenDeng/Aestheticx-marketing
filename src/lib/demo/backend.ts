@@ -419,7 +419,7 @@ export interface BookTreatmentInput {
   identity: Identity;
 }
 
-export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentInput, now: number): { state: DemoState; appt: Appointment } {
+export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentInput): { state: DemoState; appt: Appointment } {
   const appt: Appointment = {
     id: makeID("appt"),
     type: "treatment",
@@ -430,9 +430,8 @@ export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentI
     status: "confirmed", // a clinician's own booking lands confirmed
     patientID: input.patientID,
     patientName: input.patientName,
-    appointmentNote: input.note ? input.note : undefined,
+    appointmentNote: input.note || undefined,
   };
-  void now; // ids are sequential in demo; `now` kept for signature parity with other ops
   return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
 }
 
@@ -442,6 +441,7 @@ export function rescheduleAppointment(
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive"); // terminal appts aren't reschedulable
   const moved = { ...appt, startMinute, endMinute: startMinute + durationMinutes };
   return { ...state, appointments: { ...state.appointments, [id]: moved } };
 }
