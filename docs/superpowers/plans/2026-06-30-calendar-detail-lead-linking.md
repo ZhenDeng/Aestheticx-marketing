@@ -17,10 +17,10 @@ Design: `docs/superpowers/specs/2026-06-30-calendar-detail-lead-linking-design.m
 - [x] 3.4 blocked time → plain label, no action
 
 ## 4. Review
-- [ ] 4.1 Engineer review (typescript-reviewer); address CRITICAL/HIGH
+- [x] 4.1 Engineer review (typescript-reviewer); fixed 2 HIGH (embedded PatientForm Cancel via onCancel; compact heading) + M5 already-linked guard + M6 best-effort onCreated + L10 link-text fallback; +3 tests. (Skipped M3 — block-time reschedule/cancel is reasonable & pre-existing; L7 — linking ≠ creating.)
 - [x] 4.2 Web QA (preview): existing-patient row → `/app/patients/p-2` ✓; lead → create → linked, block now "Jordan Lee" + row links to new patient (no longer a lead) ✓; block has no action ✓ — no console errors
 
 ## 5. Verify + ship
-- [ ] 5.1 `npm test` green; `npm run build` + `eslint` + `tsc` clean
-- [ ] 5.2 Update `web-port-roadmap` memory (detail patient-link + lead→create shipped; `linkAppointmentPatient` callable + structured lead fields deferred)
+- [x] 5.1 `npm test` green (228); `npm run build` + `eslint` + `tsc` clean
+- [x] 5.2 Update `web-port-roadmap` memory (detail patient-link + lead→create shipped; `linkAppointmentPatient` callable + structured lead fields deferred)
 - [ ] 5.3 `/create-pr`
