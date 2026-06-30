@@ -140,3 +140,20 @@ export async function mirrorMarkAppointment(id: string, status: "completed" | "n
 export async function mirrorLinkAppointmentPatient(id: string, patientId: string): Promise<void> {
   await httpsCallable(functions(), "linkAppointmentPatient")({ appointmentId: id, patientId });
 }
+// Deferred backend: the authorisation-slot Cloud Functions are not yet deployed. The web UI
+// is demo-complete; live publish/book/withdraw light up once these land.
+export async function mirrorPublishAvailability(window: import("@/lib/demo/types").AvailabilityWindow): Promise<void> {
+  await httpsCallable(functions(), "publishAvailability")({
+    windowId: window.id, doctorId: window.doctorID, dateISO: window.dateISO,
+    startMinute: window.startMinute, endMinute: window.endMinute,
+  });
+}
+export async function mirrorWithdrawAvailability(windowID: string): Promise<void> {
+  await httpsCallable(functions(), "withdrawAvailability")({ windowId: windowID });
+}
+export async function mirrorBookAuthSlot(appt: import("@/lib/demo/types").Appointment): Promise<void> {
+  await httpsCallable(functions(), "bookAuthSlot")({
+    appointmentId: appt.id, doctorId: appt.ownerID, dateISO: appt.dateISO,
+    startMinute: appt.startMinute, patientId: appt.patientID, patientName: appt.patientName,
+  });
+}

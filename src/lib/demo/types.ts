@@ -183,6 +183,17 @@ export interface Appointment {
   appointmentNote?: string;
 }
 
+// A doctor's published availability window for authorisation teleconsults. Bookable 10-min
+// slots are derived from [startMinute, endMinute); doctorName is denormalised at publish.
+export interface AvailabilityWindow {
+  id: string;
+  doctorID: string;
+  doctorName: string;
+  dateISO: string; // yyyy-mm-dd
+  startMinute: number;
+  endMinute: number;
+}
+
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -225,6 +236,7 @@ export interface DemoState {
   followUpTasksByID: Record<string, FollowUpTask>;
   followUpSettingsByUser: Record<string, FollowUpSettings>;
   bookingTokensByUser: Record<string, string>;
+  availabilityWindows: Record<string, AvailabilityWindow>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

@@ -67,7 +67,8 @@ export function assembleState(rows: HydrationRows): DemoState {
   const bookingTokensByUser: DemoState["bookingTokensByUser"] = {};
   if (rows.bookingToken) bookingTokensByUser[rows.currentUserID] = rows.bookingToken;
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser };
+  // availabilityWindows: live population is a deferred backend task; demo-complete today.
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {

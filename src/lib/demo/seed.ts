@@ -144,6 +144,16 @@ export function buildSeedState(): DemoState {
   for (const a of appts) appointments[a.id] = a;
   state = { ...state, appointments };
 
+  // A published authorisation-availability window for Dr Voss (14:00–15:00 → six 10-min slots),
+  // so nurses can demo booking an open auth slot.
+  const availID = "avail-seed-voss";
+  state = {
+    ...state,
+    availabilityWindows: {
+      [availID]: { id: availID, doctorID: "u-voss", doctorName: "Dr Elena Voss", dateISO: TODAY_ISO, startMinute: 840, endMinute: 900 },
+    },
+  };
+
   // One pending follow-up due today so the calendar surfacing is demonstrable
   // (a freshly generated task is due +interval, so it would not show on "today").
   const seededFollowUp: FollowUpTask = {
