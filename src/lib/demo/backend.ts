@@ -7,6 +7,7 @@ import type {
   Identity,
   MedicationItem,
   Note,
+  NoteTemplate,
   Patient,
   PatientDraft,
   PatientField,
@@ -37,6 +38,7 @@ export function emptyState(): DemoState {
     formsByPatient: {},
     invoices: [],
     scriptPricing: {},
+    noteTemplatesByOwner: {},
   };
 }
 
@@ -302,6 +304,27 @@ export function notePreview(note: Note): string {
   if (note.title.trim()) return note.title;
   const firstLine = note.body.split("\n")[0] ?? "";
   return firstLine ? `${firstLine}…` : "(empty note)";
+}
+
+// --- Note templates (clinician-owned, private) ---
+
+export function noteTemplatesForOwner(state: DemoState, ownerID: string): NoteTemplate[] {
+  return [...(state.noteTemplatesByOwner[ownerID] ?? [])]
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+export function saveNoteTemplate(state: DemoState, template: NoteTemplate, identity: Identity): DemoState {
+  // A user may only write their own templates (mirrors the Firestore rule uid()==userId).
+  if (template.ownerID !== identity.user.id) throw new BackendError("notPermitted");
+  const list = state.noteTemplatesByOwner[template.ownerID] ?? [];
+  const next = [...list.filter((t) => t.id !== template.id), template]; // upsert by id
+  return { ...state, noteTemplatesByOwner: { ...state.noteTemplatesByOwner, [template.ownerID]: next } };
+}
+
+export function deleteNoteTemplate(state: DemoState, id: string, identity: Identity): DemoState {
+  const ownerID = identity.user.id; // scoped to the caller — never another user's list
+  const list = state.noteTemplatesByOwner[ownerID] ?? [];
+  return { ...state, noteTemplatesByOwner: { ...state.noteTemplatesByOwner, [ownerID]: list.filter((t) => t.id !== id) } };
 }
 
 // Active authorisations the identity is allowed to tick when writing a treatment note.

@@ -3,6 +3,7 @@
 // Enum raw values match the Swift `rawValue`s so the shapes stay wire-compatible.
 
 import type { FormTemplateKind, SigningChannel } from "./forms";
+import type { AftercareCategory } from "./aftercare";
 
 export type Role = "doctor" | "nurse" | "clinicAdmin" | "superAdmin";
 
@@ -132,6 +133,14 @@ export interface Note {
   medications: TreatmentMedication[];
 }
 
+export interface NoteTemplate {
+  id: string;
+  ownerID: string; // private to this user
+  name: string;
+  body: string;
+  aftercareCategories: AftercareCategory[];
+}
+
 export type AppointmentType = "authSlot" | "treatment";
 export type AppointmentStatus =
   | "awaitingConfirmation"
@@ -189,6 +198,7 @@ export interface DemoState {
   formsByPatient: Record<string, SignedFormRecord[]>;
   invoices: import("./invoicing").Invoice[];
   scriptPricing: Record<string, number>; // "{doctorID}_{counterpartyID}" -> cents
+  noteTemplatesByOwner: Record<string, NoteTemplate[]>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

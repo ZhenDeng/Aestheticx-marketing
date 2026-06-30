@@ -50,7 +50,7 @@ export function assembleState(rows: HydrationRows): DemoState {
     const cents = typeof r.data.priceCents === "number" ? r.data.priceCents : 0;
     if (cents > 0) scriptPricing[r.id] = cents; // doc id is "{doctorId}_{counterpartyId}"
   }
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
