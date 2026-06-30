@@ -1,6 +1,6 @@
 // Port of SessionState.demoBackend — the same demo data the iOS app seeds.
 // Built by replaying domain operations so seeded state obeys the same rules.
-import type { DemoState, Identity, MedicationItem, Patient } from "./types";
+import type { DemoState, FollowUpTask, Identity, MedicationItem, Patient } from "./types";
 import { LUMIERE, DEMO_ACCOUNTS } from "./accounts";
 import {
   emptyState,
@@ -142,6 +142,14 @@ export function buildSeedState(): DemoState {
   const appointments = { ...state.appointments };
   for (const a of appts) appointments[a.id] = a;
   state = { ...state, appointments };
+
+  // One pending follow-up due today so the calendar surfacing is demonstrable
+  // (a freshly generated task is due +interval, so it would not show on "today").
+  const seededFollowUp: FollowUpTask = {
+    id: "fu-seed-1", ownerID: "u-voss", patientID: grace.id, patientName: "Grace Huang",
+    dueDateISO: TODAY_ISO, status: "pending",
+  };
+  state = { ...state, followUpTasksByID: { ...state.followUpTasksByID, [seededFollowUp.id]: seededFollowUp } };
 
   return state;
 }
