@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { DemoState, Identity, Patient } from "@/lib/demo/types";
+import type { Appointment, DemoState, Identity, Patient } from "@/lib/demo/types";
 import { emptyDraft } from "@/lib/demo/types";
 import {
   emptyState, missingFields, canCreatePatient, createPatient,
   updatePatient, deletePatient, mergePatients,
+  appointmentsForPatient, calendarName,
 } from "@/lib/demo/backend";
 
 const NOW = Date.UTC(2026, 5, 28);
@@ -113,5 +114,23 @@ describe("mergePatients", () => {
     expect(next.authorisations.a1.patientID).toBe("keep");
     expect(next.usages[0].patientID).toBe("keep");
     expect(next.patients.keep.prescribingDoctorIDs.sort()).toEqual(["d1", "d2"]);
+  });
+
+  it("re-points appointments from the removed file onto the kept file", () => {
+    const keep = clinicPatient("keep");
+    const remove = clinicPatient("remove");
+    const appt: Appointment = {
+      id: "ap1", type: "treatment", ownerID: "c1", dateISO: "2026-06-28",
+      startMinute: 600, endMinute: 630, status: "confirmed",
+      patientID: "remove", patientName: "Old Name",
+    };
+    const state: DemoState = { ...emptyState(),
+      patients: { keep, remove },
+      appointments: { ap1: appt } };
+    const next = mergePatients(state, "keep", "remove", admin);
+    expect(next.appointments.ap1.patientID).toBe("keep");
+    expect(next.appointments.ap1.patientName).toBe(calendarName(keep));
+    expect(appointmentsForPatient(next, "keep").map((a) => a.id)).toContain("ap1");
+    expect(appointmentsForPatient(next, "remove")).toHaveLength(0);
   });
 });

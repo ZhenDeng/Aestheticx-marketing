@@ -74,6 +74,11 @@ export async function mirrorUpdatePatient(p: Patient): Promise<void> {
 export async function mirrorDeletePatient(id: string): Promise<void> {
   await deleteDoc(doc(firestore(), "patients", id));
 }
+// Deferred backend: the live merge runs server-side in the `mergePatients` callable, which
+// must re-point the removed file's relational docs onto the kept file — including
+// `appointments` (set patientId = keepId and refresh the denormalised patientName to the
+// kept patient's calendar name), matching the demo backend's mergePatients. Verify/extend the
+// Cloud Function so appointments aren't orphaned after a live merge.
 export async function mirrorMergePatients(keepId: string, removeId: string): Promise<void> {
   await httpsCallable(functions(), "mergePatients")({ keepId, removeId });
 }
