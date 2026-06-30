@@ -260,7 +260,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="mt-4 rounded-card border border-line bg-card p-5 shadow-card">
-          <button onClick={() => setShowHistory((v) => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+          <button onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory} className="flex w-full items-center justify-between gap-2 text-left">
             <h2 className="font-display text-lg text-ink">Appointment history ({apptHistory.length})</h2>
             <span className="micro text-ink-soft">{showHistory ? "Hide" : "Show"}</span>
           </button>
