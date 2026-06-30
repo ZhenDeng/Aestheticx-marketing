@@ -166,7 +166,9 @@ export type AppointmentType = "authSlot" | "treatment";
 export type AppointmentStatus =
   | "awaitingConfirmation"
   | "confirmed"
-  | "completed";
+  | "completed"
+  | "noShow"
+  | "cancelled";
 
 export interface Appointment {
   id: string;
