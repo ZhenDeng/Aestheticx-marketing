@@ -56,7 +56,7 @@ export function assembleState(rows: HydrationRows): DemoState {
     const t = mapNoteTemplate(r.id, r.data);
     (noteTemplatesByOwner[t.ownerID] ??= []).push(t);
   }
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID: {}, followUpSettingsByUser: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {

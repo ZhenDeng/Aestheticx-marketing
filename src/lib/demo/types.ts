@@ -141,6 +141,23 @@ export interface NoteTemplate {
   aftercareCategories: AftercareCategory[];
 }
 
+export type FollowUpStatus = "pending" | "done" | "ignored";
+
+export interface FollowUpTask {
+  id: string;
+  ownerID: string;
+  patientID: string;
+  patientName: string; // denormalised for display
+  dueDateISO: string; // "yyyy-MM-dd" (UTC)
+  status: FollowUpStatus;
+  sourceNoteID?: string;
+}
+
+export interface FollowUpSettings {
+  enabled: boolean;
+  intervalDays: number;
+}
+
 export type AppointmentType = "authSlot" | "treatment";
 export type AppointmentStatus =
   | "awaitingConfirmation"
@@ -199,6 +216,8 @@ export interface DemoState {
   invoices: import("./invoicing").Invoice[];
   scriptPricing: Record<string, number>; // "{doctorID}_{counterpartyID}" -> cents
   noteTemplatesByOwner: Record<string, NoteTemplate[]>;
+  followUpTasksByID: Record<string, FollowUpTask>;
+  followUpSettingsByUser: Record<string, FollowUpSettings>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

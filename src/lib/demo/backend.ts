@@ -5,6 +5,9 @@ import type {
   AuthorisationRequest,
   DemoState,
   Identity,
+  FollowUpSettings,
+  FollowUpStatus,
+  FollowUpTask,
   MedicationItem,
   Note,
   NoteTemplate,
@@ -39,6 +42,8 @@ export function emptyState(): DemoState {
     invoices: [],
     scriptPricing: {},
     noteTemplatesByOwner: {},
+    followUpTasksByID: {},
+    followUpSettingsByUser: {},
   };
 }
 
@@ -327,6 +332,37 @@ export function deleteNoteTemplate(state: DemoState, id: string, identity: Ident
   const ownerID = identity.user.id; // scoped to the caller — never another user's list
   const list = state.noteTemplatesByOwner[ownerID] ?? [];
   return { ...state, noteTemplatesByOwner: { ...state.noteTemplatesByOwner, [ownerID]: list.filter((t) => t.id !== id) } };
+}
+
+// --- Clinician follow-up reminders ---
+
+const DAY_MS = 86_400_000;
+
+// Epoch ms -> "yyyy-MM-dd" in UTC (matches iOS followUpISODay).
+export function isoDay(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
+export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {
+  return state.followUpSettingsByUser[userID] ?? { enabled: false, intervalDays: 14 };
+}
+
+export function setFollowUpSettings(state: DemoState, settings: FollowUpSettings, identity: Identity): DemoState {
+  return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: settings } };
+}
+
+// Pending tasks due on or before dateISO, oldest first (overdue keep showing until actioned).
+export function followUpTasksForOwnerOn(state: DemoState, ownerID: string, dateISO: string): FollowUpTask[] {
+  return Object.values(state.followUpTasksByID)
+    .filter((t) => t.ownerID === ownerID && t.status === "pending" && t.dueDateISO <= dateISO)
+    .sort((a, b) => a.dueDateISO.localeCompare(b.dueDateISO));
+}
+
+export function setFollowUpStatus(state: DemoState, id: string, status: FollowUpStatus, identity: Identity): DemoState {
+  const task = state.followUpTasksByID[id];
+  if (!task) throw new BackendError("notFound");
+  if (task.ownerID !== identity.user.id) throw new BackendError("notPermitted");
+  return { ...state, followUpTasksByID: { ...state.followUpTasksByID, [id]: { ...task, status } } };
 }
 
 // Active authorisations the identity is allowed to tick when writing a treatment note.
