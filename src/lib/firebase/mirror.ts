@@ -104,3 +104,13 @@ export async function mirrorSetFollowUpStatus(uid: string, id: string, status: F
 export async function mirrorSetFollowUpSettings(uid: string, settings: FollowUpSettings): Promise<void> {
   await updateDoc(doc(firestore(), "users", uid), { followUpEnabled: settings.enabled, followUpIntervalDays: settings.intervalDays });
 }
+
+// Self-booking: per-user link token on the users/{uid} doc; confirm via the deployed callable.
+export async function mirrorSetBookingToken(uid: string, token: string): Promise<void> {
+  // merge so a brand-new account whose profile doc isn't written yet doesn't throw
+  // "No document to update" (updateDoc would).
+  await setDoc(doc(firestore(), "users", uid), { bookingToken: token }, { merge: true });
+}
+export async function mirrorConfirmAppointment(id: string): Promise<void> {
+  await httpsCallable(functions(), "confirmAppointment")({ appointmentId: id });
+}

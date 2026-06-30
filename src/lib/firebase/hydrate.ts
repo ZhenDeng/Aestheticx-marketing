@@ -21,6 +21,7 @@ export interface HydrationRows {
   noteTemplates: Row[];
   followUpTasks: Row[];
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  bookingToken: string | null;
   currentUserID: string;
 }
 
@@ -63,8 +64,10 @@ export function assembleState(rows: HydrationRows): DemoState {
   for (const r of rows.followUpTasks) followUpTasksByID[r.id] = mapFollowUpTask(r.id, rows.currentUserID, r.data);
   const followUpSettingsByUser: DemoState["followUpSettingsByUser"] = {};
   if (rows.followUpSettings) followUpSettingsByUser[rows.currentUserID] = rows.followUpSettings;
+  const bookingTokensByUser: DemoState["bookingTokensByUser"] = {};
+  if (rows.bookingToken) bookingTokensByUser[rows.currentUserID] = rows.bookingToken;
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -72,17 +75,23 @@ async function runQuery(path: string, ...constraints: QueryConstraint[]): Promis
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
 }
 
-// Follow-up settings live on the user's own profile doc. intervalDays is clamped to the
-// UI's valid range [1,90] on read so a corrupt/out-of-range stored value (0, negative, NaN)
-// can't silently schedule everything as immediately overdue or in the past.
-async function readUserFollowUpSettings(uid: string): Promise<{ enabled: boolean; intervalDays: number } | null> {
+// The user's own profile doc carries follow-up settings + their booking token (one read).
+// intervalDays is clamped to the UI's valid range [1,90] so a corrupt/out-of-range stored
+// value (0, negative, NaN) can't silently schedule everything as overdue or in the past.
+async function readUserProfile(uid: string): Promise<{
+  followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  bookingToken: string | null;
+}> {
   const snap = await getDoc(doc(firestore(), "users", uid));
-  if (!snap.exists()) return null;
+  if (!snap.exists()) return { followUpSettings: null, bookingToken: null };
   const d = snap.data();
-  if (d.followUpEnabled === undefined && d.followUpIntervalDays === undefined) return null;
+  const hasFU = d.followUpEnabled !== undefined || d.followUpIntervalDays !== undefined;
   const raw = d.followUpIntervalDays;
-  const intervalDays = typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14;
-  return { enabled: d.followUpEnabled === true, intervalDays };
+  const followUpSettings = hasFU
+    ? { enabled: d.followUpEnabled === true, intervalDays: typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14 }
+    : null;
+  const bookingToken = typeof d.bookingToken === "string" ? d.bookingToken : null;
+  return { followUpSettings, bookingToken };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
@@ -93,6 +102,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   // Super admin reads everything (the rules allow unconstrained queries for that
   // role) — mirrors iOS LiveBackend.hydrateEverything().
   if (claims.roles.includes("superAdmin")) {
+    const profile = await readUserProfile(uid);
     const all = await runQuery("patients");
     const notes: Record<string, Row[]> = {};
     await Promise.all(all.map(async (p) => { notes[p.id] = await runQuery(`patients/${p.id}/notes`); }));
@@ -111,7 +121,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       // only allow users/{uid}/… where uid()==userId), so these load the caller's own only.
       noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
       followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
-      followUpSettings: await readUserFollowUpSettings(uid),
+      followUpSettings: profile.followUpSettings,
+      bookingToken: profile.bookingToken,
       currentUserID: uid,
     });
   }
@@ -171,6 +182,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     for (const row of await runQuery("invoices", ...constraints)) invoicesById.set(row.id, row);
   }
   const scriptPricingRows = await runQuery("scriptPricing", where("doctorId", "==", uid));
+  const profile = await readUserProfile(uid);
 
   return assembleState({
     patients,
@@ -183,7 +195,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     scriptPricing: scriptPricingRows,
     noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
     followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
-    followUpSettings: await readUserFollowUpSettings(uid),
+    followUpSettings: profile.followUpSettings,
+    bookingToken: profile.bookingToken,
     currentUserID: uid,
   });
 }

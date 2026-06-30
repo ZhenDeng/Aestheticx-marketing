@@ -218,6 +218,7 @@ export interface DemoState {
   noteTemplatesByOwner: Record<string, NoteTemplate[]>;
   followUpTasksByID: Record<string, FollowUpTask>;
   followUpSettingsByUser: Record<string, FollowUpSettings>;
+  bookingTokensByUser: Record<string, string>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

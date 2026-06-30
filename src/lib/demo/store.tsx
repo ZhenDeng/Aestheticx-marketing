@@ -35,6 +35,10 @@ interface StoreValue {
   followUpTasksForOwnerOn: (ownerID: string, dateISO: string) => ReturnType<typeof backend.followUpTasksForOwnerOn>;
   setFollowUpSettings: (settings: import("./types").FollowUpSettings, identity: Identity) => void;
   setFollowUpStatus: (id: string, status: import("./types").FollowUpStatus, identity: Identity) => void;
+  bookingTokenForUser: (userID: string) => ReturnType<typeof backend.bookingTokenForUser>;
+  pendingBookings: (ownerID: string) => ReturnType<typeof backend.pendingBookings>;
+  ensureBookingToken: (identity: Identity) => void;
+  confirmAppointment: (id: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -232,6 +236,21 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.setFollowUpStatus(s, id, status, identity),
           (m) => m.mirrorSetFollowUpStatus(identity.user.id, id, status),
+        ),
+      bookingTokenForUser: (userID) => backend.bookingTokenForUser(state, userID),
+      pendingBookings: (ownerID) => backend.pendingBookings(state, ownerID),
+      ensureBookingToken: (identity) => {
+        if (state.bookingTokensByUser[identity.user.id]) return; // already have one
+        let token = "";
+        applyAndMirror(
+          (s) => { const r = backend.mintBookingToken(s, identity); token = r.token; return r.state; },
+          (m) => token ? m.mirrorSetBookingToken(identity.user.id, token) : Promise.resolve(),
+        );
+      },
+      confirmAppointment: (id, identity) =>
+        applyAndMirror(
+          (s) => backend.confirmAppointment(s, id, identity),
+          (m) => m.mirrorConfirmAppointment(id),
         ),
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
