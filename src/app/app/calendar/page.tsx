@@ -7,7 +7,7 @@ import { isoDay } from "@/lib/demo/backend";
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
-  layoutDay, dragStartMinute, type DayColumn,
+  layoutDay, dragStartMinute, dragEndMinute, slotStartMinute, type DayColumn,
 } from "@/lib/demo/calendar";
 import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
 
@@ -128,15 +128,35 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
   const settings = store.followUpSettingsForUser(me.user.id);
   const followUps = store.followUpTasksForOwnerOn(me.user.id, dateISO);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [chooser, setChooser] = useState<number | null>(null); // tapped start minute
+  const [slotForm, setSlotForm] = useState<{ start: number; block: boolean } | null>(null);
   const selected = dayAppts.find((a) => a.id === selectedId) ?? null;
+  const formInit = slotForm;
+  const showForm = showNew || slotForm !== null;
+  function closeForm() { setShowNew(false); setSlotForm(null); }
 
   return (
     <>
-      {showNew && <NewAppointmentForm dateISO={dateISO} me={me} onDone={() => setShowNew(false)} />}
+      {showForm && (
+        <NewAppointmentForm dateISO={dateISO} me={me}
+          initialStart={formInit?.start} initialBlock={formInit?.block} onDone={closeForm} />
+      )}
 
-      <DayTimeline appts={dayAppts} me={me} selectedId={selectedId} onSelect={setSelectedId} />
+      {chooser !== null && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-inner border border-line bg-card px-4 py-3">
+          <span className="text-sm text-ink-soft">Add at {timeLabel(chooser)}</span>
+          <button onClick={() => { setSlotForm({ start: chooser, block: false }); setChooser(null); }}
+            className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>New appointment</button>
+          <button onClick={() => { setSlotForm({ start: chooser, block: true }); setChooser(null); }}
+            className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Block time</button>
+          <button onClick={() => setChooser(null)} className="rounded-btn px-2 py-1.5 text-sm text-ink-soft">Cancel</button>
+        </div>
+      )}
+
+      <DayTimeline appts={dayAppts} me={me} selectedId={selectedId} onSelect={setSelectedId}
+        onEmptyTap={(startMinute) => { setChooser(startMinute); setSlotForm(null); }} />
       {dayAppts.length === 0 && (
-        <p className="mt-3 text-sm text-ink-soft">No appointments{dateISO === todayISO ? " today" : ""}.</p>
+        <p className="mt-3 text-sm text-ink-soft">No appointments{dateISO === todayISO ? " today" : ""}. Tap the timeline to add one.</p>
       )}
 
       {selected && (
@@ -204,6 +224,8 @@ const PX_PER_MIN = 1;       // 60px / hour — a 30-min chip is 30px (fits one t
 const TEXT_MIN_PX = 28;     // below this a chip is a colour-only bar
 const DRAG_STEP = 5;        // snap dragged appointments to 5-minute steps
 const DRAG_THRESHOLD = 4;   // px of movement before a press becomes a drag (vs a tap)
+const MIN_DURATION = 15;    // an appointment can't be resized shorter than this
+const SLOT_STEP = 15;       // tap-to-create snaps the start to 15-minute steps
 const HOURS_IN = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
 
 function canReschedule(a: Appointment): boolean {
@@ -213,13 +235,22 @@ function canReschedule(a: Appointment): boolean {
 // Full-width day timeline: hour rail + time-positioned blocks. Overlapping appointments
 // lay out side-by-side (via layoutDay); a block can be dragged to reschedule its start,
 // and a tap (movement under the threshold) selects it.
-function DayTimeline({ appts, me, selectedId, onSelect }: {
-  appts: Appointment[]; me: Identity; selectedId: string | null; onSelect: (id: string | null) => void;
+function DayTimeline({ appts, me, selectedId, onSelect, onEmptyTap }: {
+  appts: Appointment[]; me: Identity; selectedId: string | null;
+  onSelect: (id: string | null) => void; onEmptyTap: (startMinute: number) => void;
 }) {
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
   const cols = new Map<string, DayColumn>(
     layoutDay(appts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
   );
+
+  // A click on the bare column (grid lines are pointer-events-none, blocks are separate
+  // targets) is an empty-slot tap: clear any selection and offer to add at the tapped time.
+  function onColumnClick(e: React.MouseEvent) {
+    if (e.target !== e.currentTarget) return;
+    onSelect(null);
+    onEmptyTap(slotStartMinute(e.nativeEvent.offsetY, PX_PER_MIN, SLOT_STEP, WIN_START, WIN_END));
+  }
 
   return (
     <div className="mt-6 grid" style={{ gridTemplateColumns: "3rem 1fr" }}>
@@ -229,8 +260,7 @@ function DayTimeline({ appts, me, selectedId, onSelect }: {
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
         ))}
       </div>
-      <div className="relative border-l border-line" style={{ height: railHeight }}
-        onClick={(e) => { if (e.target === e.currentTarget) onSelect(null); }}>
+      <div className="relative border-l border-line" style={{ height: railHeight }} onClick={onColumnClick}>
         {HOURS_IN.map((h) => (
           <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
@@ -249,15 +279,17 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 }) {
   const store = useDemoStore();
   const [dragDy, setDragDy] = useState(0);
+  const [resizeDy, setResizeDy] = useState(0);
   // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
   const drag = useRef<{ startY: number; moved: boolean; dy: number } | null>(null);
+  const resize = useRef<{ startY: number; dy: number } | null>(null);
   const draggable = canReschedule(appt);
 
   const start = Math.max(appt.startMinute, WIN_START);
   const end = Math.min(appt.endMinute, WIN_END);
   if (end <= start) return null;
   const top = (start - WIN_START) * PX_PER_MIN;
-  const height = Math.max(4, (end - start) * PX_PER_MIN);
+  const height = Math.max(4, (end - start) * PX_PER_MIN + resizeDy);
   const showText = height >= TEXT_MIN_PX;
   const width = 100 / layout.cols;
   const left = layout.col * width;
@@ -290,6 +322,35 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     setDragDy(0);
   }
 
+  // Bottom-edge resize — a distinct gesture from the body move-drag (stopPropagation) and
+  // from a tap. Changes the end time only; the start stays put.
+  function onResizeDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    resize.current = { startY: e.clientY, dy: 0 };
+  }
+  function onResizeMove(e: React.PointerEvent) {
+    if (!resize.current) return;
+    e.stopPropagation();
+    const dy = e.clientY - resize.current.startY;
+    resize.current.dy = dy;
+    setResizeDy(dy);
+  }
+  function onResizeUp(e: React.PointerEvent) {
+    const st = resize.current;
+    resize.current = null;
+    setResizeDy(0);
+    if (!st) return;
+    e.stopPropagation();
+    const newEnd = dragEndMinute(appt.endMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END);
+    const duration = newEnd - appt.startMinute;
+    if (duration !== appt.endMinute - appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+  }
+  function onResizeCancel() {
+    resize.current = null;
+    setResizeDy(0);
+  }
+
   return (
     <button
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
@@ -307,6 +368,13 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         <span className="block text-[11px] leading-tight">
           <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appt.patientName ?? "—"}
         </span>
+      )}
+      {draggable && (
+        <span
+          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeCancel}
+          className="absolute inset-x-0 bottom-0 h-2"
+          style={{ cursor: "ns-resize", touchAction: "none" }}
+          aria-hidden />
       )}
     </button>
   );
@@ -439,12 +507,14 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
   );
 }
 
-function NewAppointmentForm({ dateISO, me, onDone }: { dateISO: string; me: Identity; onDone: () => void }) {
+function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }: {
+  dateISO: string; me: Identity; onDone: () => void; initialStart?: number; initialBlock?: boolean;
+}) {
   const store = useDemoStore();
-  const [blockTime, setBlockTime] = useState(false);
+  const [blockTime, setBlockTime] = useState(initialBlock ?? false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
-  const [time, setTime] = useState("10:00");
+  const [time, setTime] = useState(initialStart != null ? timeValue(initialStart) : "10:00");
   const [duration, setDuration] = useState(30);
   const [note, setNote] = useState("");
 
