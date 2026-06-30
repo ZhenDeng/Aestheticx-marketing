@@ -19,10 +19,10 @@ Design: `docs/superpowers/specs/2026-06-30-auth-slot-publish-book-design.md`
 - [x] 4.3 Nurse/clinic: pick doctor → open slots for a date → search patient → book; booked slot leaves the list
 
 ## 5. Review
-- [ ] 5.1 Engineer review (typescript-reviewer); address CRITICAL/HIGH
+- [x] 5.1 Engineer review (typescript-reviewer); fixed HIGH-2 (derived effectiveDoctorID) + M3/M4 (distinct BackendError messages) + M5 (O(1) slot check) + M6 (empty-time guard) + L8 (seed id const). HIGH-1 kept as eager-validate + pure-delete (the suggested in-updater backend call could throw mid-render) with a clarifying comment.
 - [x] 5.2 Web QA (preview): doctor sees seeded window + publishes (09:00 shows 1 booked from seed authSlot) ✓; withdraw empty removes, withdraw booked blocked ✓; nurse picks Voss → 6 slots → books Claire 14:00 → slot leaves list ✓ — no console errors
 
 ## 6. Verify + ship
 - [x] 6.1 `npm test` green; `npm run build` + `eslint` + `tsc` clean
-- [ ] 6.2 Update `web-port-roadmap` memory (auth-slot publish/book existing-patient shipped; lead-booking + Cloud Functions + online status deferred)
+- [x] 6.2 Update `web-port-roadmap` memory (auth-slot publish/book existing-patient shipped; lead-booking + Cloud Functions + online status deferred)
 - [ ] 6.3 `/create-pr`
