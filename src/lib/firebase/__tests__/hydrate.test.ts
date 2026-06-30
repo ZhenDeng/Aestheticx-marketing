@@ -19,6 +19,9 @@ const rows: HydrationRows = {
   invoices: [{ id: "inv1", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", counterpartyType: "clinic", periodLabel: "June 2026", lines: [{ authorisationId: "a1", dateISO: "2026-06-26", patientName: "Mara", feeCents: 2500, gstCents: 250 }], subtotalCents: 2500, gstCents: 250, totalCents: 2750, authorisationIds: ["a1"], pdfFileId: "invoices/u-voss/inv1.pdf", createdAt: 6 } }],
   scriptPricing: [{ id: "u-voss_clinic-lumiere", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", priceCents: 3000 } }],
   noteTemplates: [{ id: "tpl1", data: { ownerId: "u-voss", name: "Std", body: "Body", aftercareCategories: ["antiwrinkle"] } }],
+  followUpTasks: [{ id: "fu1", data: { patientId: "p1", patientName: "Pat", dueDateISO: "2026-07-10", status: "pending" } }],
+  followUpSettings: { enabled: true, intervalDays: 7 },
+  currentUserID: "u-voss",
 };
 
 describe("assembleState", () => {
@@ -36,5 +39,7 @@ describe("assembleState", () => {
     expect(state.formsByPatient.p1).toHaveLength(1);
     expect(state.noteTemplatesByOwner["u-voss"]).toHaveLength(1);
     expect(state.noteTemplatesByOwner["u-voss"][0]).toMatchObject({ name: "Std", aftercareCategories: ["antiwrinkle"] });
+    expect(state.followUpTasksByID.fu1).toMatchObject({ ownerID: "u-voss", dueDateISO: "2026-07-10", status: "pending" });
+    expect(state.followUpSettingsByUser["u-voss"]).toEqual({ enabled: true, intervalDays: 7 });
   });
 });
