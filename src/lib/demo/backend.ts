@@ -1,6 +1,7 @@
 // Pure domain rules ported from the iOS InMemoryBackend + PatientPermissions + Authorisations.
 // Every mutator returns a NEW DemoState (immutable). `now` is passed in for deterministic tests.
 import type {
+  Appointment,
   Authorisation,
   AuthorisationRequest,
   DemoState,
@@ -44,6 +45,7 @@ export function emptyState(): DemoState {
     noteTemplatesByOwner: {},
     followUpTasksByID: {},
     followUpSettingsByUser: {},
+    bookingTokensByUser: {},
   };
 }
 
@@ -368,6 +370,39 @@ export function setFollowUpStatus(state: DemoState, id: string, status: FollowUp
   if (!task) throw new BackendError("notFound");
   if (task.ownerID !== identity.user.id) throw new BackendError("notPermitted");
   return { ...state, followUpTasksByID: { ...state.followUpTasksByID, [id]: { ...task, status } } };
+}
+
+// --- Patient self-booking (link/QR + pending-bookings inbox) ---
+
+// Owner of a calendar/appointment scope: the active clinic in a clinic context, else the user.
+function appointmentOwnerScope(identity: Identity): string {
+  return identity.context.kind === "clinic" ? identity.context.clinic.id : identity.user.id;
+}
+
+export function bookingTokenForUser(state: DemoState, userID: string): string | undefined {
+  return state.bookingTokensByUser[userID];
+}
+
+// Stable per-user token, minted once (matches iOS bookingLink(forUser:)).
+export function mintBookingToken(state: DemoState, identity: Identity): { state: DemoState; token: string } {
+  const existing = state.bookingTokensByUser[identity.user.id];
+  if (existing) return { state, token: existing };
+  const token = makeID("bk");
+  return { state: { ...state, bookingTokensByUser: { ...state.bookingTokensByUser, [identity.user.id]: token } }, token };
+}
+
+// Awaiting-confirmation bookings on the owner's calendar, all dates, earliest first.
+export function pendingBookings(state: DemoState, ownerID: string): Appointment[] {
+  return Object.values(state.appointments)
+    .filter((a) => a.ownerID === ownerID && a.status === "awaitingConfirmation")
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO) || a.startMinute - b.startMinute);
+}
+
+export function confirmAppointment(state: DemoState, id: string, identity: Identity): DemoState {
+  const appt = state.appointments[id];
+  if (!appt) throw new BackendError("notFound");
+  if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status: "confirmed" } } };
 }
 
 // Active authorisations the identity is allowed to tick when writing a treatment note.

@@ -64,7 +64,7 @@ export function assembleState(rows: HydrationRows): DemoState {
   const followUpSettingsByUser: DemoState["followUpSettingsByUser"] = {};
   if (rows.followUpSettings) followUpSettingsByUser[rows.currentUserID] = rows.followUpSettings;
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
