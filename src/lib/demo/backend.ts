@@ -3,6 +3,7 @@
 import type {
   Appointment,
   AppointmentStatus,
+  AvailabilityWindow,
   Authorisation,
   AuthorisationRequest,
   DeliveryStatus,
@@ -49,6 +50,7 @@ export function emptyState(): DemoState {
     followUpTasksByID: {},
     followUpSettingsByUser: {},
     bookingTokensByUser: {},
+    availabilityWindows: {},
   };
 }
 
@@ -461,6 +463,98 @@ export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dat
   return Object.values(state.appointments)
     .filter((a) => a.ownerID === ownerID && a.dateISO === dateISO && a.status !== "cancelled")
     .sort((a, b) => a.startMinute - b.startMinute);
+}
+
+// ── Authorisation availability slots ────────────────────────────────────────
+export const SLOT_MINUTES = 10;
+
+// Bookable 10-minute start minutes derived from a window; a trailing partial is dropped.
+export function slotsForWindow(w: AvailabilityWindow): number[] {
+  const out: number[] = [];
+  for (let s = w.startMinute; s + SLOT_MINUTES <= w.endMinute; s += SLOT_MINUTES) out.push(s);
+  return out;
+}
+
+export interface PublishAvailabilityInput { doctorID: string; dateISO: string; startMinute: number; endMinute: number; }
+
+// A doctor publishes their own availability window (denormalising their name onto it).
+export function publishAvailability(
+  state: DemoState, input: PublishAvailabilityInput, identity: Identity,
+): { state: DemoState; window: AvailabilityWindow } {
+  if (identity.role !== "doctor" || input.doctorID !== identity.user.id) throw new BackendError("notPermitted");
+  if (input.endMinute <= input.startMinute) throw new BackendError("validationFailed");
+  const window: AvailabilityWindow = {
+    id: makeID("avail"), doctorID: input.doctorID, doctorName: identity.user.name,
+    dateISO: input.dateISO, startMinute: input.startMinute, endMinute: input.endMinute,
+  };
+  return { state: { ...state, availabilityWindows: { ...state.availabilityWindows, [window.id]: window } }, window };
+}
+
+export function availabilityWindowsForDoctor(state: DemoState, doctorID: string): AvailabilityWindow[] {
+  return Object.values(state.availabilityWindows)
+    .filter((w) => w.doctorID === doctorID)
+    .sort((a, b) => (a.dateISO === b.dateISO ? a.startMinute - b.startMinute : a.dateISO < b.dateISO ? -1 : 1));
+}
+
+// Distinct doctors who have published any availability (for the nurse booking picker).
+export function doctorsWithAvailability(state: DemoState): { doctorID: string; doctorName: string }[] {
+  const seen = new Map<string, string>();
+  for (const w of Object.values(state.availabilityWindows)) if (!seen.has(w.doctorID)) seen.set(w.doctorID, w.doctorName);
+  return [...seen].map(([doctorID, doctorName]) => ({ doctorID, doctorName }));
+}
+
+// A slot is taken when a non-cancelled authSlot appointment of that doctor sits on it.
+export function isSlotTaken(state: DemoState, doctorID: string, dateISO: string, startMinute: number): boolean {
+  return Object.values(state.appointments).some(
+    (a) => a.type === "authSlot" && a.ownerID === doctorID && a.dateISO === dateISO && a.startMinute === startMinute && a.status !== "cancelled",
+  );
+}
+
+export function openSlotsForDoctorOnDay(state: DemoState, doctorID: string, dateISO: string): number[] {
+  const open = new Set<number>();
+  for (const w of Object.values(state.availabilityWindows)) {
+    if (w.doctorID !== doctorID || w.dateISO !== dateISO) continue;
+    for (const s of slotsForWindow(w)) if (!isSlotTaken(state, doctorID, dateISO, s)) open.add(s);
+  }
+  return [...open].sort((a, b) => a - b);
+}
+
+function slotInAnyWindow(state: DemoState, doctorID: string, dateISO: string, startMinute: number): boolean {
+  return Object.values(state.availabilityWindows).some(
+    (w) => w.doctorID === doctorID && w.dateISO === dateISO && slotsForWindow(w).includes(startMinute),
+  );
+}
+
+export interface BookAuthSlotInput {
+  doctorID: string; dateISO: string; startMinute: number;
+  patientID?: string; patientName?: string; identity: Identity;
+}
+
+// Book a published 10-minute slot. The slot must belong to a window and be open (no double-book).
+export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { state: DemoState; appt: Appointment } {
+  if (!slotInAnyWindow(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("notActive");
+  if (isSlotTaken(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("slotTaken");
+  const appt: Appointment = {
+    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
+    startMinute: input.startMinute, endMinute: input.startMinute + SLOT_MINUTES, status: "confirmed",
+    patientID: input.patientID, patientName: input.patientName,
+    appointmentNote: `Auth request · ${input.identity.user.name}`,
+  };
+  return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
+}
+
+// A doctor withdraws one of their windows, only if no booking falls within it.
+export function withdrawAvailability(state: DemoState, windowID: string, identity: Identity): DemoState {
+  const w = state.availabilityWindows[windowID];
+  if (!w) throw new BackendError("notFound");
+  if (w.doctorID !== identity.user.id) throw new BackendError("notPermitted");
+  const booked = Object.values(state.appointments).some(
+    (a) => a.type === "authSlot" && a.ownerID === w.doctorID && a.dateISO === w.dateISO && a.status !== "cancelled" && a.startMinute >= w.startMinute && a.startMinute < w.endMinute,
+  );
+  if (booked) throw new BackendError("notActive");
+  const next = { ...state.availabilityWindows };
+  delete next[windowID];
+  return { ...state, availabilityWindows: next };
 }
 
 // A patient's full appointment history, most-recent-first (date desc, then start desc).
