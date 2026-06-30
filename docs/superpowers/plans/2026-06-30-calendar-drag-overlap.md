@@ -24,10 +24,10 @@ Design: `docs/superpowers/specs/2026-06-30-calendar-drag-overlap-design.md`
 - [x] 5.1 Apply `layoutDay` per day column in `WeekView` so overlapping chips render side-by-side
 
 ## 6. Review
-- [ ] 6.1 Engineer review (typescript-reviewer); address CRITICAL/HIGH
-- [x] 6.2 Web QA (preview): overlap side-by-side (day + week) ✓; drag moves+persists snapped ✓; tap selects without moving ✓ — no console errors
+- [x] 6.1 Engineer review (typescript-reviewer); fixed 4 HIGH (stale-closure drag delta → ref; pointercancel handling; defensive layout fallback; aria-label on blocks) + L1 step-grid clamp + M2 HOURS_IN hoist; +1 test. (Reviewer L3 rejected — the cluster-end reset is required.)
+- [x] 6.2 Web QA (preview): overlap side-by-side (day + week) ✓; drag moves+persists snapped ✓ (re-verified after ref fix); tap selects without moving ✓; aria-label present ✓ — no console errors
 
 ## 7. Verify + ship
-- [ ] 7.1 `npm test` green; `npm run build` + `eslint` + `tsc` clean
-- [ ] 7.2 Update `web-port-roadmap` memory (overlap + drag-to-reschedule shipped; resize/cross-day/week-drag still deferred)
+- [x] 7.1 `npm test` green (202); `npm run build` + `eslint` + `tsc` clean
+- [x] 7.2 Update `web-port-roadmap` memory (overlap + drag-to-reschedule shipped; resize/cross-day/week-drag still deferred)
 - [ ] 7.3 `/create-pr`
