@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDay, dragStartMinute, dragEndMinute, slotStartMinute } from "@/lib/demo/calendar";
+import { layoutDay, dragStartMinute, dragEndMinute, slotStartMinute, dayDelta } from "@/lib/demo/calendar";
 
 type Span = { id: string; startMinute: number; endMinute: number };
 const span = (id: string, startMinute: number, endMinute: number): Span => ({ id, startMinute, endMinute });
@@ -89,6 +89,24 @@ describe("dragEndMinute", () => {
   });
   it("respects a non-unit pixels-per-minute scale", () => {
     expect(dragEndMinute(600, 24, 0.8, STEP, 540, MIN, W_END)).toBe(630); // +30min
+  });
+});
+
+describe("dayDelta", () => {
+  it("is 0 for a sub-column horizontal drag", () => {
+    expect(dayDelta(20, 100)).toBe(0);
+    expect(dayDelta(-20, 100)).toBe(0);
+  });
+  it("crosses one column at a full column width", () => {
+    expect(dayDelta(100, 100)).toBe(1);
+    expect(dayDelta(-100, 100)).toBe(-1);
+  });
+  it("crosses multiple columns", () => {
+    expect(dayDelta(250, 100)).toBe(3); // rounds 2.5 → 3
+    expect(dayDelta(-240, 100)).toBe(-2);
+  });
+  it("is 0 when the column width is non-positive", () => {
+    expect(dayDelta(500, 0)).toBe(0);
   });
 });
 

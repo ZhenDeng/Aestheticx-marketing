@@ -9,7 +9,7 @@ import { PatientForm } from "@/components/app/PatientForm";
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
-  layoutDay, dragStartMinute, dragEndMinute, slotStartMinute, type DayColumn,
+  layoutDay, dragStartMinute, dragEndMinute, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
 import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
 
@@ -115,7 +115,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
         <DayView ownerID={ownerID} dateISO={selectedISO} todayISO={todayISO} me={me}
           showNew={showNew} setShowNew={setShowNew} />
       )}
-      {view === "week" && <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} openDay={openDay} />}
+      {view === "week" && <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
       {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} openDay={openDay} />}
     </div>
   );
@@ -291,7 +291,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const left = layout.col * width;
 
   function onPointerDown(e: React.PointerEvent) {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
     drag.current = { startY: e.clientY, moved: false, dy: 0 };
   }
   function onPointerMove(e: React.PointerEvent) {
@@ -322,7 +322,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   // from a tap. Changes the end time only; the start stays put.
   function onResizeDown(e: React.PointerEvent) {
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
     resize.current = { startY: e.clientY, dy: 0 };
   }
   function onResizeMove(e: React.PointerEvent) {
@@ -376,8 +376,110 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   );
 }
 
-function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
-  ownerID: string; selectedISO: string; todayISO: string; openDay: (iso: string) => void;
+// A week chip with the day-timeline gestures adapted to the grid: drag to reschedule
+// (vertical → time, horizontal → another day), bottom-edge drag to resize, tap → open the day.
+function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
+  appt: Appointment; me: Identity; days: string[]; dayIndex: number; layout: DayColumn; openDay: (iso: string) => void;
+}) {
+  const store = useDemoStore();
+  const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
+  const [resizeDy, setResizeDy] = useState(0);
+  const drag = useRef<{ startX: number; startY: number; moved: boolean; dx: number; dy: number; colW: number } | null>(null);
+  const resize = useRef<{ startY: number; dy: number } | null>(null);
+  const draggable = canReschedule(appt);
+
+  const start = Math.max(appt.startMinute, WIN_START);
+  const end = Math.min(appt.endMinute, WIN_END);
+  if (end <= start) return null;
+  const top = (start - WIN_START) * PX_PER_MIN;
+  const previewEnd = resizeDy !== 0
+    ? dragEndMinute(appt.endMinute, resizeDy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END)
+    : end;
+  const height = Math.max(4, (previewEnd - start) * PX_PER_MIN);
+  const showText = height >= TEXT_MIN_PX;
+  const width = 100 / layout.cols;
+  const left = layout.col * width;
+
+  function onPointerDown(e: React.PointerEvent) {
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
+    // Reconstruct the full column width from the chip's own rect (chip width = colW/cols),
+    // which is always available and transform/scroll-invariant (unlike offsetParent).
+    const colW = e.currentTarget.getBoundingClientRect().width * layout.cols;
+    drag.current = { startX: e.clientX, startY: e.clientY, moved: false, dx: 0, dy: 0, colW };
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag.current) return;
+    const dx = e.clientX - drag.current.startX;
+    const dy = e.clientY - drag.current.startY;
+    drag.current.dx = dx; drag.current.dy = dy;
+    if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
+    if (draggable && drag.current.moved) setMove({ dx, dy });
+  }
+  function onPointerUp() {
+    const st = drag.current; drag.current = null; setMove(null);
+    if (!st) return;
+    if (!st.moved) { openDay(appt.dateISO); return; } // a tap opens the day
+    if (!draggable) return; // dragged a non-reschedulable chip — discard silently
+    const duration = appt.endMinute - appt.startMinute;
+    const targetISO = days[Math.max(0, Math.min(days.length - 1, dayIndex + dayDelta(st.dx, st.colW)))];
+    const newStart = dragStartMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
+    if (targetISO !== appt.dateISO || newStart !== appt.startMinute) store.rescheduleAppointment(appt.id, targetISO, newStart, duration, me);
+  }
+  function onPointerCancel() { drag.current = null; setMove(null); }
+
+  function onResizeDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
+    resize.current = { startY: e.clientY, dy: 0 };
+  }
+  function onResizeMove(e: React.PointerEvent) {
+    if (!resize.current) return;
+    e.stopPropagation();
+    const dy = e.clientY - resize.current.startY;
+    resize.current.dy = dy;
+    setResizeDy(dy);
+  }
+  function onResizeUp(e: React.PointerEvent) {
+    e.stopPropagation();
+    const st = resize.current; resize.current = null; setResizeDy(0);
+    if (!st) return;
+    const newEnd = dragEndMinute(appt.endMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END);
+    const duration = newEnd - appt.startMinute;
+    if (duration !== appt.endMinute - appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+  }
+  function onResizeCancel() { resize.current = null; setResizeDy(0); }
+
+  return (
+    <button
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
+      className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
+      style={{
+        top, height, left: `calc(${left}% + 1px)`, width: `calc(${width}% - 2px)`,
+        background: apptColor(appt), borderLeft: `3px solid ${apptTypeAccent(appt)}`,
+        transform: move ? `translate(${move.dx}px, ${move.dy}px)` : undefined,
+        touchAction: "none", cursor: draggable ? "grab" : "pointer",
+        zIndex: move || resizeDy !== 0 ? 10 : 1,
+      }}
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appt.patientName ?? "Blocked time"}, ${STATUS_LABEL[appt.status]}`}
+      title={`${timeLabel(appt.startMinute)} ${appt.patientName ?? "Blocked time"}`}>
+      {showText && (
+        <span className="block text-[11px] leading-tight">
+          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appt.patientName ?? "—"}
+        </span>
+      )}
+      {draggable && (
+        <span
+          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeCancel}
+          className="absolute inset-x-0 bottom-0 h-2"
+          style={{ cursor: "ns-resize", touchAction: "none" }}
+          aria-hidden />
+      )}
+    </button>
+  );
+}
+
+function WeekView({ ownerID, selectedISO, todayISO, me, openDay }: {
+  ownerID: string; selectedISO: string; todayISO: string; me: Identity; openDay: (iso: string) => void;
 }) {
   const store = useDemoStore();
   const days = weekDaysFor(selectedISO);
@@ -406,7 +508,7 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
           ))}
         </div>
         {/* day columns */}
-        {days.map((iso) => {
+        {days.map((iso, dayIndex) => {
           const dayAppts = byDay.get(iso) ?? [];
           const cols = new Map<string, DayColumn>(
             layoutDay(dayAppts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
@@ -417,32 +519,10 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
                 <div key={h} className="absolute left-0 right-0 border-t border-line/60"
                   style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
               ))}
-              {dayAppts.map((a) => {
-                // Clamp both edges to the visible window; an appointment fully outside it is skipped.
-                const start = Math.max(a.startMinute, WIN_START);
-                const end = Math.min(a.endMinute, WIN_END);
-                if (end <= start) return null;
-                const top = (start - WIN_START) * PX_PER_MIN;
-                const height = Math.max(4, (end - start) * PX_PER_MIN);
-                const showText = height >= TEXT_MIN_PX;
-                const layout = cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 };
-                const width = 100 / layout.cols;
-                const left = layout.col * width;
-                return (
-                  <button key={a.id} onClick={() => openDay(iso)}
-                    className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
-                    style={{ top, height, left: `calc(${left}% + 1px)`, width: `calc(${width}% - 2px)`,
-                      background: apptColor(a), borderLeft: `3px solid ${apptTypeAccent(a)}` }}
-                    aria-label={`${timeLabel(a.startMinute)}–${timeLabel(a.endMinute)} ${a.patientName ?? "Blocked time"}, ${STATUS_LABEL[a.status]}`}
-                    title={`${timeLabel(a.startMinute)} ${a.patientName ?? "Blocked time"}`}>
-                    {showText && (
-                      <span className="block text-[11px] leading-tight">
-                        <span className="font-medium">{timeLabel(a.startMinute)}</span> {a.patientName ?? "—"}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {dayAppts.map((a) => (
+                <WeekBlock key={a.id} appt={a} me={me} days={days} dayIndex={dayIndex}
+                  layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }} openDay={openDay} />
+              ))}
             </div>
           );
         })}

@@ -436,13 +436,13 @@ export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentI
 }
 
 export function rescheduleAppointment(
-  state: DemoState, id: string, startMinute: number, durationMinutes: number, identity: Identity,
+  state: DemoState, id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity,
 ): DemoState {
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive"); // terminal appts aren't reschedulable
-  const moved = { ...appt, startMinute, endMinute: startMinute + durationMinutes };
+  const moved = { ...appt, dateISO, startMinute, endMinute: startMinute + durationMinutes };
   return { ...state, appointments: { ...state.appointments, [id]: moved } };
 }
 

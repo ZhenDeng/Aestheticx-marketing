@@ -48,15 +48,19 @@ describe("markAppointment", () => {
 });
 
 describe("rescheduleAppointment", () => {
-  it("moves the appointment and updates the end", () => {
-    const s = rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", 660, 45, voss);
-    expect(s.appointments.a1).toMatchObject({ startMinute: 660, endMinute: 705 });
+  it("moves the appointment (same day) and updates the end", () => {
+    const s = rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", "2026-06-26", 660, 45, voss);
+    expect(s.appointments.a1).toMatchObject({ dateISO: "2026-06-26", startMinute: 660, endMinute: 705 });
+  });
+  it("moves the appointment to another day", () => {
+    const s = rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", "2026-06-29", 540, 30, voss);
+    expect(s.appointments.a1).toMatchObject({ dateISO: "2026-06-29", startMinute: 540, endMinute: 570 });
   });
   it("rejects another owner's appointment", () => {
-    expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", 660, 30, sarah)).toThrow(BackendError);
+    expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", "2026-06-26", 660, 30, sarah)).toThrow(BackendError);
   });
   it("rejects rescheduling a terminal (completed) appointment", () => {
-    expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "completed")), "a1", 660, 30, voss)).toThrow(BackendError);
+    expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "completed")), "a1", "2026-06-26", 660, 30, voss)).toThrow(BackendError);
   });
 });
 
