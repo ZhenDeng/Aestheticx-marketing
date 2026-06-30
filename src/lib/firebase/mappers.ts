@@ -279,7 +279,9 @@ export function mapForm(id: string, patientID: string, data: Doc): SignedFormRec
   };
 }
 
-// Field names match iOS LiveBackend.encode(_:)/noteTemplate(id:data:).
+// Field names match iOS LiveBackend.encode(_:)/noteTemplate(id:data:). `ownerId` is also
+// in the doc path (users/{ownerID}/noteTemplates/{id}); we store it in the body too for
+// iOS wire parity. All writes go through this encoder, so the body field stays populated.
 export function encodeNoteTemplate(t: NoteTemplate): Doc {
   return { ownerId: t.ownerID, name: t.name, body: t.body, aftercareCategories: t.aftercareCategories };
 }

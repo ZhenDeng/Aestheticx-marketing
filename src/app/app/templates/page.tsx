@@ -18,7 +18,10 @@ export default function TemplatesPage() {
   const templates = store.noteTemplatesForOwner(me.user.id);
 
   function blank(): NoteTemplate {
-    return { id: crypto.randomUUID(), ownerID: me.user.id, name: "", body: "", aftercareCategories: [] };
+    // crypto.randomUUID needs a secure context (HTTPS / localhost). Fall back for plain-http
+    // LAN dev previews so "New template" never hard-crashes there.
+    const id = globalThis.crypto?.randomUUID?.() ?? `tpl-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    return { id, ownerID: me.user.id, name: "", body: "", aftercareCategories: [] };
   }
 
   return (

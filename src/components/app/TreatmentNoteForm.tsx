@@ -17,6 +17,7 @@ export function TreatmentNoteForm({
   const [edits, setEdits] = useState<Record<string, MedEdit>>({});
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [appliedTemplate, setAppliedTemplate] = useState("");
 
   const isDoctor = identity.role === "doctor";
   // Doctors may save directly; nurses must tick at least one usable authorisation.
@@ -85,11 +86,11 @@ export function TreatmentNoteForm({
         <p className="micro">2 · Notes</p>
         {templates.length > 0 && (
           <select
-            defaultValue=""
+            value={appliedTemplate}
             onChange={(e) => {
               const t = templates.find((x) => x.id === e.target.value);
               if (t) setBody(t.body); // prefill only — body stays editable (iOS-faithful)
-              e.target.value = "";
+              setAppliedTemplate(""); // controlled reset back to the placeholder
             }}
             className="mb-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink-soft outline-none focus:border-tint"
           >

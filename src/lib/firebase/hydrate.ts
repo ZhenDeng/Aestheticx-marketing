@@ -86,6 +86,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       formsByPatient: forms,
       invoices: await runQuery("invoices"),
       scriptPricing: await runQuery("scriptPricing"),
+      // Note templates are private per-owner even for a super admin (the rules only allow
+      // users/{uid}/noteTemplates where uid()==userId), so this loads the caller's own only.
       noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
     });
   }

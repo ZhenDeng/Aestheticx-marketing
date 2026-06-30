@@ -314,7 +314,9 @@ export function noteTemplatesForOwner(state: DemoState, ownerID: string): NoteTe
 }
 
 export function saveNoteTemplate(state: DemoState, template: NoteTemplate, identity: Identity): DemoState {
-  // A user may only write their own templates (mirrors the Firestore rule uid()==userId).
+  // Defence-in-depth: a user may only write their own templates (mirrors the Firestore
+  // rule uid()==userId). The management UI always builds templates with ownerID = me.user.id,
+  // so this guard is unreachable in normal use — it guards against a future bad call-site.
   if (template.ownerID !== identity.user.id) throw new BackendError("notPermitted");
   const list = state.noteTemplatesByOwner[template.ownerID] ?? [];
   const next = [...list.filter((t) => t.id !== template.id), template]; // upsert by id
