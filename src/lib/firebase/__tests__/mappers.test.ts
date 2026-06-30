@@ -5,6 +5,7 @@ import {
   mapAuthorisation,
   mapAuthRequest,
   mapAppointment,
+  mapAvailabilityWindow,
   encodeAuthRequest,
   encodeNote,
   parseDob,
@@ -128,6 +129,15 @@ describe("mapAppointment", () => {
     expect(a.type).toBe("authSlot");
     expect(a.startMinute).toBe(540);
     expect(a.patientName).toBe("Mara Boyd");
+  });
+});
+
+describe("mapAvailabilityWindow", () => {
+  it("maps a slotPublications doc to an availability window", () => {
+    const w = mapAvailabilityWindow("u-voss_2026-06-26_540", {
+      doctorId: "u-voss", dateISO: "2026-06-26", startMinute: 540, endMinute: 600, slotStarts: [540, 550],
+    });
+    expect(w).toMatchObject({ id: "u-voss_2026-06-26_540", doctorID: "u-voss", dateISO: "2026-06-26", startMinute: 540, endMinute: 600 });
   });
 });
 

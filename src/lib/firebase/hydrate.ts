@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -22,6 +22,7 @@ export interface HydrationRows {
   followUpTasks: Row[];
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
   bookingToken: string | null;
+  slotPublications?: Row[];
   currentUserID: string;
 }
 
@@ -67,8 +68,11 @@ export function assembleState(rows: HydrationRows): DemoState {
   const bookingTokensByUser: DemoState["bookingTokensByUser"] = {};
   if (rows.bookingToken) bookingTokensByUser[rows.currentUserID] = rows.bookingToken;
 
-  // availabilityWindows: live population is a deferred backend task; demo-complete today.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows: {} };
+  // The caller's own published auth-slot windows (slotPublications where doctorId == uid).
+  const availabilityWindows: DemoState["availabilityWindows"] = {};
+  for (const r of rows.slotPublications ?? []) availabilityWindows[r.id] = mapAvailabilityWindow(r.id, r.data);
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -124,6 +128,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
       followUpSettings: profile.followUpSettings,
       bookingToken: profile.bookingToken,
+      slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       currentUserID: uid,
     });
   }
@@ -198,6 +203,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
     followUpSettings: profile.followUpSettings,
     bookingToken: profile.bookingToken,
+    slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     currentUserID: uid,
   });
 }
