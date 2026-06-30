@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { patientPermissions } from "@/lib/demo/backend";
+import { patientPermissions, notePreview, canSendAftercare } from "@/lib/demo/backend";
+import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
+import { AftercareForm } from "@/components/app/AftercareForm";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { displayName, fullName, hasAlert } from "@/lib/demo/types";
 
@@ -17,6 +19,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mergeFrom, setMergeFrom] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showTreatment, setShowTreatment] = useState(false);
+  const [showAftercare, setShowAftercare] = useState(false);
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
@@ -76,13 +81,37 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           <div><dt className="micro">Medications</dt><dd className="mt-0.5 text-ink">{patient.currentMedications}</dd></div>
         </dl>
 
-        <h2 className="mt-8 font-display text-xl text-ink">Notes</h2>
+        <div className="mt-8 flex items-center justify-between gap-4">
+          <h2 className="font-display text-xl text-ink">Notes</h2>
+          <div className="flex items-center gap-2">
+            {perms.canWriteTreatmentNote && (
+              <button onClick={() => { setShowTreatment((v) => !v); setShowAftercare(false); }}
+                      className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
+                Treatment note
+              </button>
+            )}
+            {canSendAftercare(me) && (
+              <button onClick={() => { setShowAftercare((v) => !v); setShowTreatment(false); }}
+                      className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
+                Send aftercare
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showTreatment && perms.canWriteTreatmentNote && (
+          <TreatmentNoteForm patientID={id} identity={me} onDone={() => setShowTreatment(false)} />
+        )}
+        {showAftercare && canSendAftercare(me) && (
+          <AftercareForm patientID={id} identity={me} onDone={() => setShowAftercare(false)} />
+        )}
+
         {perms.canWriteGeneralNote && (
           <form onSubmit={addNote} className="mt-3">
             <textarea
               value={noteBody}
               onChange={(e) => setNoteBody(e.target.value)}
-              placeholder="Add a note…"
+              placeholder="Add a general note…"
               rows={2}
               className="w-full rounded-inner border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint"
             />
@@ -91,17 +120,56 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             </button>
           </form>
         )}
+
         <ul className="mt-4 flex flex-col gap-3">
-          {notes.map((n) => (
-            <li key={n.id} className="rounded-inner border border-line bg-card px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span className="micro">{n.kind}</span>
-                <span className="micro">{n.authorBadge}</span>
-              </div>
-              {n.title && <p className="mt-1 font-medium text-ink">{n.title}</p>}
-              <p className="mt-1 text-sm text-ink-soft">{n.body}</p>
-            </li>
-          ))}
+          {notes.map((n) => {
+            const isOpen = expanded.has(n.id);
+            return (
+              <li key={n.id} className="rounded-inner border border-line bg-card px-4 py-3">
+                <button
+                  onClick={() => setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
+                    return next;
+                  })}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-ink">{notePreview(n)}</span>
+                    <span className="micro">{new Date(n.createdAt).toLocaleDateString()}</span>
+                  </span>
+                  <span className="flex flex-none items-center gap-2">
+                    {n.kind !== "general" && (
+                      <span className="micro rounded-full border border-line px-2 py-0.5">
+                        {n.kind === "treatment" ? "Treatment" : "Aftercare"}
+                      </span>
+                    )}
+                    <span className="micro">{n.authorBadge}</span>
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="mt-2 border-t border-line pt-2">
+                    <p className="whitespace-pre-wrap text-sm text-ink-soft">{n.body}</p>
+                    {n.medications.length > 0 && (
+                      <ul className="mt-2 flex flex-col gap-1">
+                        {/* Index key is safe: TreatmentMedication has no stable id and this list is render-only (never reordered/deleted). */}
+                        {n.medications.map((m, i) => (
+                          <li key={i} className="text-xs text-ink-faint">
+                            {m.name}{m.dosage ? ` · ${m.dosage}` : ""}{m.batch ? ` · batch ${m.batch}` : ""}{m.expiry ? ` · exp ${m.expiry}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {n.kind === "treatment" && n.consumedAuthorisationIDs.length > 0 && (
+                      <p className="mt-1 micro" style={{ color: "var(--color-tint)" }}>
+                        Consumed {n.consumedAuthorisationIDs.length} repeat{n.consumedAuthorisationIDs.length === 1 ? "" : "s"}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
           {notes.length === 0 && <li className="text-sm text-ink-soft">No notes yet.</li>}
         </ul>
 

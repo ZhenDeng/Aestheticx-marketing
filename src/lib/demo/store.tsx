@@ -27,6 +27,7 @@ interface StoreValue {
   requireEdit: (requestID: string, identity: Identity) => void;
   saveGeneralNote: (input: { patientID: string; title: string; body: string; identity: Identity }) => void;
   saveTreatmentNote: (input: { patientID: string; tickedIDs: string[]; title: string; body: string; medications: TreatmentMedication[]; identity: Identity }) => void;
+  sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; identity: Identity }) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -175,6 +176,26 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             }
           },
         );
+      },
+      sendAftercare: (input) => {
+        // Demo records the aftercareRecord note locally. Live calls the deployed
+        // sendAftercare callable — it queues the email AND writes the note server-side,
+        // so we must NOT also write locally here; rehydrate to pull the new note.
+        if (!live) {
+          setState((s) => backend.recordAftercareSend(s, input, now).state);
+          return;
+        }
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/mirror");
+            await m.mirrorSendAftercare({
+              patientID: input.patientID, content: input.content, medications: input.medications,
+            });
+            setRefreshTick((t) => t + 1);
+          } catch (e) {
+            setLastSyncError(String(e));
+          }
+        })();
       },
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
