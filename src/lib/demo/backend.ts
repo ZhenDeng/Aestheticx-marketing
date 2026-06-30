@@ -23,7 +23,7 @@ import type {
   FormAnswer,
   TreatmentMedication,
 } from "./types";
-import { fullName, displayName, identityBadge } from "./types";
+import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
@@ -461,6 +461,46 @@ export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dat
   return Object.values(state.appointments)
     .filter((a) => a.ownerID === ownerID && a.dateISO === dateISO && a.status !== "cancelled")
     .sort((a, b) => a.startMinute - b.startMinute);
+}
+
+// Denormalised calendar form of a patient's name (preferred wins), shown on calendar items.
+export function calendarName(p: { preferredName?: string; givenName: string; lastName: string }): string {
+  const first = p.preferredName?.trim() ? p.preferredName.trim() : p.givenName;
+  return `${first} ${p.lastName}`.trim();
+}
+
+// A lead appointment has a name but no linked patient file yet (block-time has neither).
+export function isLeadAppointment(a: Appointment): boolean {
+  return !a.patientID && !!a.patientName;
+}
+
+// The lead's display name, with a trailing "(new lead)" marker stripped.
+export function leadName(a: Appointment): string {
+  return (a.patientName ?? "").replace(/\s*\(new lead\)\s*$/i, "").trim();
+}
+
+// A create-patient draft prefilled from a lead's name (first token given, remainder last).
+export function draftFromLead(a: Appointment): PatientDraft {
+  const name = leadName(a);
+  const space = name.indexOf(" ");
+  const givenName = space === -1 ? name : name.slice(0, space);
+  const lastName = space === -1 ? "" : name.slice(space + 1).trim();
+  return { ...emptyDraft(), givenName, lastName };
+}
+
+// Link a lead appointment to a newly-created patient: stamp the id + calendar name.
+export function linkAppointmentPatient(
+  state: DemoState, apptId: string, patientId: string, identity: Identity,
+): DemoState {
+  const appt = state.appointments[apptId];
+  if (!appt) throw new BackendError("notFound");
+  if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  const patient = state.patients[patientId];
+  if (!patient) throw new BackendError("notFound");
+  return {
+    ...state,
+    appointments: { ...state.appointments, [apptId]: { ...appt, patientID: patientId, patientName: calendarName(patient) } },
+  };
 }
 
 // Owner's appointments with startISO <= dateISO <= endISO (ISO dates compare lexically),
