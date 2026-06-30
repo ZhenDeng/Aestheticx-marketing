@@ -28,6 +28,7 @@ interface StoreValue {
   saveGeneralNote: (input: { patientID: string; title: string; body: string; identity: Identity }) => void;
   saveTreatmentNote: (input: { patientID: string; tickedIDs: string[]; title: string; body: string; medications: TreatmentMedication[]; identity: Identity }) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
+  retryAftercare: (patientID: string, noteID: string, identity: Identity) => void;
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
   saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
   deleteNoteTemplate: (id: string, identity: Identity) => void;
@@ -213,6 +214,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             setLastSyncError(String(e));
           }
         })();
+      },
+      retryAftercare: (patientID, noteID, identity) => {
+        // Demo: a successful re-attempt flips the record to delivered. Live retry is a
+        // deferred backend task (the Retry button is demo-gated), so this is demo-only.
+        if (!live) {
+          setState((s) => backend.setNoteDeliveryStatus(s, patientID, noteID, "delivered", identity));
+        }
       },
       noteTemplatesForOwner: (ownerID) => backend.noteTemplatesForOwner(state, ownerID),
       saveNoteTemplate: (template, identity) =>
