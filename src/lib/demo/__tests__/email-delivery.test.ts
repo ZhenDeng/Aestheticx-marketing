@@ -64,4 +64,10 @@ describe("setNoteDeliveryStatus", () => {
   it("throws on a missing patient", () => {
     expect(() => setNoteDeliveryStatus(emptyState(), "px", "n", "delivered", voss)).toThrow(BackendError);
   });
+  it("rejects a clinic admin (may write general notes but not send/manage aftercare)", () => {
+    const clinicPatient: Patient = { ...patientState().patients.p1, owner: { kind: "clinic", id: "clinic-lumiere" } };
+    const admin: Identity = { user: { id: "u-ava", name: "Ava" }, role: "clinicAdmin", context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière" } } };
+    const state: DemoState = { ...emptyState(), patients: { p1: clinicPatient }, notesByPatient: { p1: [{ id: "n1", patientID: "p1", kind: "aftercareRecord", title: "", body: "", createdAt: 0, authorID: "u", authorBadge: "RN", consumedAuthorisationIDs: [], medications: [], deliveryStatus: "failed" }] } };
+    expect(() => setNoteDeliveryStatus(state, "p1", "n1", "delivered", admin)).toThrow(BackendError);
+  });
 });

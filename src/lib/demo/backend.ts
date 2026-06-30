@@ -459,7 +459,10 @@ export function setNoteDeliveryStatus(
 ): DemoState {
   const patient = state.patients[patientID];
   if (!patient) throw new BackendError("notFound");
-  if (!patientPermissions(identity, patient).canWriteGeneralNote) throw new BackendError("notPermitted");
+  // Mirror recordAftercareSend's gate exactly — only a sender (nurse/doctor) who can view
+  // the patient may change an aftercare record's delivery status (not clinic admins).
+  if (!patientPermissions(identity, patient).canView) throw new BackendError("notPermitted");
+  if (!canSendAftercare(identity)) throw new BackendError("notPermitted");
   const list = state.notesByPatient[patientID] ?? [];
   const idx = list.findIndex((n) => n.id === noteID);
   if (idx < 0) throw new BackendError("notFound");

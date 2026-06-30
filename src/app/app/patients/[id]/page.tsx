@@ -9,10 +9,10 @@ import { patientPermissions, notePreview, canSendAftercare } from "@/lib/demo/ba
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { templateDisplayName } from "@/lib/demo/forms";
-import { displayName, fullName, hasAlert } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, type DeliveryStatus } from "@/lib/demo/types";
 
-const DELIVERY_LABEL: Record<string, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
-function deliveryColor(s: string): string {
+const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
+function deliveryColor(s: DeliveryStatus): string {
   return s === "delivered" ? "var(--color-tint)" : s === "failed" ? "var(--color-rose)" : "var(--color-ink-soft)";
 }
 

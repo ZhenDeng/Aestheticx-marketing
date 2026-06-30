@@ -209,8 +209,9 @@ export function encodeNote(n: Note): Doc {
     authorBadge: n.authorBadge,
     consumedAuthorisationIds: n.consumedAuthorisationIDs,
     medications: n.medications.map((m) => ({ name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "" })),
-    deliveryStatus: n.deliveryStatus ?? null,
-    aftercareCategories: n.aftercareCategories ?? [],
+    // Aftercare-only fields — omitted on general/treatment notes (iOS parity, no schema noise).
+    ...(n.deliveryStatus !== undefined && { deliveryStatus: n.deliveryStatus }),
+    ...(n.aftercareCategories !== undefined && { aftercareCategories: n.aftercareCategories }),
   };
 }
 
