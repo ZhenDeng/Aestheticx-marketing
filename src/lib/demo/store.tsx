@@ -42,6 +42,7 @@ interface StoreValue {
   confirmAppointment: (id: string, identity: Identity) => void;
   appointmentsForOwnerOnDay: (ownerID: string, dateISO: string) => ReturnType<typeof backend.appointmentsForOwnerOnDay>;
   appointmentsForOwnerInRange: (ownerID: string, startISO: string, endISO: string) => ReturnType<typeof backend.appointmentsForOwnerInRange>;
+  appointmentsForPatient: (patientID: string) => ReturnType<typeof backend.appointmentsForPatient>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
@@ -274,6 +275,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         ),
       appointmentsForOwnerOnDay: (ownerID, dateISO) => backend.appointmentsForOwnerOnDay(state, ownerID, dateISO),
       appointmentsForOwnerInRange: (ownerID, startISO, endISO) => backend.appointmentsForOwnerInRange(state, ownerID, startISO, endISO),
+      appointmentsForPatient: (patientID) => backend.appointmentsForPatient(state, patientID),
       bookTreatmentAppointment: (input) => {
         // Demo adds locally. Live calls bookTreatment (server-authoritative id) then rehydrates.
         if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input).state); return; }

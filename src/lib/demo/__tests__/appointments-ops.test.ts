@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyState, bookTreatmentAppointment, rescheduleAppointment, markAppointment,
-  appointmentsForOwnerOnDay, appointmentsForOwnerInRange, BackendError,
+  appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentsForPatient, BackendError,
 } from "@/lib/demo/backend";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
@@ -87,5 +87,24 @@ describe("appointmentsForOwnerInRange", () => {
     );
     expect(appointmentsForOwnerInRange(s, "u-voss", "2026-06-26", "2026-07-02").map((a) => a.id))
       .toEqual(["a3", "a2", "a1", "a4"]);
+  });
+});
+
+describe("appointmentsForPatient", () => {
+  const pk = (id: string, patientID: string | undefined, dateISO: string, startMinute: number, status: Appointment["status"]): Appointment =>
+    ({ id, type: "treatment", ownerID: "u-voss", dateISO, startMinute, endMinute: startMinute + 30, status, patientID });
+
+  it("returns only the patient's appointments, newest-first across dates and within a day, all statuses", () => {
+    const s = withAppts(
+      pk("a1", "p1", "2026-06-26", 540, "completed"),
+      pk("a2", "p1", "2026-07-03", 600, "noShow"),
+      pk("a3", "p1", "2026-07-03", 480, "cancelled"), // same day as a2, earlier
+      pk("a4", "p2", "2026-07-10", 600, "confirmed"), // other patient
+      pk("a5", undefined, "2026-07-09", 600, "confirmed"), // a lead / no patient
+    );
+    expect(appointmentsForPatient(s, "p1").map((a) => a.id)).toEqual(["a2", "a3", "a1"]);
+  });
+  it("is empty when the patient has no appointments", () => {
+    expect(appointmentsForPatient(withAppts(), "p1")).toEqual([]);
   });
 });
