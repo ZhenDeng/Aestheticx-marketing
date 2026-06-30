@@ -1,6 +1,6 @@
 // Port of SessionState.demoBackend — the same demo data the iOS app seeds.
 // Built by replaying domain operations so seeded state obeys the same rules.
-import type { DemoState, FollowUpTask, Identity, MedicationItem, Patient } from "./types";
+import type { DemoState, FollowUpTask, Identity, MedicationItem, Note, Patient } from "./types";
 import { LUMIERE, DEMO_ACCOUNTS } from "./accounts";
 import {
   emptyState,
@@ -162,6 +162,18 @@ export function buildSeedState(): DemoState {
     ...state,
     appointments: { ...state.appointments, [pendingBooking.id]: pendingBooking },
     bookingTokensByUser: { ...state.bookingTokensByUser, "u-voss": "bk-seed-voss" },
+  };
+
+  // A failed aftercare send so the delivery badge + Retry are demonstrable.
+  const failedAftercare: Note = {
+    id: "n-aftercare-failed", patientID: amara.id, kind: "aftercareRecord", title: "Aftercare sent",
+    body: "— ANTIWRINKLE —\nAvoid touching or massaging the treated area for 4 hours. Stay upright for 4 hours.",
+    createdAt: SEED_NOW, authorID: "u-voss", authorBadge: "Dr Elena Voss",
+    consumedAuthorisationIDs: [], medications: [], deliveryStatus: "failed", aftercareCategories: ["antiwrinkle"],
+  };
+  state = {
+    ...state,
+    notesByPatient: { ...state.notesByPatient, [amara.id]: [...(state.notesByPatient[amara.id] ?? []), failedAftercare] },
   };
 
   return state;
