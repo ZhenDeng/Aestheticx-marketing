@@ -28,6 +28,9 @@ interface StoreValue {
   saveGeneralNote: (input: { patientID: string; title: string; body: string; identity: Identity }) => void;
   saveTreatmentNote: (input: { patientID: string; tickedIDs: string[]; title: string; body: string; medications: TreatmentMedication[]; identity: Identity }) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; identity: Identity }) => void;
+  noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
+  saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
+  deleteNoteTemplate: (id: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -197,6 +200,17 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           }
         })();
       },
+      noteTemplatesForOwner: (ownerID) => backend.noteTemplatesForOwner(state, ownerID),
+      saveNoteTemplate: (template, identity) =>
+        applyAndMirror(
+          (s) => backend.saveNoteTemplate(s, template, identity),
+          (m) => m.mirrorSaveNoteTemplate(template),
+        ),
+      deleteNoteTemplate: (id, identity) =>
+        applyAndMirror(
+          (s) => backend.deleteNoteTemplate(s, id, identity),
+          (m) => m.mirrorDeleteNoteTemplate(identity.user.id, id),
+        ),
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
         // navigates to it) and surface validation/permission throws to the caller. The
