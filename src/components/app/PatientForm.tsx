@@ -20,7 +20,10 @@ function inputToDob(s: string): PatientDraft["dateOfBirth"] {
 
 const FIELD = "mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint";
 
-export function PatientForm({ mode, initial, existing }: { mode: "create" | "edit"; initial: PatientDraft; existing?: Patient }) {
+export function PatientForm({ mode, initial, existing, onCreated, onCancel, compact }: {
+  mode: "create" | "edit"; initial: PatientDraft; existing?: Patient;
+  onCreated?: (id: string) => void; onCancel?: () => void; compact?: boolean;
+}) {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const router = useRouter();
@@ -37,6 +40,9 @@ export function PatientForm({ mode, initial, existing }: { mode: "create" | "edi
     try {
       if (mode === "create") {
         const id = store.createPatient(draft, identity!);
+        // The patient is created; a best-effort post-create hook (e.g. linking a lead
+        // appointment) must not block navigation if it fails.
+        try { onCreated?.(id); } catch { /* link is best-effort; the patient still exists */ }
         router.push(`/app/patients/${id}`);
       } else if (existing) {
         const updated: Patient = {
@@ -57,7 +63,9 @@ export function PatientForm({ mode, initial, existing }: { mode: "create" | "edi
 
   return (
     <form onSubmit={submit} className="max-w-2xl">
-      <h1 className="font-display text-3xl text-ink">{mode === "create" ? "New patient" : "Edit patient"}</h1>
+      {compact
+        ? <h2 className="font-display text-lg text-ink">{mode === "create" ? "New patient from lead" : "Edit patient"}</h2>
+        : <h1 className="font-display text-3xl text-ink">{mode === "create" ? "New patient" : "Edit patient"}</h1>}
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <label className="block"><span className="micro">Given name *</span>
           <input className={FIELD} value={draft.givenName} onChange={(e) => set("givenName", e.target.value)} /></label>
@@ -92,7 +100,7 @@ export function PatientForm({ mode, initial, existing }: { mode: "create" | "edi
           style={{ background: "var(--color-tint)" }}>
           {mode === "create" ? "Create patient" : "Save changes"}
         </button>
-        <button type="button" onClick={() => router.back()}
+        <button type="button" onClick={() => (onCancel ? onCancel() : router.back())}
           className="rounded-btn border border-line px-5 py-2.5 text-sm text-ink-soft hover:border-tint">Cancel</button>
       </div>
     </form>

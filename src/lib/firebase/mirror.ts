@@ -130,3 +130,8 @@ export async function mirrorRescheduleAppointment(id: string, dateISO: string, s
 export async function mirrorMarkAppointment(id: string, status: "completed" | "noShow" | "cancelled"): Promise<void> {
   await httpsCallable(functions(), "markAppointment")({ appointmentId: id, status });
 }
+// Deferred backend: the `linkAppointmentPatient` Cloud Function is not yet deployed. The web
+// UI is ready; live linking lights up once it lands (demo works fully today).
+export async function mirrorLinkAppointmentPatient(id: string, patientId: string): Promise<void> {
+  await httpsCallable(functions(), "linkAppointmentPatient")({ appointmentId: id, patientId });
+}

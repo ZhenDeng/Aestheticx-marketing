@@ -45,6 +45,7 @@ interface StoreValue {
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
+  linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -297,6 +298,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.markAppointment(s, id, status, identity),
           (m) => m.mirrorMarkAppointment(id, status),
+        ),
+      linkAppointmentPatient: (apptId, patientId, identity) =>
+        applyAndMirror(
+          (s) => backend.linkAppointmentPatient(s, apptId, patientId, identity),
+          (m) => m.mirrorLinkAppointmentPatient(apptId, patientId),
         ),
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
