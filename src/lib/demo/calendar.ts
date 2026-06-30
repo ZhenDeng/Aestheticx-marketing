@@ -144,3 +144,24 @@ export function dragStartMinute(
   const maxStart = Math.floor((winEnd - durationMin) / step) * step;
   return Math.max(winStart, Math.min(snapped, maxStart));
 }
+
+// New end minute for a block whose bottom edge is dragged by `deltaPx`, snapped to `step`
+// and clamped to [startMin + minDuration, winEnd]. The start never moves.
+export function dragEndMinute(
+  origEnd: number, deltaPx: number, pxPerMin: number, step: number,
+  startMin: number, minDuration: number, winEnd: number,
+): number {
+  const raw = origEnd + deltaPx / pxPerMin;
+  const snapped = Math.round(raw / step) * step;
+  return Math.max(startMin + minDuration, Math.min(snapped, winEnd));
+}
+
+// Start minute for a tap at `offsetPx` down the timeline, snapped to `step` and clamped to
+// [winStart, winEnd - step] so at least one step fits before the window closes.
+export function slotStartMinute(
+  offsetPx: number, pxPerMin: number, step: number, winStart: number, winEnd: number,
+): number {
+  const raw = winStart + offsetPx / pxPerMin;
+  const snapped = Math.round(raw / step) * step;
+  return Math.max(winStart, Math.min(snapped, winEnd - step));
+}
