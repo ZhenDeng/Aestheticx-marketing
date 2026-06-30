@@ -402,7 +402,9 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
 
   function onPointerDown(e: React.PointerEvent) {
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
-    const colW = (e.currentTarget as HTMLElement).offsetParent?.getBoundingClientRect().width ?? 0;
+    // Reconstruct the full column width from the chip's own rect (chip width = colW/cols),
+    // which is always available and transform/scroll-invariant (unlike offsetParent).
+    const colW = e.currentTarget.getBoundingClientRect().width * layout.cols;
     drag.current = { startX: e.clientX, startY: e.clientY, moved: false, dx: 0, dy: 0, colW };
   }
   function onPointerMove(e: React.PointerEvent) {
@@ -416,7 +418,8 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   function onPointerUp() {
     const st = drag.current; drag.current = null; setMove(null);
     if (!st) return;
-    if (!st.moved || !draggable) { openDay(appt.dateISO); return; } // a tap opens the day
+    if (!st.moved) { openDay(appt.dateISO); return; } // a tap opens the day
+    if (!draggable) return; // dragged a non-reschedulable chip — discard silently
     const duration = appt.endMinute - appt.startMinute;
     const targetISO = days[Math.max(0, Math.min(days.length - 1, dayIndex + dayDelta(st.dx, st.colW)))];
     const newStart = dragStartMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
