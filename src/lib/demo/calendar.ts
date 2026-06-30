@@ -140,6 +140,7 @@ export function dragStartMinute(
 ): number {
   const raw = origStart + deltaPx / pxPerMin;
   const snapped = Math.round(raw / step) * step;
-  const maxStart = winEnd - durationMin;
+  // Floor the bottom bound to the step grid so a block at the end of the window stays snapped.
+  const maxStart = Math.floor((winEnd - durationMin) / step) * step;
   return Math.max(winStart, Math.min(snapped, maxStart));
 }

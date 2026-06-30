@@ -204,10 +204,8 @@ const PX_PER_MIN = 1;       // 60px / hour — a 30-min chip is 30px (fits one t
 const TEXT_MIN_PX = 28;     // below this a chip is a colour-only bar
 const DRAG_STEP = 5;        // snap dragged appointments to 5-minute steps
 const DRAG_THRESHOLD = 4;   // px of movement before a press becomes a drag (vs a tap)
+const HOURS_IN = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
 
-function hoursIn(): number[] {
-  return Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
-}
 function canReschedule(a: Appointment): boolean {
   return a.status === "awaitingConfirmation" || a.status === "confirmed";
 }
@@ -226,19 +224,19 @@ function DayTimeline({ appts, me, selectedId, onSelect }: {
   return (
     <div className="mt-6 grid" style={{ gridTemplateColumns: "3rem 1fr" }}>
       <div className="relative" style={{ height: railHeight }}>
-        {hoursIn().map((h) => (
+        {HOURS_IN.map((h) => (
           <div key={h} className="pointer-events-none absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
         ))}
       </div>
       <div className="relative border-l border-line" style={{ height: railHeight }}
         onClick={(e) => { if (e.target === e.currentTarget) onSelect(null); }}>
-        {hoursIn().map((h) => (
+        {HOURS_IN.map((h) => (
           <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
         ))}
         {appts.map((a) => (
-          <TimelineBlock key={a.id} appt={a} me={me} layout={cols.get(a.id)!}
+          <TimelineBlock key={a.id} appt={a} me={me} layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
             selected={a.id === selectedId} onSelect={onSelect} />
         ))}
       </div>
@@ -251,7 +249,8 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 }) {
   const store = useDemoStore();
   const [dragDy, setDragDy] = useState(0);
-  const drag = useRef<{ startY: number; moved: boolean } | null>(null);
+  // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
+  const drag = useRef<{ startY: number; moved: boolean; dy: number } | null>(null);
   const draggable = canReschedule(appt);
 
   const start = Math.max(appt.startMinute, WIN_START);
@@ -265,11 +264,12 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 
   function onPointerDown(e: React.PointerEvent) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { startY: e.clientY, moved: false };
+    drag.current = { startY: e.clientY, moved: false, dy: 0 };
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return;
     const dy = e.clientY - drag.current.startY;
+    drag.current.dy = dy;
     if (Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
     if (draggable && drag.current.moved) setDragDy(dy);
   }
@@ -280,13 +280,19 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     if (!st) return;
     if (!st.moved || !draggable) { onSelect(appt.id); return; } // a tap selects
     const duration = appt.endMinute - appt.startMinute;
-    const newStart = dragStartMinute(appt.startMinute, dragDy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
+    const newStart = dragStartMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
     if (newStart !== appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, newStart, duration, me);
+  }
+  // OS/browser interruptions (call, notification, home-bar swipe) fire pointercancel, not
+  // pointerup — reset so the captured pointer state isn't leaked into the next gesture.
+  function onPointerCancel() {
+    drag.current = null;
+    setDragDy(0);
   }
 
   return (
     <button
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
       className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
       style={{
         top: top + dragDy, height, left: `calc(${left}% + 2px)`, width: `calc(${width}% - 4px)`,
@@ -295,6 +301,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
         zIndex: dragDy !== 0 ? 10 : 1,
       }}
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appt.patientName ?? "Blocked time"}, ${STATUS_LABEL[appt.status]}`}
       title={`${timeLabel(appt.startMinute)} ${appt.patientName ?? "Blocked time"}`}>
       {showText && (
         <span className="block text-[11px] leading-tight">
@@ -313,7 +320,6 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
   const appts = store.appointmentsForOwnerInRange(ownerID, days[0], days[6]);
   const byDay = new Map<string, Appointment[]>();
   for (const a of appts) byDay.set(a.dateISO, [...(byDay.get(a.dateISO) ?? []), a]);
-  const hours = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
 
   return (
@@ -330,7 +336,7 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
         ))}
         {/* hour rail */}
         <div className="relative" style={{ height: railHeight }}>
-          {hours.map((h) => (
+          {HOURS_IN.map((h) => (
             <div key={h} className="absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
               style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
           ))}
@@ -343,7 +349,7 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
           );
           return (
             <div key={iso} className="relative border-l border-line" style={{ height: railHeight }}>
-              {hours.map((h) => (
+              {HOURS_IN.map((h) => (
                 <div key={h} className="absolute left-0 right-0 border-t border-line/60"
                   style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
               ))}
@@ -355,7 +361,7 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
                 const top = (start - WIN_START) * PX_PER_MIN;
                 const height = Math.max(4, (end - start) * PX_PER_MIN);
                 const showText = height >= TEXT_MIN_PX;
-                const layout = cols.get(a.id)!;
+                const layout = cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 };
                 const width = 100 / layout.cols;
                 const left = layout.col * width;
                 return (
@@ -363,6 +369,7 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
                     className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
                     style={{ top, height, left: `calc(${left}% + 1px)`, width: `calc(${width}% - 2px)`,
                       background: apptColor(a), borderLeft: `3px solid ${apptTypeAccent(a)}` }}
+                    aria-label={`${timeLabel(a.startMinute)}–${timeLabel(a.endMinute)} ${a.patientName ?? "Blocked time"}, ${STATUS_LABEL[a.status]}`}
                     title={`${timeLabel(a.startMinute)} ${a.patientName ?? "Blocked time"}`}>
                     {showText && (
                       <span className="block text-[11px] leading-tight">

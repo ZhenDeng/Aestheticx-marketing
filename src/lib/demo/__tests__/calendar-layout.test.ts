@@ -59,6 +59,10 @@ describe("dragStartMinute", () => {
   it("clamps so the block's end stays within the window", () => {
     expect(dragStartMinute(1100, 200, PX, STEP, 60, W_START, W_END)).toBe(1080); // 1140 - 60
   });
+  it("keeps the bottom clamp on the step grid for an off-grid duration", () => {
+    // maxStart = floor((1140 - 7) / 5) * 5 = 1130, not 1133
+    expect(dragStartMinute(1100, 200, PX, STEP, 7, W_START, W_END)).toBe(1130);
+  });
   it("respects a non-unit pixels-per-minute scale", () => {
     // 24px at 0.8px/min = 30min → 540 + 30 = 570
     expect(dragStartMinute(540, 24, 0.8, STEP, 30, W_START, W_END)).toBe(570);
