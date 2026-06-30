@@ -3,8 +3,8 @@
 import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
-import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate } from "./mappers";
-import type { AuthorisationRequest, Note, NoteTemplate, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
+import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate, encodeFollowUpTask } from "./mappers";
+import type { AuthorisationRequest, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -91,4 +91,16 @@ export async function mirrorSaveNoteTemplate(t: NoteTemplate): Promise<void> {
 }
 export async function mirrorDeleteNoteTemplate(ownerID: string, id: string): Promise<void> {
   await deleteDoc(doc(firestore(), `users/${ownerID}/noteTemplates`, id));
+}
+
+// Follow-up tasks live at users/{uid}/followUpTasks; settings on the users/{uid} doc
+// (rules: owner-only). All direct writes, mirroring iOS LiveBackend.
+export async function mirrorSaveFollowUpTask(t: FollowUpTask): Promise<void> {
+  await setDoc(doc(firestore(), `users/${t.ownerID}/followUpTasks`, t.id), encodeFollowUpTask(t));
+}
+export async function mirrorSetFollowUpStatus(uid: string, id: string, status: FollowUpStatus): Promise<void> {
+  await updateDoc(doc(firestore(), `users/${uid}/followUpTasks`, id), { status });
+}
+export async function mirrorSetFollowUpSettings(uid: string, settings: FollowUpSettings): Promise<void> {
+  await updateDoc(doc(firestore(), "users", uid), { followUpEnabled: settings.enabled, followUpIntervalDays: settings.intervalDays });
 }
