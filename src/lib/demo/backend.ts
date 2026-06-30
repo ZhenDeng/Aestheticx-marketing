@@ -402,6 +402,7 @@ export function confirmAppointment(state: DemoState, id: string, identity: Ident
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (appt.status !== "awaitingConfirmation") throw new BackendError("notActive"); // only pending bookings confirm
   return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status: "confirmed" } } };
 }
 

@@ -60,4 +60,7 @@ describe("confirmAppointment", () => {
   it("throws on a missing appointment", () => {
     expect(() => confirmAppointment(emptyState(), "nope", voss)).toThrow(BackendError);
   });
+  it("rejects re-confirming an already-confirmed booking", () => {
+    expect(() => confirmAppointment(withAppts(appt("a1", "u-voss", "2026-07-03", 600, "confirmed")), "a1", voss)).toThrow(BackendError);
+  });
 });

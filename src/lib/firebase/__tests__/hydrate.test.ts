@@ -44,4 +44,10 @@ describe("assembleState", () => {
     expect(state.followUpSettingsByUser["u-voss"]).toEqual({ enabled: true, intervalDays: 7 });
     expect(state.bookingTokensByUser["u-voss"]).toBe("bk-voss");
   });
+
+  it("omits follow-up settings + booking token when the user doc carries neither", () => {
+    const state = assembleState({ ...rows, followUpSettings: null, bookingToken: null });
+    expect(state.followUpSettingsByUser).toEqual({});
+    expect(state.bookingTokensByUser).toEqual({});
+  });
 });

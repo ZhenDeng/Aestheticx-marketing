@@ -18,10 +18,12 @@ export default function BookingsPage() {
   const token = identity ? store.bookingTokenForUser(identity.user.id) : undefined;
   const url = token ? bookingLinkUrl(token) : null;
 
-  // Mint the user's link on first visit if they don't have one yet.
+  // Mint the user's link on first visit if they don't have one yet. Wait for hydration
+  // (status !== "loading") so we never mint against the pre-hydration empty state and
+  // race the hydrated setState; `!token` keeps it idempotent across re-renders.
   useEffect(() => {
-    if (identity && !store.bookingTokenForUser(identity.user.id)) store.ensureBookingToken(identity);
-  }, [identity, store]);
+    if (identity && !token && store.status !== "loading") store.ensureBookingToken(identity);
+  }, [identity, token, store]);
 
   // Render the QR whenever the URL is known. (The QR <img> is gated on `url`, so no
   // synchronous clear is needed when url is absent — avoids set-state-in-effect.)
