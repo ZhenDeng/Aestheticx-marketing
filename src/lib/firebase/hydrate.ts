@@ -72,13 +72,17 @@ async function runQuery(path: string, ...constraints: QueryConstraint[]): Promis
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
 }
 
-// Follow-up settings live on the user's own profile doc.
+// Follow-up settings live on the user's own profile doc. intervalDays is clamped to the
+// UI's valid range [1,90] on read so a corrupt/out-of-range stored value (0, negative, NaN)
+// can't silently schedule everything as immediately overdue or in the past.
 async function readUserFollowUpSettings(uid: string): Promise<{ enabled: boolean; intervalDays: number } | null> {
   const snap = await getDoc(doc(firestore(), "users", uid));
   if (!snap.exists()) return null;
   const d = snap.data();
   if (d.followUpEnabled === undefined && d.followUpIntervalDays === undefined) return null;
-  return { enabled: d.followUpEnabled === true, intervalDays: typeof d.followUpIntervalDays === "number" ? d.followUpIntervalDays : 14 };
+  const raw = d.followUpIntervalDays;
+  const intervalDays = typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14;
+  return { enabled: d.followUpEnabled === true, intervalDays };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.

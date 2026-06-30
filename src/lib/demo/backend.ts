@@ -338,7 +338,12 @@ export function deleteNoteTemplate(state: DemoState, id: string, identity: Ident
 
 const DAY_MS = 86_400_000;
 
-// Epoch ms -> "yyyy-MM-dd" in UTC (matches iOS followUpISODay).
+/**
+ * Epoch ms -> "yyyy-MM-dd" in **UTC** (matches iOS followUpISODay). The interval
+ * arithmetic in saveTreatmentNote adds whole days in ms, which is exact in UTC.
+ * Keep this on `toISOString()` — switching to a local-timezone formatter would make
+ * due-date math inconsistent across DST/offset boundaries.
+ */
 export function isoDay(epochMs: number): string {
   return new Date(epochMs).toISOString().slice(0, 10);
 }

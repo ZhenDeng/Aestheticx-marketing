@@ -182,6 +182,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             } else if (note) {
               await m.mirrorCreateNote(input.patientID, note);
             }
+            // followUp.sourceNoteID points at the client note id. In the doctor-direct
+            // path that matches the mirrored note; in the ticked path the consumeRepeats
+            // Function writes a server-id note, so sourceNoteID is a best-effort hint there
+            // (unread by the app — same as iOS, which shares this Function).
             if (followUp) await m.mirrorSaveFollowUpTask(followUp);
           },
         );

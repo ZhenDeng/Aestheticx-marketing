@@ -8,11 +8,12 @@ import {
   approveRequest,
   saveTreatmentNote,
   saveGeneralNote,
+  isoDay,
 } from "./backend";
 
 // Fixed demo "today" so seeded appointments and expiries are deterministic.
 export const SEED_NOW = Date.UTC(2026, 5, 26, 0, 0, 0);
-const TODAY_ISO = "2026-06-26";
+const TODAY_ISO = isoDay(SEED_NOW); // stays in sync with SEED_NOW
 
 const sarahIndependent: Identity = DEMO_ACCOUNTS[0].identities[0];
 const sarahClinic: Identity = DEMO_ACCOUNTS[0].identities[1];
