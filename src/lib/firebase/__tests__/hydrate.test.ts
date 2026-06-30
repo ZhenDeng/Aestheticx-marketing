@@ -18,6 +18,7 @@ const rows: HydrationRows = {
   formsByPatient: { p1: [{ id: "fm1", data: { template: "antiwrinkleConsent", channel: "onDevice", signedAt: 3, intro: "i", clauses: ["c"], answers: [] } }] },
   invoices: [{ id: "inv1", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", counterpartyType: "clinic", periodLabel: "June 2026", lines: [{ authorisationId: "a1", dateISO: "2026-06-26", patientName: "Mara", feeCents: 2500, gstCents: 250 }], subtotalCents: 2500, gstCents: 250, totalCents: 2750, authorisationIds: ["a1"], pdfFileId: "invoices/u-voss/inv1.pdf", createdAt: 6 } }],
   scriptPricing: [{ id: "u-voss_clinic-lumiere", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", priceCents: 3000 } }],
+  noteTemplates: [{ id: "tpl1", data: { ownerId: "u-voss", name: "Std", body: "Body", aftercareCategories: ["antiwrinkle"] } }],
 };
 
 describe("assembleState", () => {
@@ -33,5 +34,7 @@ describe("assembleState", () => {
     expect(state.scriptPricing["u-voss_clinic-lumiere"]).toBe(3000);
     expect(state.usages).toEqual([]);
     expect(state.formsByPatient.p1).toHaveLength(1);
+    expect(state.noteTemplatesByOwner["u-voss"]).toHaveLength(1);
+    expect(state.noteTemplatesByOwner["u-voss"][0]).toMatchObject({ name: "Std", aftercareCategories: ["antiwrinkle"] });
   });
 });

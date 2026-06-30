@@ -3,8 +3,8 @@
 import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
-import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm } from "./mappers";
-import type { AuthorisationRequest, Note, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
+import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate } from "./mappers";
+import type { AuthorisationRequest, Note, NoteTemplate, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -83,4 +83,12 @@ export async function mirrorCreateForm(form: SignedFormRecord): Promise<void> {
 }
 export async function mirrorDeleteForm(patientID: string, formId: string): Promise<void> {
   await deleteDoc(doc(firestore(), `patients/${patientID}/forms`, formId));
+}
+
+// Private per-user templates at users/{uid}/noteTemplates (rules: uid()==userId).
+export async function mirrorSaveNoteTemplate(t: NoteTemplate): Promise<void> {
+  await setDoc(doc(firestore(), `users/${t.ownerID}/noteTemplates`, t.id), encodeNoteTemplate(t));
+}
+export async function mirrorDeleteNoteTemplate(ownerID: string, id: string): Promise<void> {
+  await deleteDoc(doc(firestore(), `users/${ownerID}/noteTemplates`, id));
 }

@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -18,6 +18,7 @@ export interface HydrationRows {
   formsByPatient: Record<string, Row[]>;
   invoices: Row[];
   scriptPricing: Row[];
+  noteTemplates: Row[];
 }
 
 // Pure: rows -> DemoState (testable, no Firebase).
@@ -50,7 +51,12 @@ export function assembleState(rows: HydrationRows): DemoState {
     const cents = typeof r.data.priceCents === "number" ? r.data.priceCents : 0;
     if (cents > 0) scriptPricing[r.id] = cents; // doc id is "{doctorId}_{counterpartyId}"
   }
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner: {} };
+  const noteTemplatesByOwner: DemoState["noteTemplatesByOwner"] = {};
+  for (const r of rows.noteTemplates) {
+    const t = mapNoteTemplate(r.id, r.data);
+    (noteTemplatesByOwner[t.ownerID] ??= []).push(t);
+  }
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -80,6 +86,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       formsByPatient: forms,
       invoices: await runQuery("invoices"),
       scriptPricing: await runQuery("scriptPricing"),
+      noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
     });
   }
 
@@ -148,5 +155,6 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     formsByPatient,
     invoices: [...invoicesById.values()],
     scriptPricing: scriptPricingRows,
+    noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
   });
 }
