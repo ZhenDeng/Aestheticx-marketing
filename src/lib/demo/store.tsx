@@ -40,6 +40,10 @@ interface StoreValue {
   pendingBookings: (ownerID: string) => ReturnType<typeof backend.pendingBookings>;
   ensureBookingToken: (identity: Identity) => void;
   confirmAppointment: (id: string, identity: Identity) => void;
+  appointmentsForOwnerOnDay: (ownerID: string, dateISO: string) => ReturnType<typeof backend.appointmentsForOwnerOnDay>;
+  bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
+  rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
+  markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -259,6 +263,32 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.confirmAppointment(s, id, identity),
           (m) => m.mirrorConfirmAppointment(id),
+        ),
+      appointmentsForOwnerOnDay: (ownerID, dateISO) => backend.appointmentsForOwnerOnDay(state, ownerID, dateISO),
+      bookTreatmentAppointment: (input) => {
+        // Demo adds locally. Live calls bookTreatment (server-authoritative id) then rehydrates.
+        if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input).state); return; }
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/mirror");
+            await m.mirrorBookTreatment({
+              ownerID: input.identity.context.kind === "clinic" ? input.identity.context.clinic.id : input.identity.user.id,
+              dateISO: input.dateISO, startMinute: input.startMinute, durationMinutes: input.durationMinutes,
+              patientID: input.patientID, patientName: input.patientName, note: input.note,
+            });
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) =>
+        applyAndMirror(
+          (s) => backend.rescheduleAppointment(s, id, startMinute, durationMinutes, identity),
+          (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
+        ),
+      markAppointment: (id, status, identity) =>
+        applyAndMirror(
+          (s) => backend.markAppointment(s, id, status, identity),
+          (m) => m.mirrorMarkAppointment(id, status),
         ),
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page

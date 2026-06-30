@@ -2,6 +2,7 @@
 // Every mutator returns a NEW DemoState (immutable). `now` is passed in for deterministic tests.
 import type {
   Appointment,
+  AppointmentStatus,
   Authorisation,
   AuthorisationRequest,
   DeliveryStatus,
@@ -406,6 +407,60 @@ export function confirmAppointment(state: DemoState, id: string, identity: Ident
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation") throw new BackendError("notActive"); // only pending bookings confirm
   return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status: "confirmed" } } };
+}
+
+export interface BookTreatmentInput {
+  dateISO: string;
+  startMinute: number;
+  durationMinutes: number;
+  patientID?: string;
+  patientName?: string;
+  note?: string;
+  identity: Identity;
+}
+
+export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentInput): { state: DemoState; appt: Appointment } {
+  const appt: Appointment = {
+    id: makeID("appt"),
+    type: "treatment",
+    ownerID: appointmentOwnerScope(input.identity),
+    dateISO: input.dateISO,
+    startMinute: input.startMinute,
+    endMinute: input.startMinute + input.durationMinutes,
+    status: "confirmed", // a clinician's own booking lands confirmed
+    patientID: input.patientID,
+    patientName: input.patientName,
+    appointmentNote: input.note || undefined,
+  };
+  return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
+}
+
+export function rescheduleAppointment(
+  state: DemoState, id: string, startMinute: number, durationMinutes: number, identity: Identity,
+): DemoState {
+  const appt = state.appointments[id];
+  if (!appt) throw new BackendError("notFound");
+  if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive"); // terminal appts aren't reschedulable
+  const moved = { ...appt, startMinute, endMinute: startMinute + durationMinutes };
+  return { ...state, appointments: { ...state.appointments, [id]: moved } };
+}
+
+// completed | noShow | cancelled — only awaiting/confirmed appointments may be marked.
+export function markAppointment(
+  state: DemoState, id: string, status: Extract<AppointmentStatus, "completed" | "noShow" | "cancelled">, identity: Identity,
+): DemoState {
+  const appt = state.appointments[id];
+  if (!appt) throw new BackendError("notFound");
+  if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive");
+  return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status } } };
+}
+
+export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dateISO: string): Appointment[] {
+  return Object.values(state.appointments)
+    .filter((a) => a.ownerID === ownerID && a.dateISO === dateISO && a.status !== "cancelled")
+    .sort((a, b) => a.startMinute - b.startMinute);
 }
 
 // Active authorisations the identity is allowed to tick when writing a treatment note.
