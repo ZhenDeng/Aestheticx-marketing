@@ -463,6 +463,16 @@ export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dat
     .sort((a, b) => a.startMinute - b.startMinute);
 }
 
+// Owner's appointments with startISO <= dateISO <= endISO (ISO dates compare lexically),
+// excluding cancelled, sorted by date then start. Backs the week/month views.
+export function appointmentsForOwnerInRange(
+  state: DemoState, ownerID: string, startISO: string, endISO: string,
+): Appointment[] {
+  return Object.values(state.appointments)
+    .filter((a) => a.ownerID === ownerID && a.status !== "cancelled" && a.dateISO >= startISO && a.dateISO <= endISO)
+    .sort((a, b) => (a.dateISO === b.dateISO ? a.startMinute - b.startMinute : a.dateISO < b.dateISO ? -1 : 1));
+}
+
 // Active authorisations the identity is allowed to tick when writing a treatment note.
 export function usableAuthorisations(
   state: DemoState, patientID: string, identity: Identity, now: number,

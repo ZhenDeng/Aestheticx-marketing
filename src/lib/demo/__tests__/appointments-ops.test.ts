@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyState, bookTreatmentAppointment, rescheduleAppointment, markAppointment,
-  appointmentsForOwnerOnDay, BackendError,
+  appointmentsForOwnerOnDay, appointmentsForOwnerInRange, BackendError,
 } from "@/lib/demo/backend";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
@@ -70,5 +70,22 @@ describe("appointmentsForOwnerOnDay", () => {
       mk("a5", "u-sarah", "2026-06-26", 540, "confirmed"), // other owner
     );
     expect(appointmentsForOwnerOnDay(s, "u-voss", "2026-06-26").map((a) => a.id)).toEqual(["a2", "a1"]);
+  });
+});
+
+describe("appointmentsForOwnerInRange", () => {
+  it("returns the owner's appointments within inclusive bounds, cancelled excluded, sorted by date then start", () => {
+    const s = withAppts(
+      mk("a1", "u-voss", "2026-06-29", 540, "confirmed"),
+      mk("a2", "u-voss", "2026-06-29", 480, "confirmed"), // same day, earlier
+      mk("a3", "u-voss", "2026-06-26", 600, "confirmed"), // start bound (inclusive)
+      mk("a4", "u-voss", "2026-07-02", 600, "confirmed"), // end bound (inclusive)
+      mk("a5", "u-voss", "2026-06-25", 600, "confirmed"), // before range
+      mk("a6", "u-voss", "2026-07-03", 600, "confirmed"), // after range
+      mk("a7", "u-voss", "2026-06-29", 700, "cancelled"), // cancelled
+      mk("a8", "u-sarah", "2026-06-29", 540, "confirmed"), // other owner
+    );
+    expect(appointmentsForOwnerInRange(s, "u-voss", "2026-06-26", "2026-07-02").map((a) => a.id))
+      .toEqual(["a3", "a2", "a1", "a4"]);
   });
 });
