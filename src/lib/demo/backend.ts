@@ -484,7 +484,11 @@ export function publishAvailability(
   if (identity.role !== "doctor" || input.doctorID !== identity.user.id) throw new BackendError("notPermitted");
   if (input.endMinute <= input.startMinute) throw new BackendError("validationFailed");
   const window: AvailabilityWindow = {
-    id: makeID("avail"), doctorID: input.doctorID, doctorName: identity.user.name,
+    // Match the backend slotPublications doc id ({doctorId}_{dateISO}_{startMinute}) so an
+    // optimistic local window and its hydrated server copy share one key (no ghost duplicate),
+    // and re-publishing the same window is idempotent.
+    id: `${input.doctorID}_${input.dateISO}_${input.startMinute}`,
+    doctorID: input.doctorID, doctorName: identity.user.name,
     dateISO: input.dateISO, startMinute: input.startMinute, endMinute: input.endMinute,
   };
   return { state: { ...state, availabilityWindows: { ...state.availabilityWindows, [window.id]: window } }, window };

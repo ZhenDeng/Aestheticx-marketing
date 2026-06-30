@@ -156,10 +156,11 @@ export function mapAvailabilityWindow(id: string, data: Doc): AvailabilityWindow
   return {
     id,
     doctorID: str(data.doctorId),
-    doctorName: str(data.doctorName),
+    doctorName: "", // backend slotPublications has no doctorName; the doctor view doesn't show it
     dateISO: str(data.dateISO),
     startMinute: intValue(data.startMinute),
     endMinute: intValue(data.endMinute),
+    // data.slotStarts is intentionally dropped — slots are recomputed by slotsForWindow().
   };
 }
 
