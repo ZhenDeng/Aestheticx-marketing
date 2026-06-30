@@ -468,6 +468,7 @@ export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dat
 export function appointmentsForPatient(state: DemoState, patientID: string): Appointment[] {
   return Object.values(state.appointments)
     .filter((a) => a.patientID === patientID)
+    // dateISO is yyyy-mm-dd, so lexicographic order == chronological; desc for newest-first.
     .sort((a, b) => (a.dateISO === b.dateISO ? b.startMinute - a.startMinute : a.dateISO < b.dateISO ? 1 : -1));
 }
 
