@@ -152,5 +152,17 @@ export function buildSeedState(): DemoState {
   };
   state = { ...state, followUpTasksByID: { ...state.followUpTasksByID, [seededFollowUp.id]: seededFollowUp } };
 
+  // Self-booking demo data: a stable link token + one pending booking on a future date.
+  const pendingBooking = {
+    id: "appt-pending-1", type: "treatment" as const, ownerID: "u-voss", dateISO: "2026-07-03",
+    startMinute: 600, endMinute: 630, status: "awaitingConfirmation" as const,
+    patientName: "Jordan Lee (new lead)", appointmentNote: "Consultation",
+  };
+  state = {
+    ...state,
+    appointments: { ...state.appointments, [pendingBooking.id]: pendingBooking },
+    bookingTokensByUser: { ...state.bookingTokensByUser, "u-voss": "bk-seed-voss" },
+  };
+
   return state;
 }
