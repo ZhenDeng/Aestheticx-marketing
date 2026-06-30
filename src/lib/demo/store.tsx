@@ -43,6 +43,12 @@ interface StoreValue {
   appointmentsForOwnerOnDay: (ownerID: string, dateISO: string) => ReturnType<typeof backend.appointmentsForOwnerOnDay>;
   appointmentsForOwnerInRange: (ownerID: string, startISO: string, endISO: string) => ReturnType<typeof backend.appointmentsForOwnerInRange>;
   appointmentsForPatient: (patientID: string) => ReturnType<typeof backend.appointmentsForPatient>;
+  availabilityWindowsForDoctor: (doctorID: string) => ReturnType<typeof backend.availabilityWindowsForDoctor>;
+  doctorsWithAvailability: () => ReturnType<typeof backend.doctorsWithAvailability>;
+  openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
+  publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
+  withdrawAvailability: (windowID: string, identity: Identity) => void;
+  bookAuthSlot: (input: import("./backend").BookAuthSlotInput) => void;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
@@ -276,6 +282,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       appointmentsForOwnerOnDay: (ownerID, dateISO) => backend.appointmentsForOwnerOnDay(state, ownerID, dateISO),
       appointmentsForOwnerInRange: (ownerID, startISO, endISO) => backend.appointmentsForOwnerInRange(state, ownerID, startISO, endISO),
       appointmentsForPatient: (patientID) => backend.appointmentsForPatient(state, patientID),
+      availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
+      doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
+      openSlotsForDoctorOnDay: (doctorID, dateISO) => backend.openSlotsForDoctorOnDay(state, doctorID, dateISO),
       bookTreatmentAppointment: (input) => {
         // Demo adds locally. Live calls bookTreatment (server-authoritative id) then rehydrates.
         if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input).state); return; }
@@ -306,6 +315,29 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (s) => backend.linkAppointmentPatient(s, apptId, patientId, identity),
           (m) => m.mirrorLinkAppointmentPatient(apptId, patientId),
         ),
+      publishAvailability: (input, identity) => {
+        // Validate + mint the window once (eagerly) so Strict-Mode double-invoke can't mint two.
+        const { window } = backend.publishAvailability(state, input, identity);
+        applyAndMirror(
+          (s) => ({ ...s, availabilityWindows: { ...s.availabilityWindows, [window.id]: window } }),
+          (m) => m.mirrorPublishAvailability(window),
+        );
+      },
+      withdrawAvailability: (windowID, identity) => {
+        backend.withdrawAvailability(state, windowID, identity); // validate (throws) before applying
+        applyAndMirror(
+          (s) => { const next = { ...s.availabilityWindows }; delete next[windowID]; return { ...s, availabilityWindows: next }; },
+          (m) => m.mirrorWithdrawAvailability(windowID),
+        );
+      },
+      bookAuthSlot: (input) => {
+        // Validate (throws slotTaken on a double-book) + mint the appointment once, eagerly.
+        const { appt } = backend.bookAuthSlot(state, input);
+        applyAndMirror(
+          (s) => ({ ...s, appointments: { ...s.appointments, [appt.id]: appt } }),
+          (m) => m.mirrorBookAuthSlot(appt),
+        );
+      },
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
         // navigates to it) and surface validation/permission throws to the caller. The
