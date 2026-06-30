@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  addDaysISO, weekStartISO, weekDaysFor, monthGridFor, isWeekend,
-  monthLabel, weekRangeLabel,
+  addDaysISO, shiftMonthISO, weekStartISO, weekDaysFor, monthGridFor, isWeekend,
+  monthLabel, weekRangeLabel, dayLabel,
 } from "@/lib/demo/calendar";
 
 describe("addDaysISO", () => {
@@ -65,6 +65,21 @@ describe("monthGridFor", () => {
     const sat = grid.find((c) => c.iso === "2026-07-04");
     expect(sat?.isWeekend).toBe(true);
   });
+  it("has no leading padding when the month starts on a Monday", () => {
+    const march = monthGridFor("2027-03-10"); // 1 Mar 2027 is a Monday
+    expect(march[0].iso).toBe("2027-03-01");
+    expect(march[0].inMonth).toBe(true);
+    expect(march.length % 7).toBe(0);
+  });
+});
+
+describe("shiftMonthISO", () => {
+  it("moves to the 1st of the month n away", () => {
+    expect(shiftMonthISO("2026-07-15", 1)).toBe("2026-08-01");
+    expect(shiftMonthISO("2026-07-15", -1)).toBe("2026-06-01");
+    expect(shiftMonthISO("2026-12-31", 1)).toBe("2027-01-01"); // year boundary
+    expect(shiftMonthISO("2026-01-10", -1)).toBe("2025-12-01");
+  });
 });
 
 describe("labels", () => {
@@ -73,5 +88,12 @@ describe("labels", () => {
   });
   it("formats a week range label", () => {
     expect(weekRangeLabel("2026-07-01")).toBe("29 Jun – 5 Jul 2026");
+  });
+  it("includes the start year when the week straddles a year boundary", () => {
+    // Mon 28 Dec 2026 – Sun 3 Jan 2027
+    expect(weekRangeLabel("2026-12-30")).toBe("28 Dec 2026 – 3 Jan 2027");
+  });
+  it("formats a single-day label", () => {
+    expect(dayLabel("2026-07-01")).toBe("Wed 1 Jul 2026");
   });
 });

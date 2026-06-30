@@ -31,6 +31,13 @@ export function weekDaysFor(dateISO: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDaysISO(start, i));
 }
 
+// Move to the same month-day in the month `n` away (clamped to the 1st), for month-view nav.
+export function shiftMonthISO(dateISO: string, n: number): string {
+  const d = new Date(toUTC(dateISO));
+  d.setUTCMonth(d.getUTCMonth() + n, 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export interface MonthCell {
   iso: string;
   inMonth: boolean;
@@ -63,13 +70,23 @@ export function monthLabel(dateISO: string): string {
 }
 
 export function weekRangeLabel(dateISO: string): string {
-  const start = new Date(toUTC(weekStartISO(dateISO)));
-  const end = new Date(toUTC(addDaysISO(weekStartISO(dateISO), 6)));
-  return `${start.getUTCDate()} ${MONTHS_SHORT[start.getUTCMonth()]} – ${end.getUTCDate()} ${MONTHS_SHORT[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+  const startISO = weekStartISO(dateISO);
+  const start = new Date(toUTC(startISO));
+  const end = new Date(toUTC(addDaysISO(startISO, 6)));
+  // Show the start year too only when the week straddles a year boundary.
+  const startYear = start.getUTCFullYear() === end.getUTCFullYear() ? "" : ` ${start.getUTCFullYear()}`;
+  return `${start.getUTCDate()} ${MONTHS_SHORT[start.getUTCMonth()]}${startYear} – ${end.getUTCDate()} ${MONTHS_SHORT[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
 }
 
-// Short weekday + day-of-month for a column header, e.g. "Mon 30".
 const WEEKDAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Short weekday + day-of-month for a column header, e.g. "Mon 30".
 export function dayHeaderLabel(dateISO: string): string {
   return `${WEEKDAYS_SHORT[isoWeekday(dateISO)]} ${new Date(toUTC(dateISO)).getUTCDate()}`;
+}
+
+// Full single-day label for the day-view subtitle, e.g. "Wed 1 Jul 2026".
+export function dayLabel(dateISO: string): string {
+  const d = new Date(toUTC(dateISO));
+  return `${WEEKDAYS_SHORT[isoWeekday(dateISO)]} ${d.getUTCDate()} ${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }

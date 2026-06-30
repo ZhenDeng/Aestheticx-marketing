@@ -5,8 +5,8 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay } from "@/lib/demo/backend";
 import {
-  addDaysISO, weekDaysFor, monthGridFor,
-  monthLabel, weekRangeLabel, dayHeaderLabel,
+  addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
+  monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
 } from "@/lib/demo/calendar";
 import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
 
@@ -44,11 +44,6 @@ function minutesFromTime(value: string): number {
 function timeValue(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
-function shiftMonthISO(dateISO: string, n: number): string {
-  const d = new Date(Date.parse(`${dateISO}T00:00:00.000Z`));
-  d.setUTCMonth(d.getUTCMonth() + n, 1);
-  return d.toISOString().slice(0, 10);
-}
 
 export default function CalendarPage() {
   const { identity } = useDemoAuth();
@@ -75,7 +70,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew, expanded,
   const todayISO = isoDay(store.now);
   const [selectedISO, setSelectedISO] = useState(todayISO);
 
-  const periodLabel = view === "day" ? selectedISO : view === "week" ? weekRangeLabel(selectedISO) : monthLabel(selectedISO);
+  const periodLabel = view === "day" ? dayLabel(selectedISO) : view === "week" ? weekRangeLabel(selectedISO) : monthLabel(selectedISO);
   function step(dir: 1 | -1) {
     setSelectedISO(view === "day" ? addDaysISO(selectedISO, dir)
       : view === "week" ? addDaysISO(selectedISO, dir * 7)
@@ -219,7 +214,7 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
   const days = weekDaysFor(selectedISO);
   const appts = store.appointmentsForOwnerInRange(ownerID, days[0], days[6]);
   const byDay = new Map<string, Appointment[]>();
-  for (const a of appts) { const list = byDay.get(a.dateISO) ?? []; list.push(a); byDay.set(a.dateISO, list); }
+  for (const a of appts) byDay.set(a.dateISO, [...(byDay.get(a.dateISO) ?? []), a]);
   const hours = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
 
@@ -250,9 +245,12 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
                 style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
             ))}
             {(byDay.get(iso) ?? []).map((a) => {
-              const top = Math.max(0, (a.startMinute - WIN_START) * PX_PER_MIN);
-              const rawH = (a.endMinute - a.startMinute) * PX_PER_MIN;
-              const height = Math.max(4, Math.min(rawH, railHeight - top));
+              // Clamp both edges to the visible window; an appointment fully outside it is skipped.
+              const start = Math.max(a.startMinute, WIN_START);
+              const end = Math.min(a.endMinute, WIN_END);
+              if (end <= start) return null;
+              const top = (start - WIN_START) * PX_PER_MIN;
+              const height = Math.max(4, (end - start) * PX_PER_MIN);
               const showText = height >= TEXT_MIN_PX;
               return (
                 <button key={a.id} onClick={() => openDay(iso)}
@@ -283,7 +281,7 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
   const cells = monthGridFor(selectedISO);
   const appts = store.appointmentsForOwnerInRange(ownerID, cells[0].iso, cells[cells.length - 1].iso);
   const byDay = new Map<string, Appointment[]>();
-  for (const a of appts) { const list = byDay.get(a.dateISO) ?? []; list.push(a); byDay.set(a.dateISO, list); }
+  for (const a of appts) byDay.set(a.dateISO, [...(byDay.get(a.dateISO) ?? []), a]);
   const weekdayHeads = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   return (
