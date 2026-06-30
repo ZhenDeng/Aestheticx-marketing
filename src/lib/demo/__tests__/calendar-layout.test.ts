@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDay, dragStartMinute } from "@/lib/demo/calendar";
+import { layoutDay, dragStartMinute, dragEndMinute, slotStartMinute } from "@/lib/demo/calendar";
 
 type Span = { id: string; startMinute: number; endMinute: number };
 const span = (id: string, startMinute: number, endMinute: number): Span => ({ id, startMinute, endMinute });
@@ -66,5 +66,45 @@ describe("dragStartMinute", () => {
   it("respects a non-unit pixels-per-minute scale", () => {
     // 24px at 0.8px/min = 30min → 540 + 30 = 570
     expect(dragStartMinute(540, 24, 0.8, STEP, 30, W_START, W_END)).toBe(570);
+  });
+});
+
+describe("dragEndMinute", () => {
+  const W_END = 1140, PX = 1, STEP = 5, MIN = 15;
+  it("is the identity for zero delta", () => {
+    expect(dragEndMinute(600, 0, PX, STEP, 540, MIN, W_END)).toBe(600);
+  });
+  it("lengthens, snapped to the step", () => {
+    expect(dragEndMinute(600, 12, PX, STEP, 540, MIN, W_END)).toBe(610);
+  });
+  it("shortens, snapped to the step", () => {
+    expect(dragEndMinute(600, -22, PX, STEP, 540, MIN, W_END)).toBe(580);
+  });
+  it("clamps to the bottom of the window", () => {
+    expect(dragEndMinute(1130, 100, PX, STEP, 1000, MIN, W_END)).toBe(1140);
+  });
+  it("never shrinks past the minimum duration (no inversion)", () => {
+    // start 540, min 15 → end can't go below 555
+    expect(dragEndMinute(600, -200, PX, STEP, 540, MIN, W_END)).toBe(555);
+  });
+  it("respects a non-unit pixels-per-minute scale", () => {
+    expect(dragEndMinute(600, 24, 0.8, STEP, 540, MIN, W_END)).toBe(630); // +30min
+  });
+});
+
+describe("slotStartMinute", () => {
+  const W_START = 420, W_END = 1140, PX = 1, STEP = 15;
+  it("snaps a tap offset to the step", () => {
+    expect(slotStartMinute(200, PX, STEP, W_START, W_END)).toBe(615); // 620 → nearest 15-min boundary is 615
+  });
+  it("clamps to the top of the window", () => {
+    expect(slotStartMinute(-50, PX, STEP, W_START, W_END)).toBe(420);
+  });
+  it("clamps to the bottom of the window (leaving one step)", () => {
+    expect(slotStartMinute(5000, PX, STEP, W_START, W_END)).toBe(1125); // 1140 - 15
+  });
+  it("respects a non-unit pixels-per-minute scale", () => {
+    // 240px at 0.8px/min = 300min → 420 + 300 = 720 (already on a 15 grid)
+    expect(slotStartMinute(240, 0.8, STEP, W_START, W_END)).toBe(720);
   });
 });
