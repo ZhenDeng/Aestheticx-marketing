@@ -90,3 +90,57 @@ export function dayLabel(dateISO: string): string {
   const d = new Date(toUTC(dateISO));
   return `${WEEKDAYS_SHORT[isoWeekday(dateISO)]} ${d.getUTCDate()} ${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
+
+// ── Timeline layout + drag math (pure) ──────────────────────────────────────
+
+interface TimeSpan { id: string; startMinute: number; endMinute: number }
+export interface DayColumn { id: string; col: number; cols: number }
+
+// Side-by-side column assignment for a day's appointments. Time-overlapping spans are
+// grouped into a connected cluster; within a cluster each span takes the first column whose
+// previous span has already ended (greedy by start time), and every span in the cluster
+// reports the cluster's total column count so siblings render at equal width.
+// Adjacent spans (end === next start) do NOT overlap.
+export function layoutDay(spans: TimeSpan[]): DayColumn[] {
+  const sorted = [...spans].sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute);
+  const out: DayColumn[] = [];
+  let cluster: TimeSpan[] = [];
+  let clusterEnd = -Infinity;
+
+  const flush = () => {
+    const colEnds: number[] = []; // last end time placed in each column
+    const placed: { id: string; col: number }[] = [];
+    for (const s of cluster) {
+      let col = colEnds.findIndex((end) => end <= s.startMinute);
+      if (col === -1) { col = colEnds.length; colEnds.push(s.endMinute); }
+      else colEnds[col] = s.endMinute;
+      placed.push({ id: s.id, col });
+    }
+    const cols = colEnds.length;
+    for (const p of placed) out.push({ id: p.id, col: p.col, cols });
+    cluster = [];
+    clusterEnd = -Infinity;
+  };
+
+  for (const s of sorted) {
+    if (cluster.length && s.startMinute >= clusterEnd) flush();
+    cluster.push(s);
+    clusterEnd = Math.max(clusterEnd, s.endMinute);
+  }
+  if (cluster.length) flush();
+  return out;
+}
+
+// New start minute for a block dragged by `deltaPx`, snapped to `step` minutes and clamped
+// so the block stays fully within [winStart, winEnd]. Pure so it is unit-testable apart
+// from pointer events.
+export function dragStartMinute(
+  origStart: number, deltaPx: number, pxPerMin: number, step: number,
+  durationMin: number, winStart: number, winEnd: number,
+): number {
+  const raw = origStart + deltaPx / pxPerMin;
+  const snapped = Math.round(raw / step) * step;
+  // Floor the bottom bound to the step grid so a block at the end of the window stays snapped.
+  const maxStart = Math.floor((winEnd - durationMin) / step) * step;
+  return Math.max(winStart, Math.min(snapped, maxStart));
+}

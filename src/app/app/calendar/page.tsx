@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay } from "@/lib/demo/backend";
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
+  layoutDay, dragStartMinute, type DayColumn,
 } from "@/lib/demo/calendar";
 import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
 
@@ -50,19 +51,17 @@ export default function CalendarPage() {
   const store = useDemoStore();
   const [view, setView] = useState<View>("day");
   const [showNew, setShowNew] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   return <CalendarInner identity={identity} view={view} setView={setView}
-    showNew={showNew} setShowNew={setShowNew} expanded={expanded} setExpanded={setExpanded} />;
+    showNew={showNew} setShowNew={setShowNew} />;
 }
 
-function CalendarInner({ identity, view, setView, showNew, setShowNew, expanded, setExpanded }: {
+function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
   identity: Identity; view: View; setView: (v: View) => void;
   showNew: boolean; setShowNew: (v: boolean | ((p: boolean) => boolean)) => void;
-  expanded: Set<string>; setExpanded: (f: (p: Set<string>) => Set<string>) => void;
 }) {
   const store = useDemoStore();
   const ownerID = identity.context.kind === "clinic" ? identity.context.clinic.id : identity.user.id;
@@ -112,7 +111,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew, expanded,
 
       {view === "day" && (
         <DayView ownerID={ownerID} dateISO={selectedISO} todayISO={todayISO} me={me}
-          showNew={showNew} setShowNew={setShowNew} expanded={expanded} setExpanded={setExpanded} />
+          showNew={showNew} setShowNew={setShowNew} />
       )}
       {view === "week" && <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} openDay={openDay} />}
       {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} openDay={openDay} />}
@@ -120,40 +119,37 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew, expanded,
   );
 }
 
-function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew, expanded, setExpanded }: {
+function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
   ownerID: string; dateISO: string; todayISO: string; me: Identity;
   showNew: boolean; setShowNew: (v: boolean | ((p: boolean) => boolean)) => void;
-  expanded: Set<string>; setExpanded: (f: (p: Set<string>) => Set<string>) => void;
 }) {
   const store = useDemoStore();
   const dayAppts = store.appointmentsForOwnerOnDay(ownerID, dateISO);
   const settings = store.followUpSettingsForUser(me.user.id);
   const followUps = store.followUpTasksForOwnerOn(me.user.id, dateISO);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = dayAppts.find((a) => a.id === selectedId) ?? null;
 
   return (
     <>
       {showNew && <NewAppointmentForm dateISO={dateISO} me={me} onDone={() => setShowNew(false)} />}
 
-      <ul className="mt-6 flex flex-col gap-2">
-        {dayAppts.map((a) => {
-          const isOpen = expanded.has(a.id);
-          return (
-            <li key={a.id} className="rounded-inner border border-line bg-card px-4 py-3">
-              <button onClick={() => setExpanded((p) => { const n = new Set(p); if (n.has(a.id)) n.delete(a.id); else n.add(a.id); return n; })}
-                      className="flex w-full items-stretch gap-4 text-left">
-                <span className="w-28 flex-none text-sm text-ink-soft">{timeLabel(a.startMinute)}–{timeLabel(a.endMinute)}</span>
-                <span className="min-w-0 border-l-2 pl-4" style={{ borderColor: apptTypeAccent(a) }}>
-                  <span className="block font-medium text-ink">{a.patientName ?? "Blocked time"}</span>
-                  {a.appointmentNote && <span className="block text-sm text-ink-soft">{a.appointmentNote}</span>}
-                </span>
-                <span className="micro ml-auto self-center" style={{ color: apptColor(a) }}>{STATUS_LABEL[a.status]}</span>
-              </button>
-              {isOpen && <AppointmentActions key={`${a.startMinute}-${a.endMinute}-${a.status}`} appt={a} me={me} onDone={() => setExpanded((p) => { const n = new Set(p); n.delete(a.id); return n; })} />}
-            </li>
-          );
-        })}
-        {dayAppts.length === 0 && <li className="text-sm text-ink-soft">No appointments{dateISO === todayISO ? " today" : ""}.</li>}
-      </ul>
+      <DayTimeline appts={dayAppts} me={me} selectedId={selectedId} onSelect={setSelectedId} />
+      {dayAppts.length === 0 && (
+        <p className="mt-3 text-sm text-ink-soft">No appointments{dateISO === todayISO ? " today" : ""}.</p>
+      )}
+
+      {selected && (
+        <div className="mt-4 rounded-inner border border-line bg-card px-4 py-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-medium text-ink">{selected.patientName ?? "Blocked time"} · {timeLabel(selected.startMinute)}–{timeLabel(selected.endMinute)}</span>
+            <span className="micro" style={{ color: apptColor(selected) }}>{STATUS_LABEL[selected.status]}</span>
+          </div>
+          {selected.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{selected.appointmentNote}</p>}
+          <AppointmentActions key={`${selected.startMinute}-${selected.endMinute}-${selected.status}`}
+            appt={selected} me={me} onDone={() => setSelectedId(null)} />
+        </div>
+      )}
 
       {followUps.length > 0 && (
         <div className="mt-8">
@@ -201,11 +197,120 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew, expanded
   );
 }
 
-// Visible day window for the week timeline.
+// Visible day window for the timeline views.
 const WIN_START = 7 * 60;   // 07:00
 const WIN_END = 19 * 60;    // 19:00
 const PX_PER_MIN = 1;       // 60px / hour — a 30-min chip is 30px (fits one text line)
 const TEXT_MIN_PX = 28;     // below this a chip is a colour-only bar
+const DRAG_STEP = 5;        // snap dragged appointments to 5-minute steps
+const DRAG_THRESHOLD = 4;   // px of movement before a press becomes a drag (vs a tap)
+const HOURS_IN = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
+
+function canReschedule(a: Appointment): boolean {
+  return a.status === "awaitingConfirmation" || a.status === "confirmed";
+}
+
+// Full-width day timeline: hour rail + time-positioned blocks. Overlapping appointments
+// lay out side-by-side (via layoutDay); a block can be dragged to reschedule its start,
+// and a tap (movement under the threshold) selects it.
+function DayTimeline({ appts, me, selectedId, onSelect }: {
+  appts: Appointment[]; me: Identity; selectedId: string | null; onSelect: (id: string | null) => void;
+}) {
+  const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
+  const cols = new Map<string, DayColumn>(
+    layoutDay(appts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
+  );
+
+  return (
+    <div className="mt-6 grid" style={{ gridTemplateColumns: "3rem 1fr" }}>
+      <div className="relative" style={{ height: railHeight }}>
+        {HOURS_IN.map((h) => (
+          <div key={h} className="pointer-events-none absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
+            style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
+        ))}
+      </div>
+      <div className="relative border-l border-line" style={{ height: railHeight }}
+        onClick={(e) => { if (e.target === e.currentTarget) onSelect(null); }}>
+        {HOURS_IN.map((h) => (
+          <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
+            style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
+        ))}
+        {appts.map((a) => (
+          <TimelineBlock key={a.id} appt={a} me={me} layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
+            selected={a.id === selectedId} onSelect={onSelect} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TimelineBlock({ appt, me, layout, selected, onSelect }: {
+  appt: Appointment; me: Identity; layout: DayColumn; selected: boolean; onSelect: (id: string | null) => void;
+}) {
+  const store = useDemoStore();
+  const [dragDy, setDragDy] = useState(0);
+  // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
+  const drag = useRef<{ startY: number; moved: boolean; dy: number } | null>(null);
+  const draggable = canReschedule(appt);
+
+  const start = Math.max(appt.startMinute, WIN_START);
+  const end = Math.min(appt.endMinute, WIN_END);
+  if (end <= start) return null;
+  const top = (start - WIN_START) * PX_PER_MIN;
+  const height = Math.max(4, (end - start) * PX_PER_MIN);
+  const showText = height >= TEXT_MIN_PX;
+  const width = 100 / layout.cols;
+  const left = layout.col * width;
+
+  function onPointerDown(e: React.PointerEvent) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { startY: e.clientY, moved: false, dy: 0 };
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag.current) return;
+    const dy = e.clientY - drag.current.startY;
+    drag.current.dy = dy;
+    if (Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
+    if (draggable && drag.current.moved) setDragDy(dy);
+  }
+  function onPointerUp() {
+    const st = drag.current;
+    drag.current = null;
+    setDragDy(0);
+    if (!st) return;
+    if (!st.moved || !draggable) { onSelect(appt.id); return; } // a tap selects
+    const duration = appt.endMinute - appt.startMinute;
+    const newStart = dragStartMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
+    if (newStart !== appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, newStart, duration, me);
+  }
+  // OS/browser interruptions (call, notification, home-bar swipe) fire pointercancel, not
+  // pointerup — reset so the captured pointer state isn't leaked into the next gesture.
+  function onPointerCancel() {
+    drag.current = null;
+    setDragDy(0);
+  }
+
+  return (
+    <button
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
+      className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
+      style={{
+        top: top + dragDy, height, left: `calc(${left}% + 2px)`, width: `calc(${width}% - 4px)`,
+        background: apptColor(appt), borderLeft: `3px solid ${apptTypeAccent(appt)}`,
+        touchAction: "none", cursor: draggable ? "grab" : "pointer",
+        outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
+        zIndex: dragDy !== 0 ? 10 : 1,
+      }}
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appt.patientName ?? "Blocked time"}, ${STATUS_LABEL[appt.status]}`}
+      title={`${timeLabel(appt.startMinute)} ${appt.patientName ?? "Blocked time"}`}>
+      {showText && (
+        <span className="block text-[11px] leading-tight">
+          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appt.patientName ?? "—"}
+        </span>
+      )}
+    </button>
+  );
+}
 
 function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
   ownerID: string; selectedISO: string; todayISO: string; openDay: (iso: string) => void;
@@ -215,7 +320,6 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
   const appts = store.appointmentsForOwnerInRange(ownerID, days[0], days[6]);
   const byDay = new Map<string, Appointment[]>();
   for (const a of appts) byDay.set(a.dateISO, [...(byDay.get(a.dateISO) ?? []), a]);
-  const hours = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
 
   return (
@@ -232,41 +336,52 @@ function WeekView({ ownerID, selectedISO, todayISO, openDay }: {
         ))}
         {/* hour rail */}
         <div className="relative" style={{ height: railHeight }}>
-          {hours.map((h) => (
+          {HOURS_IN.map((h) => (
             <div key={h} className="absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
               style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
           ))}
         </div>
         {/* day columns */}
-        {days.map((iso) => (
-          <div key={iso} className="relative border-l border-line" style={{ height: railHeight }}>
-            {hours.map((h) => (
-              <div key={h} className="absolute left-0 right-0 border-t border-line/60"
-                style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
-            ))}
-            {(byDay.get(iso) ?? []).map((a) => {
-              // Clamp both edges to the visible window; an appointment fully outside it is skipped.
-              const start = Math.max(a.startMinute, WIN_START);
-              const end = Math.min(a.endMinute, WIN_END);
-              if (end <= start) return null;
-              const top = (start - WIN_START) * PX_PER_MIN;
-              const height = Math.max(4, (end - start) * PX_PER_MIN);
-              const showText = height >= TEXT_MIN_PX;
-              return (
-                <button key={a.id} onClick={() => openDay(iso)}
-                  className="absolute left-0.5 right-0.5 overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
-                  style={{ top, height, background: apptColor(a), borderLeft: `3px solid ${apptTypeAccent(a)}` }}
-                  title={`${timeLabel(a.startMinute)} ${a.patientName ?? "Blocked time"}`}>
-                  {showText && (
-                    <span className="block text-[11px] leading-tight">
-                      <span className="font-medium">{timeLabel(a.startMinute)}</span> {a.patientName ?? "—"}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+        {days.map((iso) => {
+          const dayAppts = byDay.get(iso) ?? [];
+          const cols = new Map<string, DayColumn>(
+            layoutDay(dayAppts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
+          );
+          return (
+            <div key={iso} className="relative border-l border-line" style={{ height: railHeight }}>
+              {HOURS_IN.map((h) => (
+                <div key={h} className="absolute left-0 right-0 border-t border-line/60"
+                  style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
+              ))}
+              {dayAppts.map((a) => {
+                // Clamp both edges to the visible window; an appointment fully outside it is skipped.
+                const start = Math.max(a.startMinute, WIN_START);
+                const end = Math.min(a.endMinute, WIN_END);
+                if (end <= start) return null;
+                const top = (start - WIN_START) * PX_PER_MIN;
+                const height = Math.max(4, (end - start) * PX_PER_MIN);
+                const showText = height >= TEXT_MIN_PX;
+                const layout = cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 };
+                const width = 100 / layout.cols;
+                const left = layout.col * width;
+                return (
+                  <button key={a.id} onClick={() => openDay(iso)}
+                    className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
+                    style={{ top, height, left: `calc(${left}% + 1px)`, width: `calc(${width}% - 2px)`,
+                      background: apptColor(a), borderLeft: `3px solid ${apptTypeAccent(a)}` }}
+                    aria-label={`${timeLabel(a.startMinute)}–${timeLabel(a.endMinute)} ${a.patientName ?? "Blocked time"}, ${STATUS_LABEL[a.status]}`}
+                    title={`${timeLabel(a.startMinute)} ${a.patientName ?? "Blocked time"}`}>
+                    {showText && (
+                      <span className="block text-[11px] leading-tight">
+                        <span className="font-medium">{timeLabel(a.startMinute)}</span> {a.patientName ?? "—"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
