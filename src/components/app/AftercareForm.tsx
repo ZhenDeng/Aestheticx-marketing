@@ -13,6 +13,9 @@ export function AftercareForm({
   patientID, identity, onDone,
 }: { patientID: string; identity: Identity; onDone: () => void }) {
   const store = useDemoStore();
+  // Most-recent treatment note's medications (notesForPatient is newest-first, so the
+  // first treatment match is the latest). Computed fresh each time the panel opens —
+  // the parent remounts this component on toggle — and captured into send() at click.
   const lastMeds = store.notesForPatient(patientID).find((n) => n.kind === "treatment")?.medications ?? [];
   const [selected, setSelected] = useState<AftercareCategory[]>([]);
   const [content, setContent] = useState(DEFAULT_CONTENT);

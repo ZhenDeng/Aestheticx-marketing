@@ -152,6 +152,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                     <p className="whitespace-pre-wrap text-sm text-ink-soft">{n.body}</p>
                     {n.medications.length > 0 && (
                       <ul className="mt-2 flex flex-col gap-1">
+                        {/* Index key is safe: TreatmentMedication has no stable id and this list is render-only (never reordered/deleted). */}
                         {n.medications.map((m, i) => (
                           <li key={i} className="text-xs text-ink-faint">
                             {m.name}{m.dosage ? ` · ${m.dosage}` : ""}{m.batch ? ` · batch ${m.batch}` : ""}{m.expiry ? ` · exp ${m.expiry}` : ""}
