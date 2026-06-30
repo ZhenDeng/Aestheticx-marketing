@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, isoDay, followUpSettingsForUser, setFollowUpSettings,
   followUpTasksForOwnerOn, setFollowUpStatus, BackendError,
+  saveTreatmentNote, setFollowUpSettings as setFU,
 } from "@/lib/demo/backend";
-import { saveTreatmentNote, setFollowUpSettings as setFU } from "@/lib/demo/backend";
+import { encodeFollowUpTask, mapFollowUpTask } from "@/lib/firebase/mappers";
 import type { DemoState, FollowUpTask, Identity, Patient } from "@/lib/demo/types";
 
 const voss: Identity = { user: { id: "u-voss", name: "Voss" }, role: "doctor", context: { kind: "independent" } };
@@ -85,5 +86,17 @@ describe("saveTreatmentNote follow-up generation", () => {
     const r = saveTreatmentNote(state, { patientID: "p1", tickedIDs: [], title: "", body: "Tx", medications: [], identity: voss }, NOW);
     expect(r.followUp).toBeUndefined();
     expect(Object.keys(r.state.followUpTasksByID)).toHaveLength(0);
+  });
+});
+
+describe("follow-up mapper", () => {
+  it("round-trips (ownerID comes from the path, not the body)", () => {
+    const t: FollowUpTask = { id: "fu1", ownerID: "u-voss", patientID: "p1", patientName: "Pat One", dueDateISO: "2026-07-10", status: "pending", sourceNoteID: "n1" };
+    const doc = encodeFollowUpTask(t);
+    expect(doc).toMatchObject({ patientId: "p1", patientName: "Pat One", dueDateISO: "2026-07-10", status: "pending", sourceNoteId: "n1" });
+    expect(mapFollowUpTask("fu1", "u-voss", doc)).toEqual(t);
+  });
+  it("defaults an unknown status to pending", () => {
+    expect(mapFollowUpTask("fu1", "u-voss", { patientId: "p1", patientName: "P", dueDateISO: "2026-07-10", status: "weird" }).status).toBe("pending");
   });
 });
