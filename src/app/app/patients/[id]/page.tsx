@@ -9,11 +9,28 @@ import { patientPermissions, notePreview, canSendAftercare } from "@/lib/demo/ba
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { templateDisplayName } from "@/lib/demo/forms";
-import { displayName, fullName, hasAlert, type DeliveryStatus } from "@/lib/demo/types";
+import { dayLabel } from "@/lib/demo/calendar";
+import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus } from "@/lib/demo/types";
 
 const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
 function deliveryColor(s: DeliveryStatus): string {
   return s === "delivered" ? "var(--color-tint)" : s === "failed" ? "var(--color-rose)" : "var(--color-ink-soft)";
+}
+
+const APPT_STATUS_LABEL: Record<AppointmentStatus, string> = {
+  awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
+};
+function apptStatusColor(s: AppointmentStatus): string {
+  switch (s) {
+    case "noShow": return "var(--color-danger)";
+    case "completed": return "var(--color-sage)";
+    case "awaitingConfirmation": return "var(--color-ink-soft)";
+    case "cancelled": return "var(--color-ink-faint)";
+    default: return "var(--color-tint)"; // confirmed
+  }
+}
+function apptTime(minute: number): string {
+  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +44,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showTreatment, setShowTreatment] = useState(false);
   const [showAftercare, setShowAftercare] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
@@ -40,6 +58,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const notes = store.notesForPatient(id);
   const active = store.activeAuthorisations(id);
   const forms = store.formsForPatient(id);
+  const apptHistory = store.appointmentsForPatient(id);
   const canEdit = perms.canEditDetails;
   const canDelete = perms.canDelete;
   const canMerge = perms.canMerge;
@@ -239,6 +258,28 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             </Link>
           )}
         </div>
+
+        <div className="mt-4 rounded-card border border-line bg-card p-5 shadow-card">
+          <button onClick={() => setShowHistory((v) => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+            <h2 className="font-display text-lg text-ink">Appointment history ({apptHistory.length})</h2>
+            <span className="micro text-ink-soft">{showHistory ? "Hide" : "Show"}</span>
+          </button>
+          {showHistory && (
+            <ul className="mt-3 flex flex-col gap-3">
+              {apptHistory.map((a) => (
+                <li key={a.id}>
+                  <p className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm text-ink">{dayLabel(a.dateISO)} · {apptTime(a.startMinute)}–{apptTime(a.endMinute)}</span>
+                    <span className="micro flex-none" style={{ color: apptStatusColor(a.status) }}>{APPT_STATUS_LABEL[a.status]}</span>
+                  </p>
+                  {a.appointmentNote && <p className="text-sm text-ink-soft">{a.appointmentNote}</p>}
+                </li>
+              ))}
+              {apptHistory.length === 0 && <li className="text-sm text-ink-soft">No appointments.</li>}
+            </ul>
+          )}
+        </div>
+
         {(canEdit || canDelete || canMerge) && (
           <div className="mt-4 rounded-card border border-line bg-card p-5 shadow-card">
             <h2 className="font-display text-lg text-ink">Manage</h2>

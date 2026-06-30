@@ -463,6 +463,14 @@ export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dat
     .sort((a, b) => a.startMinute - b.startMinute);
 }
 
+// A patient's full appointment history, most-recent-first (date desc, then start desc).
+// All statuses are included (completed / no-show / cancelled are part of the history).
+export function appointmentsForPatient(state: DemoState, patientID: string): Appointment[] {
+  return Object.values(state.appointments)
+    .filter((a) => a.patientID === patientID)
+    .sort((a, b) => (a.dateISO === b.dateISO ? b.startMinute - a.startMinute : a.dateISO < b.dateISO ? 1 : -1));
+}
+
 // Denormalised calendar form of a patient's name (preferred wins), shown on calendar items.
 export function calendarName(p: { preferredName?: string; givenName: string; lastName: string }): string {
   const first = p.preferredName?.trim() ? p.preferredName.trim() : p.givenName;
