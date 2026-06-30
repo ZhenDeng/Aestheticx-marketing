@@ -4,8 +4,10 @@ import type {
   Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
+  NoteTemplate,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
+import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
 import type { Invoice, InvoiceLine } from "@/lib/demo/invoicing";
 
 type Doc = Record<string, unknown>;
@@ -275,4 +277,17 @@ export function mapForm(id: string, patientID: string, data: Doc): SignedFormRec
     signatureFileId: typeof data.signatureImageFileId === "string" ? data.signatureImageFileId : undefined,
     pdfFileId: typeof data.pdfFileId === "string" ? data.pdfFileId : undefined,
   };
+}
+
+// Field names match iOS LiveBackend.encode(_:)/noteTemplate(id:data:). `ownerId` is also
+// in the doc path (users/{ownerID}/noteTemplates/{id}); we store it in the body too for
+// iOS wire parity. All writes go through this encoder, so the body field stays populated.
+export function encodeNoteTemplate(t: NoteTemplate): Doc {
+  return { ownerId: t.ownerID, name: t.name, body: t.body, aftercareCategories: t.aftercareCategories };
+}
+
+export function mapNoteTemplate(id: string, data: Doc): NoteTemplate {
+  const cats = strArray(data.aftercareCategories)
+    .filter((c): c is AftercareCategory => (AFTERCARE_CATEGORIES as readonly string[]).includes(c));
+  return { id, ownerID: str(data.ownerId), name: str(data.name), body: str(data.body), aftercareCategories: cats };
 }

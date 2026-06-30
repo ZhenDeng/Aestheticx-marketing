@@ -14,6 +14,7 @@ const NAV = [
   { href: "/app/authorisations", label: "Authorisations" },
   { href: "/app/billing", label: "Billing" },
   { href: "/app/calendar", label: "Calendar" },
+  { href: "/app/templates", label: "Templates" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

@@ -12,10 +12,12 @@ export function TreatmentNoteForm({
 }: { patientID: string; identity: Identity; onDone: () => void }) {
   const store = useDemoStore();
   const usable = usableAuthorisations(store.state, patientID, identity, store.now);
+  const templates = store.noteTemplatesForOwner(identity.user.id);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [edits, setEdits] = useState<Record<string, MedEdit>>({});
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [appliedTemplate, setAppliedTemplate] = useState("");
 
   const isDoctor = identity.role === "doctor";
   // Doctors may save directly; nurses must tick at least one usable authorisation.
@@ -82,6 +84,20 @@ export function TreatmentNoteForm({
 
       <div className="mt-3">
         <p className="micro">2 · Notes</p>
+        {templates.length > 0 && (
+          <select
+            value={appliedTemplate}
+            onChange={(e) => {
+              const t = templates.find((x) => x.id === e.target.value);
+              if (t) setBody(t.body); // prefill only — body stays editable (iOS-faithful)
+              setAppliedTemplate(""); // controlled reset back to the placeholder
+            }}
+            className="mb-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink-soft outline-none focus:border-tint"
+          >
+            <option value="" disabled>Apply a template…</option>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name || "(untitled)"}</option>)}
+          </select>
+        )}
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)"
                className="mt-1 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Treatment details…" rows={4}
