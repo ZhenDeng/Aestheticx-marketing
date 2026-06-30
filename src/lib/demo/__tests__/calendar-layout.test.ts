@@ -95,7 +95,7 @@ describe("dragEndMinute", () => {
 describe("slotStartMinute", () => {
   const W_START = 420, W_END = 1140, PX = 1, STEP = 15;
   it("snaps a tap offset to the step", () => {
-    expect(slotStartMinute(200, PX, STEP, W_START, W_END)).toBe(615); // 420+200=620 → 615
+    expect(slotStartMinute(200, PX, STEP, W_START, W_END)).toBe(615); // 620 → nearest 15-min boundary is 615
   });
   it("clamps to the top of the window", () => {
     expect(slotStartMinute(-50, PX, STEP, W_START, W_END)).toBe(420);

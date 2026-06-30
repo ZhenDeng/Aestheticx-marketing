@@ -131,7 +131,6 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
   const [chooser, setChooser] = useState<number | null>(null); // tapped start minute
   const [slotForm, setSlotForm] = useState<{ start: number; block: boolean } | null>(null);
   const selected = dayAppts.find((a) => a.id === selectedId) ?? null;
-  const formInit = slotForm;
   const showForm = showNew || slotForm !== null;
   function closeForm() { setShowNew(false); setSlotForm(null); }
 
@@ -139,7 +138,7 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
     <>
       {showForm && (
         <NewAppointmentForm dateISO={dateISO} me={me}
-          initialStart={formInit?.start} initialBlock={formInit?.block} onDone={closeForm} />
+          initialStart={slotForm?.start} initialBlock={slotForm?.block} onDone={closeForm} />
       )}
 
       {chooser !== null && (
@@ -289,7 +288,12 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const end = Math.min(appt.endMinute, WIN_END);
   if (end <= start) return null;
   const top = (start - WIN_START) * PX_PER_MIN;
-  const height = Math.max(4, (end - start) * PX_PER_MIN + resizeDy);
+  // Preview the resize through the same clamp used at commit time, so the visual height never
+  // collapses below the minimum or runs past the window.
+  const previewEnd = resizeDy !== 0
+    ? dragEndMinute(appt.endMinute, resizeDy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END)
+    : end;
+  const height = Math.max(4, (previewEnd - start) * PX_PER_MIN);
   const showText = height >= TEXT_MIN_PX;
   const width = 100 / layout.cols;
   const left = layout.col * width;
@@ -337,11 +341,11 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     setResizeDy(dy);
   }
   function onResizeUp(e: React.PointerEvent) {
+    e.stopPropagation(); // always stop, regardless of ref state, so the parent never sees this up
     const st = resize.current;
     resize.current = null;
     setResizeDy(0);
     if (!st) return;
-    e.stopPropagation();
     const newEnd = dragEndMinute(appt.endMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END);
     const duration = newEnd - appt.startMinute;
     if (duration !== appt.endMinute - appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
@@ -360,7 +364,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         background: apptColor(appt), borderLeft: `3px solid ${apptTypeAccent(appt)}`,
         touchAction: "none", cursor: draggable ? "grab" : "pointer",
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
-        zIndex: dragDy !== 0 ? 10 : 1,
+        zIndex: dragDy !== 0 || resizeDy !== 0 ? 10 : 1,
       }}
       aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appt.patientName ?? "Blocked time"}, ${STATUS_LABEL[appt.status]}`}
       title={`${timeLabel(appt.startMinute)} ${appt.patientName ?? "Blocked time"}`}>

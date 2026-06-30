@@ -153,6 +153,8 @@ export function dragEndMinute(
 ): number {
   const raw = origEnd + deltaPx / pxPerMin;
   const snapped = Math.round(raw / step) * step;
+  // startMin is always on the step grid (appointments are only booked/moved in step
+  // increments), so startMin + minDuration stays on-grid when minDuration is a step multiple.
   return Math.max(startMin + minDuration, Math.min(snapped, winEnd));
 }
 
