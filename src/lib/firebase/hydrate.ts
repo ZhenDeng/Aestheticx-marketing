@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  collection, query, where, getDocs, type QueryConstraint,
+  collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -19,6 +19,9 @@ export interface HydrationRows {
   invoices: Row[];
   scriptPricing: Row[];
   noteTemplates: Row[];
+  followUpTasks: Row[];
+  followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  currentUserID: string;
 }
 
 // Pure: rows -> DemoState (testable, no Firebase).
@@ -56,12 +59,30 @@ export function assembleState(rows: HydrationRows): DemoState {
     const t = mapNoteTemplate(r.id, r.data);
     (noteTemplatesByOwner[t.ownerID] ??= []).push(t);
   }
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner };
+  const followUpTasksByID: DemoState["followUpTasksByID"] = {};
+  for (const r of rows.followUpTasks) followUpTasksByID[r.id] = mapFollowUpTask(r.id, rows.currentUserID, r.data);
+  const followUpSettingsByUser: DemoState["followUpSettingsByUser"] = {};
+  if (rows.followUpSettings) followUpSettingsByUser[rows.currentUserID] = rows.followUpSettings;
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
   const snap = await getDocs(query(collection(firestore(), path), ...constraints));
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
+}
+
+// Follow-up settings live on the user's own profile doc. intervalDays is clamped to the
+// UI's valid range [1,90] on read so a corrupt/out-of-range stored value (0, negative, NaN)
+// can't silently schedule everything as immediately overdue or in the past.
+async function readUserFollowUpSettings(uid: string): Promise<{ enabled: boolean; intervalDays: number } | null> {
+  const snap = await getDoc(doc(firestore(), "users", uid));
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  if (d.followUpEnabled === undefined && d.followUpIntervalDays === undefined) return null;
+  const raw = d.followUpIntervalDays;
+  const intervalDays = typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14;
+  return { enabled: d.followUpEnabled === true, intervalDays };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
@@ -86,9 +107,12 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       formsByPatient: forms,
       invoices: await runQuery("invoices"),
       scriptPricing: await runQuery("scriptPricing"),
-      // Note templates are private per-owner even for a super admin (the rules only allow
-      // users/{uid}/noteTemplates where uid()==userId), so this loads the caller's own only.
+      // Note templates + follow-ups are private per-owner even for a super admin (rules
+      // only allow users/{uid}/… where uid()==userId), so these load the caller's own only.
       noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
+      followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
+      followUpSettings: await readUserFollowUpSettings(uid),
+      currentUserID: uid,
     });
   }
 
@@ -158,5 +182,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     invoices: [...invoicesById.values()],
     scriptPricing: scriptPricingRows,
     noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
+    followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
+    followUpSettings: await readUserFollowUpSettings(uid),
+    currentUserID: uid,
   });
 }

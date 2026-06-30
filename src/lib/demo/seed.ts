@@ -1,6 +1,6 @@
 // Port of SessionState.demoBackend — the same demo data the iOS app seeds.
 // Built by replaying domain operations so seeded state obeys the same rules.
-import type { DemoState, Identity, MedicationItem, Patient } from "./types";
+import type { DemoState, FollowUpTask, Identity, MedicationItem, Patient } from "./types";
 import { LUMIERE, DEMO_ACCOUNTS } from "./accounts";
 import {
   emptyState,
@@ -8,11 +8,12 @@ import {
   approveRequest,
   saveTreatmentNote,
   saveGeneralNote,
+  isoDay,
 } from "./backend";
 
 // Fixed demo "today" so seeded appointments and expiries are deterministic.
 export const SEED_NOW = Date.UTC(2026, 5, 26, 0, 0, 0);
-const TODAY_ISO = "2026-06-26";
+const TODAY_ISO = isoDay(SEED_NOW); // stays in sync with SEED_NOW
 
 const sarahIndependent: Identity = DEMO_ACCOUNTS[0].identities[0];
 const sarahClinic: Identity = DEMO_ACCOUNTS[0].identities[1];
@@ -142,6 +143,14 @@ export function buildSeedState(): DemoState {
   const appointments = { ...state.appointments };
   for (const a of appts) appointments[a.id] = a;
   state = { ...state, appointments };
+
+  // One pending follow-up due today so the calendar surfacing is demonstrable
+  // (a freshly generated task is due +interval, so it would not show on "today").
+  const seededFollowUp: FollowUpTask = {
+    id: "fu-seed-1", ownerID: "u-voss", patientID: grace.id, patientName: "Grace Huang",
+    dueDateISO: TODAY_ISO, status: "pending",
+  };
+  state = { ...state, followUpTasksByID: { ...state.followUpTasksByID, [seededFollowUp.id]: seededFollowUp } };
 
   return state;
 }

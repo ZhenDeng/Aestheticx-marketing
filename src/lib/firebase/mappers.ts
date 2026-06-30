@@ -4,7 +4,7 @@ import type {
   Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
-  NoteTemplate,
+  NoteTemplate, FollowUpTask, FollowUpStatus,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -290,4 +290,23 @@ export function mapNoteTemplate(id: string, data: Doc): NoteTemplate {
   const cats = strArray(data.aftercareCategories)
     .filter((c): c is AftercareCategory => (AFTERCARE_CATEGORIES as readonly string[]).includes(c));
   return { id, ownerID: str(data.ownerId), name: str(data.name), body: str(data.body), aftercareCategories: cats };
+}
+
+// Follow-up tasks: ownerID lives in the doc path (users/{ownerID}/followUpTasks/{id}),
+// not the body, so mapFollowUpTask takes it as a param.
+export function encodeFollowUpTask(t: FollowUpTask): Doc {
+  return { patientId: t.patientID, patientName: t.patientName, dueDateISO: t.dueDateISO, status: t.status, sourceNoteId: t.sourceNoteID ?? null };
+}
+
+export function mapFollowUpTask(id: string, ownerID: string, data: Doc): FollowUpTask {
+  const raw = str(data.status);
+  const status: FollowUpStatus = raw === "done" || raw === "ignored" ? raw : "pending";
+  return {
+    id, ownerID,
+    patientID: str(data.patientId),
+    patientName: str(data.patientName),
+    dueDateISO: str(data.dueDateISO),
+    status,
+    sourceNoteID: typeof data.sourceNoteId === "string" ? data.sourceNoteId : undefined,
+  };
 }

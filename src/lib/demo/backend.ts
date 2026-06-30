@@ -5,6 +5,9 @@ import type {
   AuthorisationRequest,
   DemoState,
   Identity,
+  FollowUpSettings,
+  FollowUpStatus,
+  FollowUpTask,
   MedicationItem,
   Note,
   NoteTemplate,
@@ -17,7 +20,7 @@ import type {
   FormAnswer,
   TreatmentMedication,
 } from "./types";
-import { fullName, identityBadge } from "./types";
+import { fullName, displayName, identityBadge } from "./types";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
@@ -39,6 +42,8 @@ export function emptyState(): DemoState {
     invoices: [],
     scriptPricing: {},
     noteTemplatesByOwner: {},
+    followUpTasksByID: {},
+    followUpSettingsByUser: {},
   };
 }
 
@@ -329,6 +334,42 @@ export function deleteNoteTemplate(state: DemoState, id: string, identity: Ident
   return { ...state, noteTemplatesByOwner: { ...state.noteTemplatesByOwner, [ownerID]: list.filter((t) => t.id !== id) } };
 }
 
+// --- Clinician follow-up reminders ---
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Epoch ms -> "yyyy-MM-dd" in **UTC** (matches iOS followUpISODay). The interval
+ * arithmetic in saveTreatmentNote adds whole days in ms, which is exact in UTC.
+ * Keep this on `toISOString()` — switching to a local-timezone formatter would make
+ * due-date math inconsistent across DST/offset boundaries.
+ */
+export function isoDay(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
+export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {
+  return state.followUpSettingsByUser[userID] ?? { enabled: false, intervalDays: 14 };
+}
+
+export function setFollowUpSettings(state: DemoState, settings: FollowUpSettings, identity: Identity): DemoState {
+  return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: settings } };
+}
+
+// Pending tasks due on or before dateISO, oldest first (overdue keep showing until actioned).
+export function followUpTasksForOwnerOn(state: DemoState, ownerID: string, dateISO: string): FollowUpTask[] {
+  return Object.values(state.followUpTasksByID)
+    .filter((t) => t.ownerID === ownerID && t.status === "pending" && t.dueDateISO <= dateISO)
+    .sort((a, b) => a.dueDateISO.localeCompare(b.dueDateISO));
+}
+
+export function setFollowUpStatus(state: DemoState, id: string, status: FollowUpStatus, identity: Identity): DemoState {
+  const task = state.followUpTasksByID[id];
+  if (!task) throw new BackendError("notFound");
+  if (task.ownerID !== identity.user.id) throw new BackendError("notPermitted");
+  return { ...state, followUpTasksByID: { ...state.followUpTasksByID, [id]: { ...task, status } } };
+}
+
 // Active authorisations the identity is allowed to tick when writing a treatment note.
 export function usableAuthorisations(
   state: DemoState, patientID: string, identity: Identity, now: number,
@@ -406,7 +447,7 @@ export interface SaveTreatmentNoteInput {
   identity: Identity;
 }
 
-export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInput, now: number): { state: DemoState; note: Note } {
+export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInput, now: number): { state: DemoState; note: Note; followUp?: FollowUpTask } {
   const patient = state.patients[input.patientID];
   if (!patient) throw new BackendError("notFound");
   if (!patientPermissions(input.identity, patient).canWriteTreatmentNote) throw new BackendError("notPermitted");
@@ -444,7 +485,21 @@ export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInpu
     medications: input.medications,
   };
   const withNote = appendNote({ ...state, authorisations, usages }, note);
-  return withNote;
+
+  // Follow-up reminder (opt-in): schedule one intervalDays after the treatment.
+  const settings = followUpSettingsForUser(withNote.state, input.identity.user.id);
+  if (!settings.enabled) return { state: withNote.state, note };
+  const followUp: FollowUpTask = {
+    id: makeID("fu"),
+    ownerID: input.identity.user.id,
+    patientID: input.patientID,
+    patientName: displayName(patient),
+    dueDateISO: isoDay(now + settings.intervalDays * DAY_MS),
+    status: "pending",
+    sourceNoteID: note.id,
+  };
+  const state2 = { ...withNote.state, followUpTasksByID: { ...withNote.state.followUpTasksByID, [followUp.id]: followUp } };
+  return { state: state2, note, followUp };
 }
 
 function appendNote(state: DemoState, note: Note): { state: DemoState; note: Note } {

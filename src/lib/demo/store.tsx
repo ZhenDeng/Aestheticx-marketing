@@ -31,6 +31,10 @@ interface StoreValue {
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
   saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
   deleteNoteTemplate: (id: string, identity: Identity) => void;
+  followUpSettingsForUser: (userID: string) => ReturnType<typeof backend.followUpSettingsForUser>;
+  followUpTasksForOwnerOn: (ownerID: string, dateISO: string) => ReturnType<typeof backend.followUpTasksForOwnerOn>;
+  setFollowUpSettings: (settings: import("./types").FollowUpSettings, identity: Identity) => void;
+  setFollowUpStatus: (id: string, status: import("./types").FollowUpStatus, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -164,8 +168,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       },
       saveTreatmentNote: (input) => {
         let note: ReturnType<typeof backend.saveTreatmentNote>["note"] | null = null;
+        let followUp: ReturnType<typeof backend.saveTreatmentNote>["followUp"] | null = null;
         applyAndMirror(
-          (s) => { const r = backend.saveTreatmentNote(s, input, now); note = r.note; return r.state; },
+          (s) => { const r = backend.saveTreatmentNote(s, input, now); note = r.note; followUp = r.followUp ?? null; return r.state; },
           async (m) => {
             if (input.tickedIDs.length) {
               await m.mirrorConsumeRepeats({
@@ -177,6 +182,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             } else if (note) {
               await m.mirrorCreateNote(input.patientID, note);
             }
+            // followUp.sourceNoteID points at the client note id. In the doctor-direct
+            // path that matches the mirrored note; in the ticked path the consumeRepeats
+            // Function writes a server-id note, so sourceNoteID is a best-effort hint there
+            // (unread by the app — same as iOS, which shares this Function).
+            if (followUp) await m.mirrorSaveFollowUpTask(followUp);
           },
         );
       },
@@ -210,6 +220,18 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.deleteNoteTemplate(s, id, identity),
           (m) => m.mirrorDeleteNoteTemplate(identity.user.id, id),
+        ),
+      followUpSettingsForUser: (userID) => backend.followUpSettingsForUser(state, userID),
+      followUpTasksForOwnerOn: (ownerID, dateISO) => backend.followUpTasksForOwnerOn(state, ownerID, dateISO),
+      setFollowUpSettings: (settings, identity) =>
+        applyAndMirror(
+          (s) => backend.setFollowUpSettings(s, settings, identity),
+          (m) => m.mirrorSetFollowUpSettings(identity.user.id, settings),
+        ),
+      setFollowUpStatus: (id, status, identity) =>
+        applyAndMirror(
+          (s) => backend.setFollowUpStatus(s, id, status, identity),
+          (m) => m.mirrorSetFollowUpStatus(identity.user.id, id, status),
         ),
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
