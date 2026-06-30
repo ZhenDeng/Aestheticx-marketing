@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, slotsForWindow, isSlotTaken } from "@/lib/demo/backend";
+import { isoDay, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
 import type { Identity } from "@/lib/demo/types";
 
 function timeLabel(minute: number): string {
@@ -43,16 +43,19 @@ function DoctorAvailability({ me }: { me: Identity }) {
 
   function publish() {
     setError(null);
+    if (!start || !end) { setError("Enter a start and end time."); return; }
     try {
       store.publishAvailability({ doctorID: me.user.id, dateISO: date, startMinute: minutesFromTime(start), endMinute: minutesFromTime(end) }, me);
-    } catch {
-      setError("Could not publish — check the end time is after the start.");
+    } catch (e) {
+      setError(e instanceof BackendError && e.message === "validationFailed" ? "End time must be after the start time." : "Could not publish. Please try again.");
     }
   }
   function withdraw(id: string) {
     setError(null);
     try { store.withdrawAvailability(id, me); }
-    catch { setError("That window has bookings and can't be withdrawn."); }
+    catch (e) {
+      setError(e instanceof BackendError && e.message === "notActive" ? "That window has bookings and can't be withdrawn." : "Could not withdraw. Please try again.");
+    }
   }
 
   return (
@@ -100,25 +103,30 @@ function BookConsult({ me }: { me: Identity }) {
   const store = useDemoStore();
   const todayISO = isoDay(store.now);
   const doctors = store.doctorsWithAvailability();
-  const [doctorID, setDoctorID] = useState<string | null>(doctors[0]?.doctorID ?? null);
+  const [doctorID, setDoctorID] = useState<string | null>(null);
+  // Fall back to the first available doctor so a freshly-published doctor is selectable
+  // without the user having to touch the dropdown.
+  const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
   const [date, setDate] = useState(todayISO);
   const [slot, setSlot] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<string | null>(null);
 
-  const slots = doctorID ? store.openSlotsForDoctorOnDay(doctorID, date) : [];
+  const slots = effectiveDoctorID ? store.openSlotsForDoctorOnDay(effectiveDoctorID, date) : [];
   const matches = slot !== null && query.trim() ? store.searchPatients(query, me).slice(0, 5) : [];
 
   function book(patientID: string, patientName: string) {
-    if (!doctorID || slot === null) return;
+    if (!effectiveDoctorID || slot === null) return;
     setError(null);
     try {
-      store.bookAuthSlot({ doctorID, dateISO: date, startMinute: slot, patientID, patientName, identity: me });
+      store.bookAuthSlot({ doctorID: effectiveDoctorID, dateISO: date, startMinute: slot, patientID, patientName, identity: me });
       setBooked(`Booked ${timeLabel(slot)} for ${patientName}.`);
       setSlot(null); setQuery("");
-    } catch {
-      setError("That slot was just taken — pick another.");
+    } catch (e) {
+      setError(e instanceof BackendError && e.message === "slotTaken"
+        ? "That slot was just taken — pick another."
+        : "That slot is no longer available — pick another.");
       setSlot(null);
     }
   }
@@ -129,7 +137,7 @@ function BookConsult({ me }: { me: Identity }) {
     <div className="mt-6 flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm text-ink-soft">Doctor
-          <select value={doctorID ?? ""} onChange={(e) => { setDoctorID(e.target.value); setSlot(null); }} className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink">
+          <select value={effectiveDoctorID ?? ""} onChange={(e) => { setDoctorID(e.target.value); setSlot(null); }} className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink">
             {doctors.map((d) => <option key={d.doctorID} value={d.doctorID}>{d.doctorName}</option>)}
           </select>
         </label>

@@ -146,10 +146,11 @@ export function buildSeedState(): DemoState {
 
   // A published authorisation-availability window for Dr Voss (14:00–15:00 → six 10-min slots),
   // so nurses can demo booking an open auth slot.
+  const availID = "avail-seed-voss";
   state = {
     ...state,
     availabilityWindows: {
-      "avail-seed-voss": { id: "avail-seed-voss", doctorID: "u-voss", doctorName: "Dr Elena Voss", dateISO: TODAY_ISO, startMinute: 840, endMinute: 900 },
+      [availID]: { id: availID, doctorID: "u-voss", doctorName: "Dr Elena Voss", dateISO: TODAY_ISO, startMinute: 840, endMinute: 900 },
     },
   };
 

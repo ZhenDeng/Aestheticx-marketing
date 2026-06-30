@@ -324,7 +324,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         );
       },
       withdrawAvailability: (windowID, identity) => {
-        backend.withdrawAvailability(state, windowID, identity); // validate (throws) before applying
+        // Validate eagerly so the BackendError surfaces to the caller; the updater then does a
+        // pure immutable key-removal (re-running backend.withdraw inside setState could throw
+        // mid-render if state shifted). The delete is on a fresh shallow copy, never on state.
+        backend.withdrawAvailability(state, windowID, identity);
         applyAndMirror(
           (s) => { const next = { ...s.availabilityWindows }; delete next[windowID]; return { ...s, availabilityWindows: next }; },
           (m) => m.mirrorWithdrawAvailability(windowID),

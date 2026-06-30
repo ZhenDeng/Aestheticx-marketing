@@ -520,8 +520,11 @@ export function openSlotsForDoctorOnDay(state: DemoState, doctorID: string, date
 }
 
 function slotInAnyWindow(state: DemoState, doctorID: string, dateISO: string, startMinute: number): boolean {
+  // O(1) per window: on the slot grid and a full 10 minutes inside [start, end).
   return Object.values(state.availabilityWindows).some(
-    (w) => w.doctorID === doctorID && w.dateISO === dateISO && slotsForWindow(w).includes(startMinute),
+    (w) => w.doctorID === doctorID && w.dateISO === dateISO &&
+      startMinute >= w.startMinute && startMinute + SLOT_MINUTES <= w.endMinute &&
+      (startMinute - w.startMinute) % SLOT_MINUTES === 0,
   );
 }
 
