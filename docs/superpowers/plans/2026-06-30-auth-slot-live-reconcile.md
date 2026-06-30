@@ -16,12 +16,12 @@ Backend dependency: AestheticX `feat/functions-withdraw-auth-slots` (`withdrawAu
 - [x] 3.3 `mirrorBookAuthSlot` payload aligned (nurse live booking deferred — TODO)
 
 ## 4. Review
-- [ ] 4.1 Engineer review (typescript-reviewer); address CRITICAL/HIGH
+- [x] 4.1 Engineer review (typescript-reviewer); fixed 2 HIGH — optimistic window id now = backend composite key (no ghost on hydrate, idempotent re-publish); `mapAvailabilityWindow` hard-codes `doctorName=''` (+ slotStarts comment, test pin)
 - [x] 4.2 QA: demo regression on `/app/availability` (publish + withdraw) — green, no console errors
 
 ## 5. Verify + ship
 - [x] 5.1 `npm test` green (251); `npm run build` + `eslint` + `tsc` clean
-- [ ] 5.2 Update `web-port-roadmap` memory (auth-slot doctor side live; nurse read model still TODO)
+- [x] 5.2 Update `web-port-roadmap` memory (auth-slot doctor side live; nurse read model still TODO)
 - [ ] 5.3 `/create-pr` (web) + the backend PR
 
 ## Out of scope (next slice)
