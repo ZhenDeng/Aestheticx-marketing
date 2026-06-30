@@ -11,6 +11,11 @@ import { AftercareForm } from "@/components/app/AftercareForm";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { displayName, fullName, hasAlert } from "@/lib/demo/types";
 
+const DELIVERY_LABEL: Record<string, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
+function deliveryColor(s: string): string {
+  return s === "delivered" ? "var(--color-tint)" : s === "failed" ? "var(--color-rose)" : "var(--color-ink-soft)";
+}
+
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { identity } = useDemoAuth();
@@ -144,6 +149,11 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                         {n.kind === "treatment" ? "Treatment" : "Aftercare"}
                       </span>
                     )}
+                    {n.deliveryStatus && (
+                      <span className="micro rounded-full border px-2 py-0.5" style={{ color: deliveryColor(n.deliveryStatus), borderColor: deliveryColor(n.deliveryStatus) }}>
+                        {DELIVERY_LABEL[n.deliveryStatus]}
+                      </span>
+                    )}
                     <span className="micro">{n.authorBadge}</span>
                   </span>
                 </button>
@@ -164,6 +174,12 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                       <p className="mt-1 micro" style={{ color: "var(--color-tint)" }}>
                         Consumed {n.consumedAuthorisationIDs.length} repeat{n.consumedAuthorisationIDs.length === 1 ? "" : "s"}
                       </p>
+                    )}
+                    {n.deliveryStatus === "failed" && store.status === "demo" && (
+                      <button onClick={() => store.retryAftercare(id, n.id, me)}
+                              className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
+                        Retry delivery
+                      </button>
                     )}
                   </div>
                 )}
