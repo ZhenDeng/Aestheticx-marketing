@@ -149,28 +149,30 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
       submitRequest: (input) => {
-        let created: ReturnType<typeof backend.submitRequest>["request"] | null = null;
-        applyAndMirror(
-          (s) => { const r = backend.submitRequest(s, input, now); created = r.request; return r.state; },
-          (m) => created ? m.mirrorCreateRequest(created) : Promise.resolve(),
-        );
+        // Mint the id eagerly (outside the updater) so the local copy and the mirrored
+        // doc share one id. A functional setState updater re-runs under React Strict Mode,
+        // which would otherwise generate a second id inside the updater and diverge from
+        // the value captured here for the mirror. See createPatient for the same pattern.
+        const { state: next, request } = backend.submitRequest(state, input, now);
+        applyAndMirror(() => next, (m) => m.mirrorCreateRequest(request));
       },
       approveRequest: (requestID, id) =>
         applyAndMirror((s) => backend.approveRequest(s, requestID, id, now).state, (m) => m.mirrorApproveRequest(requestID)),
       requireEdit: (requestID, id) =>
         applyAndMirror((s) => backend.requireEdit(s, requestID, id), (m) => m.mirrorRequireEdit(requestID)),
       saveGeneralNote: (input) => {
-        let note: ReturnType<typeof backend.saveGeneralNote>["note"] | null = null;
-        applyAndMirror(
-          (s) => { const r = backend.saveGeneralNote(s, input, now); note = r.note; return r.state; },
-          (m) => note ? m.mirrorCreateNote(input.patientID, note) : Promise.resolve(),
-        );
+        // Mint the note id eagerly so the local copy and the mirrored doc agree (Strict
+        // Mode re-runs the updater — see createPatient / submitRequest).
+        const { state: next, note } = backend.saveGeneralNote(state, input, now);
+        applyAndMirror(() => next, (m) => m.mirrorCreateNote(input.patientID, note));
       },
       saveTreatmentNote: (input) => {
-        let note: ReturnType<typeof backend.saveTreatmentNote>["note"] | null = null;
-        let followUp: ReturnType<typeof backend.saveTreatmentNote>["followUp"] | null = null;
+        // Mint the note + follow-up ids eagerly so the local copies and the mirrored docs
+        // share one id each. Inside the Strict-Mode-double-invoked updater they would
+        // diverge, leaving the follow-up's sourceNoteID pointing at a phantom note id.
+        const { state: next, note, followUp } = backend.saveTreatmentNote(state, input, now);
         applyAndMirror(
-          (s) => { const r = backend.saveTreatmentNote(s, input, now); note = r.note; followUp = r.followUp ?? null; return r.state; },
+          () => next,
           async (m) => {
             if (input.tickedIDs.length) {
               await m.mirrorConsumeRepeats({
@@ -179,7 +181,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
                 authorisationIds: input.tickedIDs,
                 note: { title: input.title, body: input.body, medications: input.medications },
               });
-            } else if (note) {
+            } else {
               await m.mirrorCreateNote(input.patientID, note);
             }
             // followUp.sourceNoteID points at the client note id. In the doctor-direct
@@ -257,11 +259,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror((s) => backend.mergePatients(s, keepId, removeId, identity), (m) => m.mirrorMergePatients(keepId, removeId)),
       formsForPatient: (pid) => backend.formsForPatient(state, pid),
       recordForm: (input, identity) => {
-        let form: ReturnType<typeof backend.recordSignedForm>["form"] | null = null;
-        applyAndMirror(
-          (s) => { const r = backend.recordSignedForm(s, input, identity, now); form = r.form; return r.state; },
-          (m) => (form ? m.mirrorCreateForm(form) : Promise.resolve()),
-        );
+        // Mint the form id eagerly so the local copy and the mirrored doc agree (Strict
+        // Mode re-runs the updater — see createPatient / submitRequest).
+        const { state: next, form } = backend.recordSignedForm(state, input, identity, now);
+        applyAndMirror(() => next, (m) => m.mirrorCreateForm(form));
       },
       deleteForm: (patientID, formId, identity) =>
         applyAndMirror((s) => backend.deleteForm(s, patientID, formId, identity), (m) => m.mirrorDeleteForm(patientID, formId)),
