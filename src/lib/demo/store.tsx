@@ -293,7 +293,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       },
       rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) =>
         applyAndMirror(
-          (s) => backend.rescheduleAppointment(s, id, startMinute, durationMinutes, identity),
+          (s) => backend.rescheduleAppointment(s, id, dateISO, startMinute, durationMinutes, identity),
           (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
         ),
       markAppointment: (id, status, identity) =>

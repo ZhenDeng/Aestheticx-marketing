@@ -158,6 +158,11 @@ export function dragEndMinute(
   return Math.max(startMin + minDuration, Math.min(snapped, winEnd));
 }
 
+// How many equal-width day-columns a horizontal drag of `dx` pixels crossed (week move).
+export function dayDelta(dx: number, dayWidth: number): number {
+  return dayWidth > 0 ? Math.round(dx / dayWidth) || 0 : 0; // `|| 0` normalises -0 → 0
+}
+
 // Start minute for a tap at `offsetPx` down the timeline, snapped to `step` and clamped to
 // [winStart, winEnd - step] so at least one step fits before the window closes.
 export function slotStartMinute(
