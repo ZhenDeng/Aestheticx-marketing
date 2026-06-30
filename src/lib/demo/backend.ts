@@ -4,6 +4,7 @@ import type {
   Appointment,
   Authorisation,
   AuthorisationRequest,
+  DeliveryStatus,
   DemoState,
   Identity,
   FollowUpSettings,
@@ -22,6 +23,7 @@ import type {
   TreatmentMedication,
 } from "./types";
 import { fullName, displayName, identityBadge } from "./types";
+import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
@@ -423,6 +425,7 @@ export interface RecordAftercareSendInput {
   patientID: string;
   content: string;
   medications: TreatmentMedication[];
+  categories: AftercareCategory[];
   identity: Identity;
 }
 
@@ -444,8 +447,25 @@ export function recordAftercareSend(
     authorBadge: identityBadge(input.identity),
     consumedAuthorisationIDs: [],
     medications: input.medications,
+    deliveryStatus: "queued",
+    aftercareCategories: input.categories,
   };
   return appendNote(state, note);
+}
+
+// Update the delivery status of an aftercare send-record note (mirror-back / demo retry).
+export function setNoteDeliveryStatus(
+  state: DemoState, patientID: string, noteID: string, status: DeliveryStatus, identity: Identity,
+): DemoState {
+  const patient = state.patients[patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (!patientPermissions(identity, patient).canWriteGeneralNote) throw new BackendError("notPermitted");
+  const list = state.notesByPatient[patientID] ?? [];
+  const idx = list.findIndex((n) => n.id === noteID);
+  if (idx < 0) throw new BackendError("notFound");
+  const next = [...list];
+  next[idx] = { ...next[idx], deliveryStatus: status };
+  return { ...state, notesByPatient: { ...state.notesByPatient, [patientID]: next } };
 }
 
 export interface SaveGeneralNoteInput {

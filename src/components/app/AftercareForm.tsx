@@ -30,7 +30,7 @@ export function AftercareForm({
   }
 
   function send() {
-    store.sendAftercare({ patientID, content, medications: includeMeds ? lastMeds : [], identity });
+    store.sendAftercare({ patientID, content, medications: includeMeds ? lastMeds : [], categories: selected, identity });
     onDone();
   }
 
