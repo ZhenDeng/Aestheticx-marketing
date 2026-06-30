@@ -495,6 +495,7 @@ export function linkAppointmentPatient(
   const appt = state.appointments[apptId];
   if (!appt) throw new BackendError("notFound");
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (appt.patientID) throw new BackendError("notActive"); // only an unlinked lead can be linked
   const patient = state.patients[patientId];
   if (!patient) throw new BackendError("notFound");
   return {

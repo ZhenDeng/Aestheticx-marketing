@@ -56,6 +56,10 @@ describe("draftFromLead", () => {
     expect(d.givenName).toBe("Jordan");
     expect(d.lastName).toBe("");
   });
+  it("returns an empty draft for a missing name", () => {
+    const d = draftFromLead(appt({}));
+    expect(d).toEqual(emptyDraft());
+  });
 });
 
 function withState(...appts: Appointment[]): { state: DemoState; patient: Patient } {
@@ -76,6 +80,16 @@ describe("linkAppointmentPatient", () => {
     const next = linkAppointmentPatient(state, "a1", patient.id, voss);
     expect(next.appointments.a1.patientID).toBe(patient.id);
     expect(next.appointments.a1.patientName).toBe("Jordan Lee");
+  });
+  it("uses the patient's preferred name for the stamped calendar name", () => {
+    let { state, patient } = withState(appt({ patientName: "Jordan Lee (new lead)" }));
+    state = { ...state, patients: { ...state.patients, [patient.id]: { ...patient, preferredName: "Jode" } } };
+    const next = linkAppointmentPatient(state, "a1", patient.id, voss);
+    expect(next.appointments.a1.patientName).toBe("Jode Lee");
+  });
+  it("rejects an already-linked appointment", () => {
+    const { state, patient } = withState(appt({ patientID: "p-other", patientName: "Someone Else" }));
+    expect(() => linkAppointmentPatient(state, "a1", patient.id, voss)).toThrow(BackendError);
   });
   it("rejects another owner's appointment", () => {
     const { state, patient } = withState(appt({ patientName: "Jordan Lee (new lead)" }));

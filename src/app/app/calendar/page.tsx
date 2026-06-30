@@ -592,7 +592,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-medium text-ink">
           {appt.patientID ? (
-            <Link href={`/app/patients/${appt.patientID}`} className="underline decoration-line underline-offset-2 hover:decoration-tint">{appt.patientName}</Link>
+            <Link href={`/app/patients/${appt.patientID}`} className="underline decoration-line underline-offset-2 hover:decoration-tint">{appt.patientName ?? "Patient"}</Link>
           ) : lead ? (
             <>{leadName(appt)} <span className="micro text-ink-soft">· new lead</span></>
           ) : "Blocked time"}
@@ -608,8 +608,9 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       )}
       {lead && creating ? (
         <div className="mt-3 border-t border-line pt-3">
-          <PatientForm mode="create" initial={draftFromLead(appt)}
-            onCreated={(id) => store.linkAppointmentPatient(appt.id, id, me)} />
+          <PatientForm mode="create" compact initial={draftFromLead(appt)}
+            onCreated={(id) => store.linkAppointmentPatient(appt.id, id, me)}
+            onCancel={() => setCreating(false)} />
         </div>
       ) : (
         <AppointmentActions key={`${appt.startMinute}-${appt.endMinute}-${appt.status}`} appt={appt} me={me} onDone={onDone} />
