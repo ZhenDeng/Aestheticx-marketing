@@ -113,6 +113,8 @@ export interface Authorisation {
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";
 
+export type DeliveryStatus = "queued" | "delivered" | "failed";
+
 export interface TreatmentMedication {
   name: string;
   batch?: string;
@@ -131,6 +133,8 @@ export interface Note {
   authorBadge: string;
   consumedAuthorisationIDs: string[];
   medications: TreatmentMedication[];
+  deliveryStatus?: DeliveryStatus;       // aftercare records only
+  aftercareCategories?: AftercareCategory[]; // audit trail of an aftercare send
 }
 
 export interface NoteTemplate {
