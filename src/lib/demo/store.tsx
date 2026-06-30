@@ -117,7 +117,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           const m = await import("@/lib/firebase/mirror");
           await mirror(m);
         } catch (e) {
+          // The optimistic local apply was never persisted. Surface the banner and
+          // rehydrate so the UI reconciles back to Firestore truth rather than
+          // showing phantom data until the next manual refresh.
           setLastSyncError(String(e));
+          setRefreshTick((t) => t + 1);
         }
       })();
     },
@@ -303,7 +307,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (live) {
           void (async () => {
             try { const m = await import("@/lib/firebase/mirror"); await m.mirrorCreatePatient(patient); }
-            catch (e) { setLastSyncError(String(e)); }
+            catch (e) { setLastSyncError(String(e)); setRefreshTick((t) => t + 1); }
           })();
         }
         return patient.id;
