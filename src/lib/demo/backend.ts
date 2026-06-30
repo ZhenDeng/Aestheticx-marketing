@@ -792,11 +792,19 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   // Re-point usage records too, so billing/usage history follows the merged file.
   const usages = state.usages.map((u) => (u.patientID === removeId ? { ...u, patientID: keepId } : u));
 
+  // Re-point appointments so the removed file's calendar history follows the merge,
+  // refreshing the denormalised name to the kept patient's calendar name.
+  const keepCalendarName = calendarName(keep);
+  const appointments = { ...state.appointments };
+  for (const [id, a] of Object.entries(appointments)) {
+    if (a.patientID === removeId) appointments[id] = { ...a, patientID: keepId, patientName: keepCalendarName };
+  }
+
   const mergedKeep: Patient = { ...keep, prescribingDoctorIDs: [...new Set([...keep.prescribingDoctorIDs, ...remove.prescribingDoctorIDs])] };
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
-  return { ...state, patients, notesByPatient, formsByPatient, authorisations, usages };
+  return { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments };
 }
 
 // --- Signed forms ---
