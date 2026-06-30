@@ -20,7 +20,7 @@ function inputToDob(s: string): PatientDraft["dateOfBirth"] {
 
 const FIELD = "mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint";
 
-export function PatientForm({ mode, initial, existing }: { mode: "create" | "edit"; initial: PatientDraft; existing?: Patient }) {
+export function PatientForm({ mode, initial, existing, onCreated }: { mode: "create" | "edit"; initial: PatientDraft; existing?: Patient; onCreated?: (id: string) => void }) {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const router = useRouter();
@@ -37,6 +37,7 @@ export function PatientForm({ mode, initial, existing }: { mode: "create" | "edi
     try {
       if (mode === "create") {
         const id = store.createPatient(draft, identity!);
+        onCreated?.(id); // e.g. link a lead appointment to the new patient before navigating
         router.push(`/app/patients/${id}`);
       } else if (existing) {
         const updated: Patient = {

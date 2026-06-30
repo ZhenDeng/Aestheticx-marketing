@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, draftFromLead, canCreatePatient } from "@/lib/demo/backend";
+import { PatientForm } from "@/components/app/PatientForm";
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
@@ -158,17 +160,7 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
         <p className="mt-3 text-sm text-ink-soft">No appointments{dateISO === todayISO ? " today" : ""}. Tap the timeline to add one.</p>
       )}
 
-      {selected && (
-        <div className="mt-4 rounded-inner border border-line bg-card px-4 py-3">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="font-medium text-ink">{selected.patientName ?? "Blocked time"} · {timeLabel(selected.startMinute)}–{timeLabel(selected.endMinute)}</span>
-            <span className="micro" style={{ color: apptColor(selected) }}>{STATUS_LABEL[selected.status]}</span>
-          </div>
-          {selected.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{selected.appointmentNote}</p>}
-          <AppointmentActions key={`${selected.startMinute}-${selected.endMinute}-${selected.status}`}
-            appt={selected} me={me} onDone={() => setSelectedId(null)} />
-        </div>
-      )}
+      {selected && <AppointmentDetail key={selected.id} appt={selected} me={me} onDone={() => setSelectedId(null)} />}
 
       {followUps.length > 0 && (
         <div className="mt-8">
@@ -584,6 +576,44 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
         </button>
         <button onClick={onDone} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">Cancel</button>
       </div>
+    </div>
+  );
+}
+
+// Detail panel for the selected appointment: an actionable patient row (link to file /
+// create-from-lead) plus the status quick-actions.
+function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identity; onDone: () => void }) {
+  const store = useDemoStore();
+  const [creating, setCreating] = useState(false);
+  const lead = isLeadAppointment(appt);
+
+  return (
+    <div className="mt-4 rounded-inner border border-line bg-card px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-medium text-ink">
+          {appt.patientID ? (
+            <Link href={`/app/patients/${appt.patientID}`} className="underline decoration-line underline-offset-2 hover:decoration-tint">{appt.patientName}</Link>
+          ) : lead ? (
+            <>{leadName(appt)} <span className="micro text-ink-soft">· new lead</span></>
+          ) : "Blocked time"}
+          {" · "}{timeLabel(appt.startMinute)}–{timeLabel(appt.endMinute)}
+        </span>
+        <span className="micro" style={{ color: apptColor(appt) }}>{STATUS_LABEL[appt.status]}</span>
+      </div>
+      {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
+
+      {lead && !creating && canCreatePatient(me) && (
+        <button onClick={() => setCreating(true)}
+          className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Create patient from lead</button>
+      )}
+      {lead && creating ? (
+        <div className="mt-3 border-t border-line pt-3">
+          <PatientForm mode="create" initial={draftFromLead(appt)}
+            onCreated={(id) => store.linkAppointmentPatient(appt.id, id, me)} />
+        </div>
+      ) : (
+        <AppointmentActions key={`${appt.startMinute}-${appt.endMinute}-${appt.status}`} appt={appt} me={me} onDone={onDone} />
+      )}
     </div>
   );
 }
