@@ -114,3 +114,19 @@ export async function mirrorSetBookingToken(uid: string, token: string): Promise
 export async function mirrorConfirmAppointment(id: string): Promise<void> {
   await httpsCallable(functions(), "confirmAppointment")({ appointmentId: id });
 }
+export async function mirrorBookTreatment(input: {
+  ownerID: string; dateISO: string; startMinute: number; durationMinutes: number;
+  patientID?: string; patientName?: string; note?: string;
+}): Promise<void> {
+  await httpsCallable(functions(), "bookTreatment")({
+    ownerId: input.ownerID, dateISO: input.dateISO, startMinute: input.startMinute,
+    durationMinutes: input.durationMinutes, patientId: input.patientID ?? null,
+    patientName: input.patientName ?? null, note: input.note ?? "",
+  });
+}
+export async function mirrorRescheduleAppointment(id: string, dateISO: string, startMinute: number, durationMinutes: number): Promise<void> {
+  await httpsCallable(functions(), "rescheduleAppointment")({ appointmentId: id, dateISO, startMinute, durationMinutes });
+}
+export async function mirrorMarkAppointment(id: string, status: "completed" | "noShow" | "cancelled"): Promise<void> {
+  await httpsCallable(functions(), "markAppointment")({ appointmentId: id, status });
+}
