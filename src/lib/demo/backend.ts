@@ -20,7 +20,7 @@ import type {
   FormAnswer,
   TreatmentMedication,
 } from "./types";
-import { fullName, identityBadge } from "./types";
+import { fullName, displayName, identityBadge } from "./types";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
@@ -442,7 +442,7 @@ export interface SaveTreatmentNoteInput {
   identity: Identity;
 }
 
-export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInput, now: number): { state: DemoState; note: Note } {
+export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInput, now: number): { state: DemoState; note: Note; followUp?: FollowUpTask } {
   const patient = state.patients[input.patientID];
   if (!patient) throw new BackendError("notFound");
   if (!patientPermissions(input.identity, patient).canWriteTreatmentNote) throw new BackendError("notPermitted");
@@ -480,7 +480,21 @@ export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInpu
     medications: input.medications,
   };
   const withNote = appendNote({ ...state, authorisations, usages }, note);
-  return withNote;
+
+  // Follow-up reminder (opt-in): schedule one intervalDays after the treatment.
+  const settings = followUpSettingsForUser(withNote.state, input.identity.user.id);
+  if (!settings.enabled) return { state: withNote.state, note };
+  const followUp: FollowUpTask = {
+    id: makeID("fu"),
+    ownerID: input.identity.user.id,
+    patientID: input.patientID,
+    patientName: displayName(patient),
+    dueDateISO: isoDay(now + settings.intervalDays * DAY_MS),
+    status: "pending",
+    sourceNoteID: note.id,
+  };
+  const state2 = { ...withNote.state, followUpTasksByID: { ...withNote.state.followUpTasksByID, [followUp.id]: followUp } };
+  return { state: state2, note, followUp };
 }
 
 function appendNote(state: DemoState, note: Note): { state: DemoState; note: Note } {

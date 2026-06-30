@@ -3,7 +3,8 @@ import {
   emptyState, isoDay, followUpSettingsForUser, setFollowUpSettings,
   followUpTasksForOwnerOn, setFollowUpStatus, BackendError,
 } from "@/lib/demo/backend";
-import type { FollowUpTask, Identity } from "@/lib/demo/types";
+import { saveTreatmentNote, setFollowUpSettings as setFU } from "@/lib/demo/backend";
+import type { DemoState, FollowUpTask, Identity, Patient } from "@/lib/demo/types";
 
 const voss: Identity = { user: { id: "u-voss", name: "Voss" }, role: "doctor", context: { kind: "independent" } };
 const sarah: Identity = { user: { id: "u-sarah", name: "Sarah" }, role: "nurse", context: { kind: "independent" } };
@@ -55,5 +56,34 @@ describe("setFollowUpStatus", () => {
   });
   it("throws on a missing task", () => {
     expect(() => setFollowUpStatus(emptyState(), "nope", "done", voss)).toThrow(BackendError);
+  });
+});
+
+function patientState(): DemoState {
+  const p: Patient = {
+    id: "p1", givenName: "Claire", lastName: "Donovan", dateOfBirth: { year: 1987, month: 7, day: 4 },
+    gender: "Female", address: "", phone: "0432", email: "c@e.com", allergies: "NKDA",
+    currentMedications: "Nil", owner: { kind: "doctor", id: "u-voss" }, prescribingDoctorIDs: [],
+  };
+  return { ...emptyState(), patients: { p1: p } };
+}
+
+describe("saveTreatmentNote follow-up generation", () => {
+  const NOW = Date.UTC(2026, 5, 26);
+  it("schedules a follow-up at now+interval when enabled", () => {
+    let state = patientState();
+    state = setFU(state, { enabled: true, intervalDays: 14 }, voss);
+    const r = saveTreatmentNote(state, { patientID: "p1", tickedIDs: [], title: "", body: "Tx", medications: [], identity: voss }, NOW);
+    expect(r.followUp).toBeDefined();
+    expect(r.followUp!.dueDateISO).toBe("2026-07-10"); // 26 Jun + 14 days
+    expect(r.followUp!.sourceNoteID).toBe(r.note.id);
+    expect(r.followUp!.ownerID).toBe("u-voss");
+    expect(followUpTasksForOwnerOn(r.state, "u-voss", "2026-07-10").map((t) => t.id)).toEqual([r.followUp!.id]);
+  });
+  it("schedules nothing when disabled", () => {
+    const state = patientState();
+    const r = saveTreatmentNote(state, { patientID: "p1", tickedIDs: [], title: "", body: "Tx", medications: [], identity: voss }, NOW);
+    expect(r.followUp).toBeUndefined();
+    expect(Object.keys(r.state.followUpTasksByID)).toHaveLength(0);
   });
 });
