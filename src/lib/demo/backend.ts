@@ -297,6 +297,55 @@ export function notesForPatient(state: DemoState, patientID: string): Note[] {
   return [...(state.notesByPatient[patientID] ?? [])].sort((a, b) => b.createdAt - a.createdAt);
 }
 
+// List-row text: the title if present, else the body's first line + "…".
+export function notePreview(note: Note): string {
+  if (note.title.trim()) return note.title;
+  const firstLine = note.body.split("\n")[0] ?? "";
+  return firstLine ? `${firstLine}…` : "(empty note)";
+}
+
+// Active authorisations the identity is allowed to tick when writing a treatment note.
+export function usableAuthorisations(
+  state: DemoState, patientID: string, identity: Identity, now: number,
+): Authorisation[] {
+  return activeAuthorisations(state, patientID, now).filter((a) => canUseAuthorisation(a, identity));
+}
+
+// Aftercare is sender-restricted to nurses and doctors (clinic admins may write
+// general notes but MUST NOT send aftercare, per the clinical-notes spec).
+export function canSendAftercare(identity: Identity): boolean {
+  return identity.role === "nurse" || identity.role === "doctor";
+}
+
+export interface RecordAftercareSendInput {
+  patientID: string;
+  content: string;
+  medications: TreatmentMedication[];
+  identity: Identity;
+}
+
+export function recordAftercareSend(
+  state: DemoState, input: RecordAftercareSendInput, now: number,
+): { state: DemoState; note: Note } {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (!patientPermissions(input.identity, patient).canView) throw new BackendError("notPermitted");
+  if (!canSendAftercare(input.identity)) throw new BackendError("notPermitted");
+  const note: Note = {
+    id: makeID("n"),
+    patientID: input.patientID,
+    kind: "aftercareRecord",
+    title: "Aftercare sent",
+    body: input.content,
+    createdAt: now,
+    authorID: input.identity.user.id,
+    authorBadge: identityBadge(input.identity),
+    consumedAuthorisationIDs: [],
+    medications: input.medications,
+  };
+  return appendNote(state, note);
+}
+
 export interface SaveGeneralNoteInput {
   patientID: string;
   title: string;
