@@ -162,6 +162,10 @@ export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: strin
   const raw = (res.data as { slots?: unknown }).slots;
   return Array.isArray(raw) ? (raw as number[]) : [];
 }
+export async function mirrorSetTreatmentDaySchedule(_ownerID: string, _weekday: number, _patch: Partial<import("@/lib/demo/types").DaySchedule>): Promise<void> { /* wired in Task 8 */ }
+export async function mirrorAddTreatmentBlock(_block: import("@/lib/demo/types").TreatmentBlock): Promise<void> { /* wired in Task 8 */ }
+export async function mirrorRemoveTreatmentBlock(_ownerID: string, _blockID: string): Promise<void> { /* wired in Task 8 */ }
+
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
 export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string; slotMinute: number; patientID?: string; counterpartyName: string }): Promise<void> {
   await httpsCallable(functions(), "bookAuthSlot")({

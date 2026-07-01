@@ -592,6 +592,8 @@ export function treatmentAvailabilityForOwner(state: DemoState, ownerID: string)
   return state.treatmentAvailabilityByOwner[ownerID] ?? defaultTreatmentAvailability(ownerID);
 }
 
+export type TreatmentAvailabilityResult = ReturnType<typeof treatmentAvailabilityForOwner>;
+
 export function isTimeAvailableForTreatment(
   config: TreatmentAvailability, dateISO: string, startMinute: number, endMinute: number,
 ): boolean {

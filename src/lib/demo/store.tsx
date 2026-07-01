@@ -45,6 +45,10 @@ interface StoreValue {
   appointmentsForPatient: (patientID: string) => ReturnType<typeof backend.appointmentsForPatient>;
   availabilityWindowsForDoctor: (doctorID: string) => ReturnType<typeof backend.availabilityWindowsForDoctor>;
   doctorsWithAvailability: () => ReturnType<typeof backend.doctorsWithAvailability>;
+  treatmentAvailabilityForOwner: (ownerID: string) => import("./backend").TreatmentAvailabilityResult;
+  setTreatmentDaySchedule: (ownerID: string, weekday: number, patch: Partial<import("./types").DaySchedule>) => void;
+  addTreatmentBlock: (ownerID: string, input: { dateISO: string; startMinute: number; endMinute: number }) => void;
+  removeTreatmentBlock: (ownerID: string, blockID: string) => void;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
   // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
   listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string }[]>;
@@ -287,6 +291,28 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       appointmentsForPatient: (patientID) => backend.appointmentsForPatient(state, patientID),
       availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
       doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
+      treatmentAvailabilityForOwner: (ownerID) => backend.treatmentAvailabilityForOwner(state, ownerID),
+      setTreatmentDaySchedule: (ownerID, weekday, patch) =>
+        applyAndMirror(
+          (s) => backend.setTreatmentDaySchedule(s, ownerID, weekday, patch),
+          (m) => m.mirrorSetTreatmentDaySchedule(ownerID, weekday, patch),
+        ),
+      addTreatmentBlock: (ownerID, input) => {
+        const { block } = backend.addTreatmentBlock(state, ownerID, input); // validates + mints id eagerly
+        applyAndMirror(
+          (s) => {
+            const config = backend.treatmentAvailabilityForOwner(s, ownerID);
+            const next = { ...config, ownerID, blocks: [...config.blocks, block] };
+            return { ...s, treatmentAvailabilityByOwner: { ...s.treatmentAvailabilityByOwner, [ownerID]: next } };
+          },
+          (m) => m.mirrorAddTreatmentBlock(block),
+        );
+      },
+      removeTreatmentBlock: (ownerID, blockID) =>
+        applyAndMirror(
+          (s) => backend.removeTreatmentBlock(s, ownerID, blockID),
+          (m) => m.mirrorRemoveTreatmentBlock(ownerID, blockID),
+        ),
       openSlotsForDoctorOnDay: (doctorID, dateISO) => backend.openSlotsForDoctorOnDay(state, doctorID, dateISO),
       listAvailableDoctors: async () => {
         if (!live) return backend.doctorsWithAvailability(state);
@@ -299,8 +325,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         return m.mirrorListDoctorOpenSlots(doctorID, dateISO);
       },
       bookTreatmentAppointment: (input) => {
-        // Demo adds locally. Live calls bookTreatment (server-authoritative id) then rehydrates.
-        if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input).state); return; }
+        // Compute eagerly so the availability guard throws synchronously (callers catch it).
+        const { state: next } = backend.bookTreatmentAppointment(state, input);
+        if (!live) { setState(() => next); return; }
+        setState(() => next);
         void (async () => {
           try {
             const m = await import("@/lib/firebase/mirror");
@@ -313,11 +341,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           } catch (e) { setLastSyncError(String(e)); }
         })();
       },
-      rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) =>
+      rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) => {
+        const next = backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity);
         applyAndMirror(
-          (s) => backend.rescheduleAppointment(s, id, dateISO, startMinute, durationMinutes, identity),
+          () => next,
           (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
-        ),
+        );
+      },
       markAppointment: (id, status, identity) =>
         applyAndMirror(
           (s) => backend.markAppointment(s, id, status, identity),
