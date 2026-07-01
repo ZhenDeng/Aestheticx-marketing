@@ -165,17 +165,24 @@ export function mapAvailabilityWindow(id: string, data: Doc): AvailabilityWindow
   };
 }
 
-// treatmentAvailability/{ownerId} → TreatmentAvailability. days[] is Mon-first (0=Mon…6=Sun).
+// availability/{ownerId} (written by the backend setTreatmentAvailability callable) → web
+// TreatmentAvailability. The backend stores a SPARSE windows[] keyed by getUTCDay() weekday
+// (0=Sun … 6=Sat) plus id-less blocks; the web wants a DENSE days[7] indexed Mon-first and a
+// stable id per block (React keys + remove). Web index i ↔ backend weekday (i + 1) % 7.
 export function mapTreatmentAvailability(id: string, data: Doc): TreatmentAvailability {
-  const rawDays = Array.isArray(data.days) ? (data.days as Doc[]) : [];
+  const windows = Array.isArray(data.windows) ? (data.windows as Doc[]) : [];
   const days: DaySchedule[] = Array.from({ length: 7 }, (_, i) => {
-    const d = rawDays[i] ?? {};
-    return { open: Boolean((d as Doc).open), openMinute: intValue((d as Doc).openMinute), closeMinute: intValue((d as Doc).closeMinute) };
+    const backendWeekday = (i + 1) % 7;
+    const w = windows.find((x) => intValue((x as Doc).weekday) === backendWeekday);
+    return w
+      ? { open: true, openMinute: intValue((w as Doc).openMinute), closeMinute: intValue((w as Doc).closeMinute) }
+      : { open: false, openMinute: 540, closeMinute: 1020 };
   });
   const rawBlocks = Array.isArray(data.blocks) ? (data.blocks as Doc[]) : [];
-  const blocks: TreatmentBlock[] = rawBlocks.map((b) => ({
-    id: str(b.id), dateISO: str(b.dateISO), startMinute: intValue(b.startMinute), endMinute: intValue(b.endMinute),
-  }));
+  const blocks: TreatmentBlock[] = rawBlocks.map((b) => {
+    const dateISO = str(b.dateISO), startMinute = intValue(b.startMinute), endMinute = intValue(b.endMinute);
+    return { id: `${dateISO}_${startMinute}_${endMinute}`, dateISO, startMinute, endMinute };
+  });
   return { ownerID: id, days, blocks };
 }
 

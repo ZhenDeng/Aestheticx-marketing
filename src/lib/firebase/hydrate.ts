@@ -84,6 +84,17 @@ async function runQuery(path: string, ...constraints: QueryConstraint[]): Promis
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
 }
 
+// availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
+// caller's own + any clinics they belong to; a missing doc means "not configured" → the
+// default schedule applies client-side. Doc id == ownerId, matching mapTreatmentAvailability.
+async function readAvailability(ownerIds: string[]): Promise<Row[]> {
+  const rows = await Promise.all(ownerIds.map(async (ownerId) => {
+    const snap = await getDoc(doc(firestore(), "availability", ownerId));
+    return snap.exists() ? { id: ownerId, data: snap.data() as Record<string, unknown> } : null;
+  }));
+  return rows.filter((r): r is Row => r !== null);
+}
+
 // The user's own profile doc carries follow-up settings + their booking token (one read).
 // intervalDays is clamped to the UI's valid range [1,90] so a corrupt/out-of-range stored
 // value (0, negative, NaN) can't silently schedule everything as overdue or in the past.
@@ -133,7 +144,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       followUpSettings: profile.followUpSettings,
       bookingToken: profile.bookingToken,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
-      // TODO(treatment-availability): pass a treatmentAvailability query here when the callables deploy (currently defaults apply — see mirror.ts stubs).
+      treatmentAvailability: await readAvailability([uid]),
       currentUserID: uid,
     });
   }
@@ -209,7 +220,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     followUpSettings: profile.followUpSettings,
     bookingToken: profile.bookingToken,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
-    // TODO(treatment-availability): pass a treatmentAvailability query here when the callables deploy (currently defaults apply — see mirror.ts stubs).
+    treatmentAvailability: await readAvailability([uid, ...clinicIds]),
     currentUserID: uid,
   });
 }

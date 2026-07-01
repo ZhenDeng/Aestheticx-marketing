@@ -292,29 +292,39 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
       doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
       treatmentAvailabilityForOwner: (ownerID) => backend.treatmentAvailabilityForOwner(state, ownerID),
+      // Config edits mirror the WHOLE availability config to the backend setTreatmentAvailability
+      // callable (the web has no granular callables). Compute eagerly to validate (throw
+      // synchronously) + capture the config for the mirror; apply via a functional updater.
       setTreatmentDaySchedule: (ownerID, weekday, patch) => {
-        backend.setTreatmentDaySchedule(state, ownerID, weekday, patch); // eager validate — throws synchronously
+        const config = backend.treatmentAvailabilityForOwner(
+          backend.setTreatmentDaySchedule(state, ownerID, weekday, patch), ownerID,
+        );
         applyAndMirror(
           (s) => backend.setTreatmentDaySchedule(s, ownerID, weekday, patch),
-          (m) => m.mirrorSetTreatmentDaySchedule(ownerID, weekday, patch),
+          (m) => m.mirrorSetTreatmentAvailability(config),
         );
       },
       addTreatmentBlock: (ownerID, input) => {
-        const { block } = backend.addTreatmentBlock(state, ownerID, input); // validates + mints id eagerly
+        const { state: applied, block } = backend.addTreatmentBlock(state, ownerID, input); // validate + mint id
+        const config = backend.treatmentAvailabilityForOwner(applied, ownerID);
         applyAndMirror(
           (s) => {
-            const config = backend.treatmentAvailabilityForOwner(s, ownerID);
-            const next = { ...config, ownerID, blocks: [...config.blocks, block] };
+            const c = backend.treatmentAvailabilityForOwner(s, ownerID);
+            const next = { ...c, ownerID, blocks: [...c.blocks, block] };
             return { ...s, treatmentAvailabilityByOwner: { ...s.treatmentAvailabilityByOwner, [ownerID]: next } };
           },
-          (m) => m.mirrorAddTreatmentBlock(block),
+          (m) => m.mirrorSetTreatmentAvailability(config),
         );
       },
-      removeTreatmentBlock: (ownerID, blockID) =>
+      removeTreatmentBlock: (ownerID, blockID) => {
+        const config = backend.treatmentAvailabilityForOwner(
+          backend.removeTreatmentBlock(state, ownerID, blockID), ownerID,
+        );
         applyAndMirror(
           (s) => backend.removeTreatmentBlock(s, ownerID, blockID),
-          (m) => m.mirrorRemoveTreatmentBlock(ownerID, blockID),
-        ),
+          (m) => m.mirrorSetTreatmentAvailability(config),
+        );
+      },
       openSlotsForDoctorOnDay: (doctorID, dateISO) => backend.openSlotsForDoctorOnDay(state, doctorID, dateISO),
       listAvailableDoctors: async () => {
         if (!live) return backend.doctorsWithAvailability(state);
