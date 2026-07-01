@@ -4,7 +4,7 @@ import type {
   Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
-  NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus,
+  NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -147,6 +147,20 @@ export function mapAuthRequest(id: string, data: Doc): AuthorisationRequest {
     status: (str(data.status) || "pending") as RequestStatus,
     createdAt: toMillis(data.createdAt),
     patientSummary,
+  };
+}
+
+// slotPublications/{doctorId}_{dateISO}_{startMinute} → AvailabilityWindow. The backend doc
+// has no doctorName (it's the caller's own window on hydrate; the doctor view doesn't show it).
+export function mapAvailabilityWindow(id: string, data: Doc): AvailabilityWindow {
+  return {
+    id,
+    doctorID: str(data.doctorId),
+    doctorName: "", // backend slotPublications has no doctorName; the doctor view doesn't show it
+    dateISO: str(data.dateISO),
+    startMinute: intValue(data.startMinute),
+    endMinute: intValue(data.endMinute),
+    // data.slotStarts is intentionally dropped — slots are recomputed by slotsForWindow().
   };
 }
 
