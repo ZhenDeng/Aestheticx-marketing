@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, draftFromLead, canCreatePatient } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
 import { PatientForm } from "@/components/app/PatientForm";
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
@@ -271,6 +271,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const store = useDemoStore();
   const [dragDy, setDragDy] = useState(0);
   const [resizeDy, setResizeDy] = useState(0);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
   const drag = useRef<{ startY: number; moved: boolean; dy: number } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
@@ -309,7 +310,16 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     if (!st.moved || !draggable) { onSelect(appt.id); return; } // a tap selects
     const duration = appt.endMinute - appt.startMinute;
     const newStart = dragStartMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
-    if (newStart !== appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, newStart, duration, me);
+    if (newStart !== appt.startMinute) {
+      try {
+        store.rescheduleAppointment(appt.id, appt.dateISO, newStart, duration, me);
+        setScheduleError(null);
+      } catch (e) {
+        setScheduleError(e instanceof BackendError && e.message === "unavailable"
+          ? "That time is outside your treatment hours or on a blocked time."
+          : "Could not move the appointment. Please try again.");
+      }
+    }
   }
   // OS/browser interruptions (call, notification, home-bar swipe) fire pointercancel, not
   // pointerup — reset so the captured pointer state isn't leaked into the next gesture.
@@ -340,7 +350,16 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     if (!st) return;
     const newEnd = dragEndMinute(appt.endMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END);
     const duration = newEnd - appt.startMinute;
-    if (duration !== appt.endMinute - appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+    if (duration !== appt.endMinute - appt.startMinute) {
+      try {
+        store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+        setScheduleError(null);
+      } catch (e) {
+        setScheduleError(e instanceof BackendError && e.message === "unavailable"
+          ? "That time is outside your treatment hours or on a blocked time."
+          : "Could not move the appointment. Please try again.");
+      }
+    }
   }
   function onResizeCancel() {
     resize.current = null;
@@ -372,6 +391,9 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
           style={{ cursor: "ns-resize", touchAction: "none" }}
           aria-hidden />
       )}
+      {scheduleError && (
+        <p className="mt-1 text-[10px] leading-tight" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>
+      )}
     </button>
   );
 }
@@ -384,6 +406,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   const store = useDemoStore();
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
   const [resizeDy, setResizeDy] = useState(0);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const drag = useRef<{ startX: number; startY: number; moved: boolean; dx: number; dy: number; colW: number } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const draggable = canReschedule(appt);
@@ -423,7 +446,16 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
     const duration = appt.endMinute - appt.startMinute;
     const targetISO = days[Math.max(0, Math.min(days.length - 1, dayIndex + dayDelta(st.dx, st.colW)))];
     const newStart = dragStartMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, duration, WIN_START, WIN_END);
-    if (targetISO !== appt.dateISO || newStart !== appt.startMinute) store.rescheduleAppointment(appt.id, targetISO, newStart, duration, me);
+    if (targetISO !== appt.dateISO || newStart !== appt.startMinute) {
+      try {
+        store.rescheduleAppointment(appt.id, targetISO, newStart, duration, me);
+        setScheduleError(null);
+      } catch (e) {
+        setScheduleError(e instanceof BackendError && e.message === "unavailable"
+          ? "That time is outside your treatment hours or on a blocked time."
+          : "Could not move the appointment. Please try again.");
+      }
+    }
   }
   function onPointerCancel() { drag.current = null; setMove(null); }
 
@@ -445,7 +477,16 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
     if (!st) return;
     const newEnd = dragEndMinute(appt.endMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END);
     const duration = newEnd - appt.startMinute;
-    if (duration !== appt.endMinute - appt.startMinute) store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+    if (duration !== appt.endMinute - appt.startMinute) {
+      try {
+        store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+        setScheduleError(null);
+      } catch (e) {
+        setScheduleError(e instanceof BackendError && e.message === "unavailable"
+          ? "That time is outside your treatment hours or on a blocked time."
+          : "Could not move the appointment. Please try again.");
+      }
+    }
   }
   function onResizeCancel() { resize.current = null; setResizeDy(0); }
 
@@ -473,6 +514,9 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
           className="absolute inset-x-0 bottom-0 h-2"
           style={{ cursor: "ns-resize", touchAction: "none" }}
           aria-hidden />
+      )}
+      {scheduleError && (
+        <p className="mt-1 text-[10px] leading-tight" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>
       )}
     </button>
   );
@@ -596,14 +640,22 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
 
   const matches = !blockTime && query.trim() && !picked ? store.searchPatients(query, me).slice(0, 5) : [];
   const canSave = blockTime || picked !== null;
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   function save() {
-    store.bookTreatmentAppointment({
-      dateISO, startMinute: minutesFromTime(time), durationMinutes: duration,
-      patientID: blockTime ? undefined : picked?.id, patientName: blockTime ? undefined : picked?.name,
-      note: note.trim() || undefined, identity: me,
-    });
-    onDone();
+    try {
+      store.bookTreatmentAppointment({
+        dateISO, startMinute: minutesFromTime(time), durationMinutes: duration,
+        patientID: blockTime ? undefined : picked?.id, patientName: blockTime ? undefined : picked?.name,
+        note: note.trim() || undefined, identity: me,
+      });
+      setScheduleError(null);
+      onDone();
+    } catch (e) {
+      setScheduleError(e instanceof BackendError && e.message === "unavailable"
+        ? "That time is outside your treatment hours or on a blocked time."
+        : "Could not book the appointment. Please try again.");
+    }
   }
 
   return (
@@ -656,6 +708,7 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
         </button>
         <button onClick={onDone} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">Cancel</button>
       </div>
+      {scheduleError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>}
     </div>
   );
 }
@@ -703,6 +756,7 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const store = useDemoStore();
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
 
   return (
@@ -714,9 +768,20 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
             <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className="rounded-field border border-line px-2 py-1 text-sm text-ink">
               {[15, 30, 45, 60].map((d) => <option key={d} value={d}>{d} min</option>)}
             </select>
-            <button onClick={() => { store.rescheduleAppointment(appt.id, appt.dateISO, minutesFromTime(time), duration, me); onDone(); }}
+            <button onClick={() => {
+              try {
+                store.rescheduleAppointment(appt.id, appt.dateISO, minutesFromTime(time), duration, me);
+                setScheduleError(null);
+                onDone();
+              } catch (e) {
+                setScheduleError(e instanceof BackendError && e.message === "unavailable"
+                  ? "That time is outside your treatment hours or on a blocked time."
+                  : "Could not move the appointment. Please try again.");
+              }
+            }}
                     className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Reschedule</button>
           </div>
+          {scheduleError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
             {appt.status === "awaitingConfirmation" && (
               <button onClick={() => { store.confirmAppointment(appt.id, me); onDone(); }}
