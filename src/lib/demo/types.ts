@@ -215,6 +215,14 @@ export interface TreatmentAvailability {
   blocks: TreatmentBlock[];
 }
 
+// A doctor's online/always-accept status for authorisation requests (feedback: doctor online
+// status + always-on authorisations). Independent booleans — always-accept works even while
+// offline (spec: "Always-accept overrides availability"). Absent entry -> both false.
+export interface DoctorStatus {
+  online: boolean;
+  alwaysAcceptAuth: boolean;
+}
+
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -259,6 +267,7 @@ export interface DemoState {
   bookingTokensByUser: Record<string, string>;
   availabilityWindows: Record<string, AvailabilityWindow>;
   treatmentAvailabilityByOwner: Record<string, TreatmentAvailability>;
+  doctorStatusByID: Record<string, DoctorStatus>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

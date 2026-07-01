@@ -49,6 +49,7 @@ function DoctorAvailability({ me }: { me: Identity }) {
   const [end, setEnd] = useState("10:00");
   const [error, setError] = useState<string | null>(null);
   const windows = store.availabilityWindowsForDoctor(me.user.id);
+  const status = store.doctorStatusForUser(me.user.id);
 
   function publish() {
     setError(null);
@@ -69,6 +70,22 @@ function DoctorAvailability({ me }: { me: Identity }) {
 
   return (
     <>
+      <div className="mt-6 rounded-card border border-line bg-card p-5">
+        <h2 className="font-display text-lg text-ink">Your status</h2>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-ink-soft">
+            <input type="checkbox" checked={status.online}
+              onChange={(e) => store.setDoctorStatus(me.user.id, { online: e.target.checked })} />
+            I&apos;m online now
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink-soft">
+            <input type="checkbox" checked={status.alwaysAcceptAuth}
+              onChange={(e) => store.setDoctorStatus(me.user.id, { alwaysAcceptAuth: e.target.checked })} />
+            Always accept authorisation requests
+          </label>
+        </div>
+      </div>
+
       <div className="mt-6 rounded-card border border-line bg-card p-5">
         <h2 className="font-display text-lg text-ink">Publish a window</h2>
         <div className="mt-3 flex flex-wrap items-end gap-3">

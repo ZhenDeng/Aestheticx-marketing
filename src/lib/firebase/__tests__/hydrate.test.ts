@@ -22,6 +22,7 @@ const rows: HydrationRows = {
   followUpTasks: [{ id: "fu1", data: { patientId: "p1", patientName: "Pat", dueDateISO: "2026-07-10", status: "pending" } }],
   followUpSettings: { enabled: true, intervalDays: 7 },
   bookingToken: "bk-voss",
+  doctorStatus: { online: false, alwaysAcceptAuth: false },
   currentUserID: "u-voss",
 };
 

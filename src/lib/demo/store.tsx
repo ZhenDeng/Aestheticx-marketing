@@ -49,6 +49,8 @@ interface StoreValue {
   setTreatmentDaySchedule: (ownerID: string, weekday: number, patch: Partial<import("./types").DaySchedule>) => void;
   addTreatmentBlock: (ownerID: string, input: { dateISO: string; startMinute: number; endMinute: number }) => void;
   removeTreatmentBlock: (ownerID: string, blockID: string) => void;
+  doctorStatusForUser: (doctorID: string) => import("./backend").DoctorStatusResult;
+  setDoctorStatus: (doctorID: string, patch: Partial<import("./types").DoctorStatus>) => void;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
   // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
   listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string }[]>;
@@ -323,6 +325,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.removeTreatmentBlock(s, ownerID, blockID),
           (m) => m.mirrorSetTreatmentAvailability(config),
+        );
+      },
+      doctorStatusForUser: (doctorID) => backend.doctorStatusForUser(state, doctorID),
+      setDoctorStatus: (doctorID, patch) => {
+        const merged = backend.doctorStatusForUser(backend.setDoctorStatus(state, doctorID, patch), doctorID);
+        applyAndMirror(
+          (s) => backend.setDoctorStatus(s, doctorID, patch),
+          (m) => m.mirrorSetOnlineStatus(merged),
         );
       },
       openSlotsForDoctorOnDay: (doctorID, dateISO) => backend.openSlotsForDoctorOnDay(state, doctorID, dateISO),

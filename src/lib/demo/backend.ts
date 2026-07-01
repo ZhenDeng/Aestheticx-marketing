@@ -9,6 +9,7 @@ import type {
   DaySchedule,
   DeliveryStatus,
   DemoState,
+  DoctorStatus,
   Identity,
   FollowUpSettings,
   FollowUpStatus,
@@ -56,6 +57,7 @@ export function emptyState(): DemoState {
     bookingTokensByUser: {},
     availabilityWindows: {},
     treatmentAvailabilityByOwner: {},
+    doctorStatusByID: {},
   };
 }
 
@@ -632,6 +634,19 @@ export function removeTreatmentBlock(state: DemoState, ownerID: string, blockID:
   const next = { ...config, ownerID, blocks: config.blocks.filter((b) => b.id !== blockID) };
   return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
 }
+
+// --- Doctor online status ---
+
+export function doctorStatusForUser(state: DemoState, doctorID: string): DoctorStatus {
+  return state.doctorStatusByID[doctorID] ?? { online: false, alwaysAcceptAuth: false };
+}
+
+export function setDoctorStatus(state: DemoState, doctorID: string, patch: Partial<DoctorStatus>): DemoState {
+  const next = { ...doctorStatusForUser(state, doctorID), ...patch };
+  return { ...state, doctorStatusByID: { ...state.doctorStatusByID, [doctorID]: next } };
+}
+
+export type DoctorStatusResult = ReturnType<typeof doctorStatusForUser>;
 
 // A patient's full appointment history, most-recent-first (date desc, then start desc).
 // All statuses are included (completed / no-show / cancelled are part of the history).
