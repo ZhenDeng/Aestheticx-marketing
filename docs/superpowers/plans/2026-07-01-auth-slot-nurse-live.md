@@ -15,10 +15,10 @@ Design: `docs/superpowers/specs/2026-07-01-auth-slot-nurse-live-design.md`
 - [x] 3.2 refetch open slots after a booking (booked/lost slot drops)
 
 ## 4. Review
-- [ ] 4.1 Engineer review (typescript-reviewer); address CRITICAL/HIGH
+- [x] 4.1 Engineer review (typescript-reviewer); fixed 2 HIGH — `.catch` on both fetch effects (no permanent loading hang) + `Array.isArray` guards on callable `res.data`. (Skipped: live FirebaseError double-book copy — both messages are equivalent "pick another"; stale-doctorID edge — `effectiveDoctorID` fallback covers the primary flow.)
 - [x] 4.2 Demo regression (preview): load doctors + slots, book → slot drops; no console errors
 
 ## 5. Verify + ship
 - [x] 5.1 `npm test` green (251); build + eslint + tsc clean
-- [ ] 5.2 Update `web-port-roadmap` memory (nurse side live — auth-slot feature fully live)
+- [x] 5.2 Update `web-port-roadmap` memory (nurse side live — auth-slot feature fully live)
 - [ ] 5.3 `/create-pr` (web) + backend PR; deploy the two callables
