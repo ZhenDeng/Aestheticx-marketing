@@ -362,6 +362,13 @@ export function isoDay(epochMs: number): string {
   return new Date(epochMs).toISOString().slice(0, 10);
 }
 
+// UTC minute-of-day, floored to the nearest 10 — must share isoDay's UTC convention (local
+// hours/minutes would disagree with isoDay's UTC date near a day boundary).
+export function nowFlooredTo10(epochMs: number): number {
+  const d = new Date(epochMs);
+  return Math.floor((d.getUTCHours() * 60 + d.getUTCMinutes()) / 10) * 10;
+}
+
 export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {
   return state.followUpSettingsByUser[userID] ?? { enabled: false, intervalDays: 14 };
 }

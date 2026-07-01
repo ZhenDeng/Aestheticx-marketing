@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
+import { isoDay, nowFlooredTo10, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
 import type { DaySchedule, Identity } from "@/lib/demo/types";
 
 function timeLabel(minute: number): string {
@@ -12,10 +12,6 @@ function timeLabel(minute: number): string {
 function minutesFromTime(value: string): number {
   const [h, m] = value.split(":").map((x) => parseInt(x, 10));
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-}
-function nowFlooredTo10(epochMs: number): number {
-  const d = new Date(epochMs);
-  return Math.floor((d.getHours() * 60 + d.getMinutes()) / 10) * 10;
 }
 
 export default function AvailabilityPage() {
@@ -293,7 +289,7 @@ function BookConsult({ me }: { me: Identity }) {
   }
 
   if (loading) return <p className="mt-6 text-sm text-ink-soft">Loading availability…</p>;
-  if (doctors.length === 0) return <p className="mt-6 text-sm text-ink-soft">No doctors have published availability yet.</p>;
+  if (doctors.length === 0) return <p className="mt-6 text-sm text-ink-soft">No doctors are available right now.</p>;
 
   return (
     <div className="mt-6 flex flex-col gap-4">
