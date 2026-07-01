@@ -154,6 +154,27 @@ export function buildSeedState(): DemoState {
     },
   };
 
+  // Treatment schedule for Dr Voss: Mon–Fri 09:00–17:00, Sat/Sun closed,
+  // plus one sample block today at 15:30–16:00 so the Treatment tab shows realistic data.
+  state = {
+    ...state,
+    treatmentAvailabilityByOwner: {
+      "u-voss": {
+        ownerID: "u-voss",
+        days: [
+          { open: true, openMinute: 540, closeMinute: 1020 }, // Mon
+          { open: true, openMinute: 540, closeMinute: 1020 }, // Tue
+          { open: true, openMinute: 540, closeMinute: 1020 }, // Wed
+          { open: true, openMinute: 540, closeMinute: 1020 }, // Thu
+          { open: true, openMinute: 540, closeMinute: 1020 }, // Fri
+          { open: false, openMinute: 540, closeMinute: 1020 }, // Sat
+          { open: false, openMinute: 540, closeMinute: 1020 }, // Sun
+        ],
+        blocks: [{ id: "block-seed-1", dateISO: TODAY_ISO, startMinute: 930, endMinute: 960 }], // 15:30–16:00
+      },
+    },
+  };
+
   // One pending follow-up due today so the calendar surfacing is demonstrable
   // (a freshly generated task is due +interval, so it would not show on "today").
   const seededFollowUp: FollowUpTask = {
