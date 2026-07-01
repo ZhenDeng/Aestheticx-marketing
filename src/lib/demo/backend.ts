@@ -585,6 +585,26 @@ export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { stat
   return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
 }
 
+export interface RequestAdHocAuthInput {
+  doctorID: string; dateISO: string; atMinute: number;
+  patientID: string; patientName: string; identity: Identity;
+}
+
+// Ad-hoc (no published slot) request to an online/always-accepting doctor. No double-book
+// check — an ad-hoc request targets the current moment, matching the deployed adHocAuthTx,
+// which also has none. Mirrors bookAuthSlot's appointment shape (10-minute, confirmed).
+export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput): { state: DemoState; appt: Appointment } {
+  const status = doctorStatusForUser(state, input.doctorID);
+  if (!status.online && !status.alwaysAcceptAuth) throw new BackendError("notAccepting");
+  const appt: Appointment = {
+    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
+    startMinute: input.atMinute, endMinute: input.atMinute + SLOT_MINUTES, status: "confirmed",
+    patientID: input.patientID, patientName: input.patientName,
+    appointmentNote: `Auth request · ${input.identity.user.name}`,
+  };
+  return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
+}
+
 // A doctor withdraws one of their windows, only if no booking falls within it.
 export function withdrawAvailability(state: DemoState, windowID: string, identity: Identity): DemoState {
   const w = state.availabilityWindows[windowID];
