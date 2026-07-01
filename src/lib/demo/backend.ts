@@ -24,6 +24,7 @@ import type {
   SignedFormRecord,
   FormAnswer,
   TreatmentAvailability,
+  TreatmentBlock,
   TreatmentMedication,
 } from "./types";
 import { isoWeekday } from "./calendar";
@@ -590,6 +591,31 @@ export function isTimeAvailableForTreatment(
     (b) => b.dateISO === dateISO && startMinute < b.endMinute && b.startMinute < endMinute,
   );
   return !overlapsBlock;
+}
+
+export function setTreatmentDaySchedule(
+  state: DemoState, ownerID: string, weekday: number, patch: Partial<DaySchedule>,
+): DemoState {
+  const config = treatmentAvailabilityForOwner(state, ownerID);
+  const days = config.days.map((d, i) => (i === weekday ? { ...d, ...patch } : d));
+  const next = { ...config, ownerID, days };
+  return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
+}
+
+export function addTreatmentBlock(
+  state: DemoState, ownerID: string, input: { dateISO: string; startMinute: number; endMinute: number },
+): { state: DemoState; block: TreatmentBlock } {
+  if (input.endMinute <= input.startMinute) throw new BackendError("validationFailed");
+  const config = treatmentAvailabilityForOwner(state, ownerID);
+  const block: TreatmentBlock = { id: makeID("block"), ...input };
+  const next = { ...config, ownerID, blocks: [...config.blocks, block] };
+  return { state: { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } }, block };
+}
+
+export function removeTreatmentBlock(state: DemoState, ownerID: string, blockID: string): DemoState {
+  const config = treatmentAvailabilityForOwner(state, ownerID);
+  const next = { ...config, ownerID, blocks: config.blocks.filter((b) => b.id !== blockID) };
+  return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
 }
 
 // A patient's full appointment history, most-recent-first (date desc, then start desc).

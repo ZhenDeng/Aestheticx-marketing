@@ -5,6 +5,10 @@ import {
   treatmentAvailabilityForOwner,
   isTimeAvailableForTreatment,
   emptyState,
+  setTreatmentDaySchedule,
+  addTreatmentBlock,
+  removeTreatmentBlock,
+  BackendError,
 } from "@/lib/demo/backend";
 
 describe("isoWeekday", () => {
@@ -55,5 +59,27 @@ describe("isTimeAvailableForTreatment", () => {
     const blocked = { ...cfg, blocks: [{ id: "b1", dateISO: "2026-07-01", startMinute: 780, endMinute: 840 }] };
     expect(isTimeAvailableForTreatment(blocked, "2026-07-01", 800, 830)).toBe(false); // 13:20 inside block
     expect(isTimeAvailableForTreatment(blocked, "2026-07-02", 800, 830)).toBe(true);  // block is on the 1st
+  });
+});
+
+describe("treatment-availability mutators", () => {
+  it("setTreatmentDaySchedule patches one day, seeding from the default first", () => {
+    const s = setTreatmentDaySchedule(emptyState(), "u-x", 6, { open: true, openMinute: 600, closeMinute: 720 });
+    const cfg = treatmentAvailabilityForOwner(s, "u-x");
+    expect(cfg.days[6]).toEqual({ open: true, openMinute: 600, closeMinute: 720 }); // Sunday now open
+    expect(cfg.days[0].open).toBe(true); // Monday still open (default preserved)
+  });
+
+  it("addTreatmentBlock mints an id and appends; removeTreatmentBlock deletes it", () => {
+    const added = addTreatmentBlock(emptyState(), "u-x", { dateISO: "2026-07-01", startMinute: 780, endMinute: 840 });
+    expect(added.block.id).toBeTruthy();
+    expect(treatmentAvailabilityForOwner(added.state, "u-x").blocks).toHaveLength(1);
+    const removed = removeTreatmentBlock(added.state, "u-x", added.block.id);
+    expect(treatmentAvailabilityForOwner(removed, "u-x").blocks).toHaveLength(0);
+  });
+
+  it("addTreatmentBlock rejects end <= start", () => {
+    expect(() => addTreatmentBlock(emptyState(), "u-x", { dateISO: "2026-07-01", startMinute: 840, endMinute: 780 }))
+      .toThrow(BackendError);
   });
 });
