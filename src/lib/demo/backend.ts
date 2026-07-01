@@ -646,6 +646,8 @@ export function setDoctorStatus(state: DemoState, doctorID: string, patch: Parti
   return { ...state, doctorStatusByID: { ...state.doctorStatusByID, [doctorID]: next } };
 }
 
+export type DoctorStatusResult = ReturnType<typeof doctorStatusForUser>;
+
 // A patient's full appointment history, most-recent-first (date desc, then start desc).
 // All statuses are included (completed / no-show / cancelled are part of the history).
 export function appointmentsForPatient(state: DemoState, patientID: string): Appointment[] {

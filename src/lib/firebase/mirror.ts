@@ -174,6 +174,12 @@ export async function mirrorSetTreatmentAvailability(config: import("@/lib/demo/
   await httpsCallable(functions(), "setTreatmentAvailability")({ ownerId: config.ownerID, windows, blocks });
 }
 
+// A doctor toggles online/always-accept status → the existing, already-deployed
+// setOnlineStatus callable (writes users/{uid}.onlineStatus/alwaysAcceptAuth, merge:true).
+export async function mirrorSetOnlineStatus(status: import("@/lib/demo/types").DoctorStatus): Promise<void> {
+  await httpsCallable(functions(), "setOnlineStatus")({ online: status.online, alwaysAcceptAuth: status.alwaysAcceptAuth });
+}
+
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
 export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string; slotMinute: number; patientID?: string; counterpartyName: string }): Promise<void> {
   await httpsCallable(functions(), "bookAuthSlot")({
