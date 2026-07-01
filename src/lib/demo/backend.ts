@@ -610,7 +610,9 @@ export function setTreatmentDaySchedule(
   state: DemoState, ownerID: string, weekday: number, patch: Partial<DaySchedule>,
 ): DemoState {
   const config = treatmentAvailabilityForOwner(state, ownerID);
-  const days = config.days.map((d, i) => (i === weekday ? { ...d, ...patch } : d));
+  const merged = { ...config.days[weekday], ...patch };
+  if (merged.open && merged.openMinute >= merged.closeMinute) throw new BackendError("validationFailed");
+  const days = config.days.map((d, i) => (i === weekday ? merged : d));
   const next = { ...config, ownerID, days };
   return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
 }

@@ -87,6 +87,15 @@ describe("treatment-availability mutators", () => {
     expect(() => addTreatmentBlock(emptyState(), "u-x", { dateISO: "2026-07-01", startMinute: 840, endMinute: 780 }))
       .toThrow(BackendError);
   });
+
+  it("setTreatmentDaySchedule rejects an open day whose close is not after open", () => {
+    expect(() => setTreatmentDaySchedule(emptyState(), "u-x", 0, { openMinute: 1020, closeMinute: 540 }))
+      .toThrow(BackendError);
+  });
+  it("setTreatmentDaySchedule allows a closed day with any hours (no validation when closed)", () => {
+    expect(() => setTreatmentDaySchedule(emptyState(), "u-x", 5, { open: false, openMinute: 1020, closeMinute: 540 }))
+      .not.toThrow();
+  });
 });
 
 // Minimal clinician identity owning appointments as their own user id.

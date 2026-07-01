@@ -292,11 +292,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
       doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
       treatmentAvailabilityForOwner: (ownerID) => backend.treatmentAvailabilityForOwner(state, ownerID),
-      setTreatmentDaySchedule: (ownerID, weekday, patch) =>
+      setTreatmentDaySchedule: (ownerID, weekday, patch) => {
+        backend.setTreatmentDaySchedule(state, ownerID, weekday, patch); // eager validate — throws synchronously
         applyAndMirror(
           (s) => backend.setTreatmentDaySchedule(s, ownerID, weekday, patch),
           (m) => m.mirrorSetTreatmentDaySchedule(ownerID, weekday, patch),
-        ),
+        );
+      },
       addTreatmentBlock: (ownerID, input) => {
         const { block } = backend.addTreatmentBlock(state, ownerID, input); // validates + mints id eagerly
         applyAndMirror(
@@ -325,10 +327,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         return m.mirrorListDoctorOpenSlots(doctorID, dateISO);
       },
       bookTreatmentAppointment: (input) => {
-        // Compute eagerly so the availability guard throws synchronously (callers catch it).
-        const { state: next } = backend.bookTreatmentAppointment(state, input);
-        if (!live) { setState(() => next); return; }
-        setState(() => next);
+        backend.bookTreatmentAppointment(state, input); // eager validate — throws synchronously (result discarded)
+        setState((s) => backend.bookTreatmentAppointment(s, input).state); // apply against latest state
+        if (!live) return;
         void (async () => {
           try {
             const m = await import("@/lib/firebase/mirror");
@@ -342,9 +343,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         })();
       },
       rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) => {
-        const next = backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity);
+        backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity); // eager validate — throws
         applyAndMirror(
-          () => next,
+          (s) => backend.rescheduleAppointment(s, id, dateISO, startMinute, durationMinutes, identity),
           (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
         );
       },

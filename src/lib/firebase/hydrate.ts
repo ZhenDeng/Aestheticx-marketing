@@ -133,6 +133,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       followUpSettings: profile.followUpSettings,
       bookingToken: profile.bookingToken,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
+      // TODO(treatment-availability): pass a treatmentAvailability query here when the callables deploy (currently defaults apply — see mirror.ts stubs).
       currentUserID: uid,
     });
   }
@@ -208,6 +209,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     followUpSettings: profile.followUpSettings,
     bookingToken: profile.bookingToken,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
+    // TODO(treatment-availability): pass a treatmentAvailability query here when the callables deploy (currently defaults apply — see mirror.ts stubs).
     currentUserID: uid,
   });
 }

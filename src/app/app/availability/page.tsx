@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
-import type { Identity } from "@/lib/demo/types";
+import type { DaySchedule, Identity } from "@/lib/demo/types";
 
 function timeLabel(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -118,6 +118,13 @@ function TreatmentSchedule({ me }: { me: Identity }) {
   const [blockStart, setBlockStart] = useState("12:00");
   const [blockEnd, setBlockEnd] = useState("13:00");
   const [error, setError] = useState<string | null>(null);
+  const [dayError, setDayError] = useState<string | null>(null);
+
+  function updateDay(i: number, patch: Partial<DaySchedule>) {
+    setDayError(null);
+    try { store.setTreatmentDaySchedule(ownerID, i, patch); }
+    catch { setDayError("Open time must be before close time."); }
+  }
 
   function addBlock() {
     setError(null);
@@ -137,19 +144,20 @@ function TreatmentSchedule({ me }: { me: Identity }) {
               <span className="w-10 text-sm text-ink">{WEEKDAY_LABELS[i]}</span>
               <label className="flex items-center gap-1 text-sm text-ink-soft">
                 <input type="checkbox" checked={d.open}
-                  onChange={(ev) => store.setTreatmentDaySchedule(ownerID, i, { open: ev.target.checked })} />
+                  onChange={(ev) => updateDay(i, { open: ev.target.checked })} />
                 Open
               </label>
               <input type="time" value={timeLabel(d.openMinute)} disabled={!d.open}
-                onChange={(ev) => store.setTreatmentDaySchedule(ownerID, i, { openMinute: minutesFromTime(ev.target.value) })}
+                onChange={(ev) => updateDay(i, { openMinute: minutesFromTime(ev.target.value) })}
                 className="rounded-field border border-line px-2 py-1 text-sm text-ink disabled:opacity-40" />
               <span className="text-ink-soft">–</span>
               <input type="time" value={timeLabel(d.closeMinute)} disabled={!d.open}
-                onChange={(ev) => store.setTreatmentDaySchedule(ownerID, i, { closeMinute: minutesFromTime(ev.target.value) })}
+                onChange={(ev) => updateDay(i, { closeMinute: minutesFromTime(ev.target.value) })}
                 className="rounded-field border border-line px-2 py-1 text-sm text-ink disabled:opacity-40" />
             </li>
           ))}
         </ul>
+        {dayError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{dayError}</p>}
       </div>
 
       <div className="mt-6 rounded-card border border-line bg-card p-5">

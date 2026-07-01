@@ -162,6 +162,7 @@ export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: strin
   const raw = (res.data as { slots?: unknown }).slots;
   return Array.isArray(raw) ? (raw as number[]) : [];
 }
+// TODO(treatment-availability): these call not-yet-deployed callables; also wire the hydrate read (hydrate.ts) when deploying.
 export async function mirrorSetTreatmentDaySchedule(ownerID: string, weekday: number, patch: Partial<import("@/lib/demo/types").DaySchedule>): Promise<void> {
   await httpsCallable(functions(), "setTreatmentDaySchedule")({ ownerId: ownerID, weekday, ...patch });
 }

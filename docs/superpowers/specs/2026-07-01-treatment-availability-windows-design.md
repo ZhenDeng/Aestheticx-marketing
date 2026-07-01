@@ -27,7 +27,7 @@ interface DaySchedule { open: boolean; openMinute: number; closeMinute: number }
 interface TreatmentBlock { id: string; dateISO: string; startMinute: number; endMinute: number }
 interface TreatmentAvailability {
   ownerID: string;
-  days: DaySchedule[];   // length 7, index = UTC weekday (0=Sun … 6=Sat)
+  days: DaySchedule[];   // length 7, index = isoWeekday (0=Mon … 6=Sun) — see calendar.ts
   blocks: TreatmentBlock[];
 }
 ```
