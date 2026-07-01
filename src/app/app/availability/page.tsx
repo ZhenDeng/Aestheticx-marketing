@@ -119,7 +119,9 @@ function BookConsult({ me }: { me: Identity }) {
   // Discover doctors with availability (demo: local selectors; live: backend callable).
   useEffect(() => {
     let alive = true;
-    store.listAvailableDoctors().then((d) => { if (alive) { setDoctors(d); setLoading(false); } });
+    store.listAvailableDoctors()
+      .then((d) => { if (alive) { setDoctors(d); setLoading(false); } })
+      .catch(() => { if (alive) { setError("Could not load availability. Please retry."); setLoading(false); } });
     return () => { alive = false; };
   }, [store]);
 
@@ -127,7 +129,9 @@ function BookConsult({ me }: { me: Identity }) {
   useEffect(() => {
     if (!effectiveDoctorID) return; // only null when there are no doctors (guarded below)
     let alive = true;
-    store.listDoctorOpenSlots(effectiveDoctorID, date).then((s) => { if (alive) setSlots(s); });
+    store.listDoctorOpenSlots(effectiveDoctorID, date)
+      .then((s) => { if (alive) setSlots(s); })
+      .catch(() => { if (alive) setError("Could not load open slots. Please retry."); });
     return () => { alive = false; };
   }, [store, effectiveDoctorID, date, slotReload]);
 

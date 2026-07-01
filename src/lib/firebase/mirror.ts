@@ -153,12 +153,14 @@ export async function mirrorWithdrawAvailability(dateISO: string, startMinute: n
 // Nurse-facing availability reads (server-side; the nurse has no local windows).
 export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; doctorName: string }[]> {
   const res = await httpsCallable(functions(), "listAvailableDoctors")({});
-  const doctors = (res.data as { doctors?: { doctorId: string; doctorName: string }[] }).doctors ?? [];
+  const raw = (res.data as { doctors?: unknown }).doctors;
+  const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string }[]) : [];
   return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName }));
 }
 export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: string): Promise<number[]> {
   const res = await httpsCallable(functions(), "listDoctorOpenSlots")({ doctorId: doctorID, dateISO });
-  return (res.data as { slots?: number[] }).slots ?? [];
+  const raw = (res.data as { slots?: unknown }).slots;
+  return Array.isArray(raw) ? (raw as number[]) : [];
 }
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
 export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string; slotMinute: number; patientID?: string; counterpartyName: string }): Promise<void> {
