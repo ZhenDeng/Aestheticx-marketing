@@ -9,7 +9,12 @@ import {
   addTreatmentBlock,
   removeTreatmentBlock,
   BackendError,
+  bookTreatmentAppointment,
+  rescheduleAppointment,
+  publishAvailability,
+  bookAuthSlot,
 } from "@/lib/demo/backend";
+import type { Identity } from "@/lib/demo/types";
 
 describe("isoWeekday", () => {
   it("is 0 for Monday and 6 for Sunday", () => {
@@ -81,5 +86,49 @@ describe("treatment-availability mutators", () => {
   it("addTreatmentBlock rejects end <= start", () => {
     expect(() => addTreatmentBlock(emptyState(), "u-x", { dateISO: "2026-07-01", startMinute: 840, endMinute: 780 }))
       .toThrow(BackendError);
+  });
+});
+
+// Minimal clinician identity owning appointments as their own user id.
+const me: Identity = {
+  user: { id: "u-x", name: "Dr Doc" },
+  role: "doctor",
+  context: { kind: "independent" },
+};
+
+describe("treatment booking enforcement", () => {
+  it("rejects a booking on a closed Sunday", () => {
+    expect(() => bookTreatmentAppointment(emptyState(), {
+      dateISO: "2026-07-05", startMinute: 600, durationMinutes: 30, identity: me,
+    })).toThrow(BackendError);
+  });
+
+  it("rejects a booking overlapping a block", () => {
+    const s = addTreatmentBlock(emptyState(), "u-x", { dateISO: "2026-07-01", startMinute: 600, endMinute: 660 }).state;
+    expect(() => bookTreatmentAppointment(s, {
+      dateISO: "2026-07-01", startMinute: 610, durationMinutes: 30, identity: me,
+    })).toThrow(BackendError);
+  });
+
+  it("accepts a valid weekday booking", () => {
+    const { appt } = bookTreatmentAppointment(emptyState(), {
+      dateISO: "2026-07-01", startMinute: 600, durationMinutes: 30, identity: me,
+    });
+    expect(appt.type).toBe("treatment");
+  });
+
+  it("rejects a reschedule onto a closed day", () => {
+    const { state, appt } = bookTreatmentAppointment(emptyState(), {
+      dateISO: "2026-07-01", startMinute: 600, durationMinutes: 30, identity: me,
+    });
+    expect(() => rescheduleAppointment(state, appt.id, "2026-07-05", 600, 30, me)).toThrow(BackendError);
+  });
+
+  it("does not gate a non-treatment (authSlot) reschedule by treatment windows", () => {
+    let s = publishAvailability(emptyState(), { doctorID: "u-x", dateISO: "2026-07-01", startMinute: 840, endMinute: 900 }, me).state;
+    const booked = bookAuthSlot(s, { doctorID: "u-x", dateISO: "2026-07-01", startMinute: 840, patientID: "p1", patientName: "P One", identity: me });
+    s = booked.state;
+    // Move the authSlot to a Sunday — treatment windows are closed then, but authSlots are exempt.
+    expect(() => rescheduleAppointment(s, booked.appt.id, "2026-07-05", 840, 10, me)).not.toThrow();
   });
 });

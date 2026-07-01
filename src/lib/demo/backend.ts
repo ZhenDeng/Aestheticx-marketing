@@ -427,10 +427,15 @@ export interface BookTreatmentInput {
 }
 
 export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentInput): { state: DemoState; appt: Appointment } {
+  const owner = appointmentOwnerScope(input.identity);
+  const end = input.startMinute + input.durationMinutes;
+  if (!isTimeAvailableForTreatment(treatmentAvailabilityForOwner(state, owner), input.dateISO, input.startMinute, end)) {
+    throw new BackendError("unavailable");
+  }
   const appt: Appointment = {
     id: makeID("appt"),
     type: "treatment",
-    ownerID: appointmentOwnerScope(input.identity),
+    ownerID: owner,
     dateISO: input.dateISO,
     startMinute: input.startMinute,
     endMinute: input.startMinute + input.durationMinutes,
@@ -449,6 +454,12 @@ export function rescheduleAppointment(
   if (!appt) throw new BackendError("notFound");
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive"); // terminal appts aren't reschedulable
+  if (appt.type === "treatment") {
+    const config = treatmentAvailabilityForOwner(state, appt.ownerID);
+    if (!isTimeAvailableForTreatment(config, dateISO, startMinute, startMinute + durationMinutes)) {
+      throw new BackendError("unavailable");
+    }
+  }
   const moved = { ...appt, dateISO, startMinute, endMinute: startMinute + durationMinutes };
   return { ...state, appointments: { ...state.appointments, [id]: moved } };
 }
