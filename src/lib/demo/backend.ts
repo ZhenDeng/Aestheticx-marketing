@@ -519,10 +519,27 @@ export function availabilityWindowsForDoctor(state: DemoState, doctorID: string)
 }
 
 // Distinct doctors who have published any availability (for the nurse booking picker).
-export function doctorsWithAvailability(state: DemoState): { doctorID: string; doctorName: string }[] {
-  const seen = new Map<string, string>();
-  for (const w of Object.values(state.availabilityWindows)) if (!seen.has(w.doctorID)) seen.set(w.doctorID, w.doctorName);
-  return [...seen].map(([doctorID, doctorName]) => ({ doctorID, doctorName }));
+export function doctorsWithAvailability(state: DemoState): {
+  doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean;
+}[] {
+  const names = new Map<string, string>();
+  const slotDoctorIDs = new Set<string>();
+  for (const w of Object.values(state.availabilityWindows)) {
+    if (!names.has(w.doctorID)) names.set(w.doctorID, w.doctorName);
+    slotDoctorIDs.add(w.doctorID);
+  }
+  const statusDoctorIDs = Object.entries(state.doctorStatusByID)
+    .filter(([, s]) => s.online || s.alwaysAcceptAuth)
+    .map(([id]) => id);
+  for (const id of statusDoctorIDs) if (!names.has(id)) names.set(id, "");
+  const allIDs = new Set([...slotDoctorIDs, ...statusDoctorIDs]);
+  return [...allIDs].map((doctorID) => {
+    const status = doctorStatusForUser(state, doctorID);
+    return {
+      doctorID, doctorName: names.get(doctorID) ?? "",
+      hasSlots: slotDoctorIDs.has(doctorID), online: status.online, alwaysAcceptAuth: status.alwaysAcceptAuth,
+    };
+  });
 }
 
 // A slot is taken when a non-cancelled authSlot appointment of that doctor sits on it.
