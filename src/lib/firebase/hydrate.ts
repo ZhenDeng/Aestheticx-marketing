@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -23,6 +23,7 @@ export interface HydrationRows {
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
   bookingToken: string | null;
   slotPublications?: Row[];
+  treatmentAvailability?: Row[];
   currentUserID: string;
 }
 
@@ -72,7 +73,10 @@ export function assembleState(rows: HydrationRows): DemoState {
   const availabilityWindows: DemoState["availabilityWindows"] = {};
   for (const r of rows.slotPublications ?? []) availabilityWindows[r.id] = mapAvailabilityWindow(r.id, r.data);
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner: {} };
+  const treatmentAvailabilityByOwner: DemoState["treatmentAvailabilityByOwner"] = {};
+  for (const r of rows.treatmentAvailability ?? []) treatmentAvailabilityByOwner[r.id] = mapTreatmentAvailability(r.id, r.data);
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
