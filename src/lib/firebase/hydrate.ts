@@ -76,7 +76,9 @@ export function assembleState(rows: HydrationRows): DemoState {
   const treatmentAvailabilityByOwner: DemoState["treatmentAvailabilityByOwner"] = {};
   for (const r of rows.treatmentAvailability ?? []) treatmentAvailabilityByOwner[r.id] = mapTreatmentAvailability(r.id, r.data);
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner };
+  const doctorStatusByID: DemoState["doctorStatusByID"] = {};
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {

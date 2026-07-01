@@ -56,6 +56,7 @@ export function emptyState(): DemoState {
     bookingTokensByUser: {},
     availabilityWindows: {},
     treatmentAvailabilityByOwner: {},
+    doctorStatusByID: {},
   };
 }
 
