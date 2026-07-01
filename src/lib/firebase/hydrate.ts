@@ -116,6 +116,8 @@ async function readUserProfile(uid: string): Promise<{
     ? { enabled: d.followUpEnabled === true, intervalDays: typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14 }
     : null;
   const bookingToken = typeof d.bookingToken === "string" ? d.bookingToken : null;
+  // onlineStatus is a "online"|"offline" string on the backend doc (the setOnlineStatus
+  // callable's own schema); the client model is a plain boolean, hence the coercion here.
   const doctorStatus = { online: d.onlineStatus === "online", alwaysAcceptAuth: d.alwaysAcceptAuth === true };
   return { followUpSettings, bookingToken, doctorStatus };
 }
