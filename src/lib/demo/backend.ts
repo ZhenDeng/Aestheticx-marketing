@@ -51,6 +51,7 @@ export function emptyState(): DemoState {
     followUpSettingsByUser: {},
     bookingTokensByUser: {},
     availabilityWindows: {},
+    treatmentAvailabilityByOwner: {},
   };
 }
 

@@ -194,6 +194,27 @@ export interface AvailabilityWindow {
   endMinute: number;
 }
 
+// A clinician's treatment working schedule (feedback: treatment availability windows).
+// `days` is indexed Mon-first (0=Mon … 6=Sun) to match calendar.ts isoWeekday. A treatment
+// appointment is bookable only on an open day, within [openMinute, closeMinute), and not
+// overlapping a block. Distinct from AvailabilityWindow (authorisation teleconsult slots).
+export interface DaySchedule {
+  open: boolean;
+  openMinute: number;  // minutes from midnight, e.g. 540 = 09:00
+  closeMinute: number; // e.g. 1020 = 17:00
+}
+export interface TreatmentBlock {
+  id: string;
+  dateISO: string; // yyyy-mm-dd
+  startMinute: number;
+  endMinute: number;
+}
+export interface TreatmentAvailability {
+  ownerID: string;
+  days: DaySchedule[]; // length 7, index = isoWeekday (0=Mon … 6=Sun)
+  blocks: TreatmentBlock[];
+}
+
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -237,6 +258,7 @@ export interface DemoState {
   followUpSettingsByUser: Record<string, FollowUpSettings>;
   bookingTokensByUser: Record<string, string>;
   availabilityWindows: Record<string, AvailabilityWindow>;
+  treatmentAvailabilityByOwner: Record<string, TreatmentAvailability>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---
