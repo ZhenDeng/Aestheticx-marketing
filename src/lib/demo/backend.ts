@@ -6,6 +6,7 @@ import type {
   AvailabilityWindow,
   Authorisation,
   AuthorisationRequest,
+  DaySchedule,
   DeliveryStatus,
   DemoState,
   Identity,
@@ -22,8 +23,10 @@ import type {
   PatientSummary,
   SignedFormRecord,
   FormAnswer,
+  TreatmentAvailability,
   TreatmentMedication,
 } from "./types";
+import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
@@ -563,6 +566,30 @@ export function withdrawAvailability(state: DemoState, windowID: string, identit
   const next = { ...state.availabilityWindows };
   delete next[windowID];
   return { ...state, availabilityWindows: next };
+}
+
+// --- Treatment availability windows ---
+
+export function defaultTreatmentAvailability(ownerID: string): TreatmentAvailability {
+  const open: DaySchedule = { open: true, openMinute: 540, closeMinute: 1020 };   // 09:00–17:00
+  const closed: DaySchedule = { open: false, openMinute: 540, closeMinute: 1020 };
+  return { ownerID, days: [open, open, open, open, open, closed, closed], blocks: [] }; // Mon–Fri open
+}
+
+export function treatmentAvailabilityForOwner(state: DemoState, ownerID: string): TreatmentAvailability {
+  return state.treatmentAvailabilityByOwner[ownerID] ?? defaultTreatmentAvailability(ownerID);
+}
+
+export function isTimeAvailableForTreatment(
+  config: TreatmentAvailability, dateISO: string, startMinute: number, endMinute: number,
+): boolean {
+  const day = config.days[isoWeekday(dateISO)];
+  if (!day || !day.open) return false;
+  if (startMinute < day.openMinute || endMinute > day.closeMinute) return false;
+  const overlapsBlock = config.blocks.some(
+    (b) => b.dateISO === dateISO && startMinute < b.endMinute && b.startMinute < endMinute,
+  );
+  return !overlapsBlock;
 }
 
 // A patient's full appointment history, most-recent-first (date desc, then start desc).
