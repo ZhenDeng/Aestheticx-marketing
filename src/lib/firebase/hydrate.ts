@@ -22,6 +22,7 @@ export interface HydrationRows {
   followUpTasks: Row[];
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
   bookingToken: string | null;
+  doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
   slotPublications?: Row[];
   treatmentAvailability?: Row[];
   currentUserID: string;
@@ -76,7 +77,7 @@ export function assembleState(rows: HydrationRows): DemoState {
   const treatmentAvailabilityByOwner: DemoState["treatmentAvailabilityByOwner"] = {};
   for (const r of rows.treatmentAvailability ?? []) treatmentAvailabilityByOwner[r.id] = mapTreatmentAvailability(r.id, r.data);
 
-  const doctorStatusByID: DemoState["doctorStatusByID"] = {};
+  const doctorStatusByID: DemoState["doctorStatusByID"] = { [rows.currentUserID]: rows.doctorStatus };
 
   return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID };
 }
@@ -97,15 +98,17 @@ async function readAvailability(ownerIds: string[]): Promise<Row[]> {
   return rows.filter((r): r is Row => r !== null);
 }
 
-// The user's own profile doc carries follow-up settings + their booking token (one read).
-// intervalDays is clamped to the UI's valid range [1,90] so a corrupt/out-of-range stored
-// value (0, negative, NaN) can't silently schedule everything as overdue or in the past.
+// The user's own profile doc carries follow-up settings, their booking token, and their
+// online/always-accept-auth status (one read). intervalDays is clamped to the UI's valid
+// range [1,90] so a corrupt/out-of-range stored value (0, negative, NaN) can't silently
+// schedule everything as overdue or in the past.
 async function readUserProfile(uid: string): Promise<{
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
   bookingToken: string | null;
+  doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
 }> {
   const snap = await getDoc(doc(firestore(), "users", uid));
-  if (!snap.exists()) return { followUpSettings: null, bookingToken: null };
+  if (!snap.exists()) return { followUpSettings: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false } };
   const d = snap.data();
   const hasFU = d.followUpEnabled !== undefined || d.followUpIntervalDays !== undefined;
   const raw = d.followUpIntervalDays;
@@ -113,7 +116,8 @@ async function readUserProfile(uid: string): Promise<{
     ? { enabled: d.followUpEnabled === true, intervalDays: typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14 }
     : null;
   const bookingToken = typeof d.bookingToken === "string" ? d.bookingToken : null;
-  return { followUpSettings, bookingToken };
+  const doctorStatus = { online: d.onlineStatus === "online", alwaysAcceptAuth: d.alwaysAcceptAuth === true };
+  return { followUpSettings, bookingToken, doctorStatus };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
@@ -145,6 +149,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
       followUpSettings: profile.followUpSettings,
       bookingToken: profile.bookingToken,
+      doctorStatus: profile.doctorStatus,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       treatmentAvailability: await readAvailability([uid]),
       currentUserID: uid,
@@ -221,6 +226,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
     followUpSettings: profile.followUpSettings,
     bookingToken: profile.bookingToken,
+    doctorStatus: profile.doctorStatus,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
     currentUserID: uid,
