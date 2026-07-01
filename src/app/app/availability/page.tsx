@@ -13,6 +13,10 @@ function minutesFromTime(value: string): number {
   const [h, m] = value.split(":").map((x) => parseInt(x, 10));
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
+function nowFlooredTo10(epochMs: number): number {
+  const d = new Date(epochMs);
+  return Math.floor((d.getHours() * 60 + d.getMinutes()) / 10) * 10;
+}
 
 export default function AvailabilityPage() {
   const { identity } = useDemoAuth();
@@ -209,7 +213,7 @@ function TreatmentSchedule({ me }: { me: Identity }) {
 function BookConsult({ me }: { me: Identity }) {
   const store = useDemoStore();
   const todayISO = isoDay(store.now);
-  const [doctors, setDoctors] = useState<{ doctorID: string; doctorName: string }[]>([]);
+  const [doctors, setDoctors] = useState<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]>([]);
   const [doctorID, setDoctorID] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO);
   const [slots, setSlots] = useState<number[]>([]);
@@ -219,9 +223,13 @@ function BookConsult({ me }: { me: Identity }) {
   const [booked, setBooked] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [slotReload, setSlotReload] = useState(0);
+  const [adHocQuery, setAdHocQuery] = useState("");
+  const [requesting, setRequesting] = useState(false);
 
   // Fall back to the first available doctor so one is selectable without touching the dropdown.
   const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
+  const effectiveDoctor = doctors.find((d) => d.doctorID === effectiveDoctorID) ?? null;
+  const canRequestNow = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
 
   // Discover doctors with availability (demo: local selectors; live: backend callable).
   useEffect(() => {
@@ -262,6 +270,28 @@ function BookConsult({ me }: { me: Identity }) {
     }
   }
 
+  const adHocMatches = adHocQuery.trim() ? store.searchPatients(adHocQuery, me).slice(0, 5) : [];
+
+  async function requestNow(patientID: string, patientName: string) {
+    if (!effectiveDoctorID) return;
+    setError(null);
+    setRequesting(true);
+    try {
+      await store.requestAdHocAuth({
+        doctorID: effectiveDoctorID, dateISO: isoDay(store.now), atMinute: nowFlooredTo10(store.now),
+        patientID, patientName, identity: me,
+      });
+      setBooked(`Sent an ad-hoc request for ${patientName}.`);
+      setAdHocQuery("");
+    } catch (e) {
+      setError(e instanceof BackendError && e.message === "notAccepting"
+        ? "That doctor isn't accepting requests right now — pick another."
+        : "Could not send the request. Please try again.");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
   if (loading) return <p className="mt-6 text-sm text-ink-soft">Loading availability…</p>;
   if (doctors.length === 0) return <p className="mt-6 text-sm text-ink-soft">No doctors have published availability yet.</p>;
 
@@ -294,6 +324,24 @@ function BookConsult({ me }: { me: Identity }) {
           {slots.length === 0 && <p className="text-sm text-ink-soft">No open slots on this date.</p>}
         </div>
       </div>
+
+      {canRequestNow && (
+        <div className="rounded-inner border border-line bg-card p-4">
+          <p className="text-sm text-ink">Request an ad-hoc consult now for…</p>
+          <input value={adHocQuery} onChange={(e) => setAdHocQuery(e.target.value)} placeholder="Search patient…"
+            className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+          <ul className="mt-1 flex flex-col gap-1">
+            {adHocMatches.map((p) => (
+              <li key={p.id}>
+                <button disabled={requesting} onClick={() => requestNow(p.id, `${p.givenName} ${p.lastName}`)}
+                  className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint disabled:opacity-50">
+                  {p.givenName} {p.lastName}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {slot !== null && (
         <div className="rounded-inner border border-line bg-card p-4">
