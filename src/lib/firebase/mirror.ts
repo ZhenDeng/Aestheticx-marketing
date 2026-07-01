@@ -151,11 +151,11 @@ export async function mirrorWithdrawAvailability(dateISO: string, startMinute: n
   await httpsCallable(functions(), "withdrawAuthSlots")({ dateISO, startMinute });
 }
 // Nurse-facing availability reads (server-side; the nurse has no local windows).
-export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; doctorName: string }[]> {
+export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]> {
   const res = await httpsCallable(functions(), "listAvailableDoctors")({});
   const raw = (res.data as { doctors?: unknown }).doctors;
-  const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string }[]) : [];
-  return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName }));
+  const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]) : [];
+  return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName, hasSlots: d.hasSlots, online: d.online, alwaysAcceptAuth: d.alwaysAcceptAuth }));
 }
 export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: string): Promise<number[]> {
   const res = await httpsCallable(functions(), "listDoctorOpenSlots")({ doctorId: doctorID, dateISO });
@@ -185,5 +185,12 @@ export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string;
   await httpsCallable(functions(), "bookAuthSlot")({
     doctorId: p.doctorID, dateISO: p.dateISO, slotMinute: p.slotMinute,
     patientId: p.patientID ?? null, counterpartyName: p.counterpartyName,
+  });
+}
+
+export async function mirrorRequestAdHocAuth(p: { doctorID: string; dateISO: string; atMinute: number; patientID: string; counterpartyName: string }): Promise<void> {
+  await httpsCallable(functions(), "requestAdHocAuth")({
+    doctorId: p.doctorID, dateISO: p.dateISO, atMinute: p.atMinute,
+    patientId: p.patientID, counterpartyName: p.counterpartyName,
   });
 }

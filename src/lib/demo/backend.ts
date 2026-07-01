@@ -362,6 +362,13 @@ export function isoDay(epochMs: number): string {
   return new Date(epochMs).toISOString().slice(0, 10);
 }
 
+// UTC minute-of-day, floored to the nearest 10 — must share isoDay's UTC convention (local
+// hours/minutes would disagree with isoDay's UTC date near a day boundary).
+export function nowFlooredTo10(epochMs: number): number {
+  const d = new Date(epochMs);
+  return Math.floor((d.getUTCHours() * 60 + d.getUTCMinutes()) / 10) * 10;
+}
+
 export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {
   return state.followUpSettingsByUser[userID] ?? { enabled: false, intervalDays: 14 };
 }
@@ -519,10 +526,27 @@ export function availabilityWindowsForDoctor(state: DemoState, doctorID: string)
 }
 
 // Distinct doctors who have published any availability (for the nurse booking picker).
-export function doctorsWithAvailability(state: DemoState): { doctorID: string; doctorName: string }[] {
-  const seen = new Map<string, string>();
-  for (const w of Object.values(state.availabilityWindows)) if (!seen.has(w.doctorID)) seen.set(w.doctorID, w.doctorName);
-  return [...seen].map(([doctorID, doctorName]) => ({ doctorID, doctorName }));
+export function doctorsWithAvailability(state: DemoState): {
+  doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean;
+}[] {
+  const names = new Map<string, string>();
+  const slotDoctorIDs = new Set<string>();
+  for (const w of Object.values(state.availabilityWindows)) {
+    if (!names.has(w.doctorID)) names.set(w.doctorID, w.doctorName);
+    slotDoctorIDs.add(w.doctorID);
+  }
+  const statusDoctorIDs = Object.entries(state.doctorStatusByID)
+    .filter(([, s]) => s.online || s.alwaysAcceptAuth)
+    .map(([id]) => id);
+  for (const id of statusDoctorIDs) if (!names.has(id)) names.set(id, "");
+  const allIDs = new Set([...slotDoctorIDs, ...statusDoctorIDs]);
+  return [...allIDs].map((doctorID) => {
+    const status = doctorStatusForUser(state, doctorID);
+    return {
+      doctorID, doctorName: names.get(doctorID) ?? "",
+      hasSlots: slotDoctorIDs.has(doctorID), online: status.online, alwaysAcceptAuth: status.alwaysAcceptAuth,
+    };
+  });
 }
 
 // A slot is taken when a non-cancelled authSlot appointment of that doctor sits on it.
@@ -562,6 +586,26 @@ export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { stat
   const appt: Appointment = {
     id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
     startMinute: input.startMinute, endMinute: input.startMinute + SLOT_MINUTES, status: "confirmed",
+    patientID: input.patientID, patientName: input.patientName,
+    appointmentNote: `Auth request · ${input.identity.user.name}`,
+  };
+  return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
+}
+
+export interface RequestAdHocAuthInput {
+  doctorID: string; dateISO: string; atMinute: number;
+  patientID: string; patientName: string; identity: Identity;
+}
+
+// Ad-hoc (no published slot) request to an online/always-accepting doctor. No double-book
+// check — an ad-hoc request targets the current moment, matching the deployed adHocAuthTx,
+// which also has none. Mirrors bookAuthSlot's appointment shape (10-minute, confirmed).
+export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput): { state: DemoState; appt: Appointment } {
+  const status = doctorStatusForUser(state, input.doctorID);
+  if (!status.online && !status.alwaysAcceptAuth) throw new BackendError("notAccepting");
+  const appt: Appointment = {
+    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
+    startMinute: input.atMinute, endMinute: input.atMinute + SLOT_MINUTES, status: "confirmed",
     patientID: input.patientID, patientName: input.patientName,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
   };

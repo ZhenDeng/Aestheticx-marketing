@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, slotsForWindow, publishAvailability, availabilityWindowsForDoctor,
   doctorsWithAvailability, isSlotTaken, openSlotsForDoctorOnDay, withdrawAvailability,
-  bookAuthSlot, BackendError,
+  bookAuthSlot, BackendError, setDoctorStatus,
 } from "@/lib/demo/backend";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
@@ -43,7 +43,35 @@ describe("availabilityWindowsForDoctor / doctorsWithAvailability", () => {
   it("lists a doctor's windows and the distinct doctors", () => {
     const s = withWindow();
     expect(availabilityWindowsForDoctor(s, "u-voss")).toHaveLength(1);
-    expect(doctorsWithAvailability(s)).toEqual([{ doctorID: "u-voss", doctorName: "Dr Elena Voss" }]);
+    expect(doctorsWithAvailability(s)).toEqual([
+      { doctorID: "u-voss", doctorName: "Dr Elena Voss", hasSlots: true, online: false, alwaysAcceptAuth: false },
+    ]);
+  });
+
+  it("includes an online-only doctor with no published windows", () => {
+    const s = setDoctorStatus(emptyState(), "u-online", { online: true });
+    expect(doctorsWithAvailability(s)).toEqual([
+      { doctorID: "u-online", doctorName: "", hasSlots: false, online: true, alwaysAcceptAuth: false },
+    ]);
+  });
+
+  it("includes an always-accept-only doctor with no published windows", () => {
+    const s = setDoctorStatus(emptyState(), "u-always", { alwaysAcceptAuth: true });
+    expect(doctorsWithAvailability(s)).toEqual([
+      { doctorID: "u-always", doctorName: "", hasSlots: false, online: false, alwaysAcceptAuth: true },
+    ]);
+  });
+
+  it("merges all criteria for one doctor into a single entry", () => {
+    let s = publishAvailability(emptyState(), { doctorID: "u-voss", dateISO: "2026-07-01", startMinute: 540, endMinute: 570 }, voss).state;
+    s = setDoctorStatus(s, "u-voss", { online: true, alwaysAcceptAuth: true });
+    const result = doctorsWithAvailability(s);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ doctorID: "u-voss", hasSlots: true, online: true, alwaysAcceptAuth: true });
+  });
+
+  it("excludes a doctor satisfying no criteria", () => {
+    expect(doctorsWithAvailability(emptyState())).toEqual([]);
   });
 });
 

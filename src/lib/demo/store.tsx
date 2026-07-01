@@ -53,11 +53,12 @@ interface StoreValue {
   setDoctorStatus: (doctorID: string, patch: Partial<import("./types").DoctorStatus>) => void;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
   // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
-  listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string }[]>;
+  listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]>;
   listDoctorOpenSlots: (doctorID: string, dateISO: string) => Promise<number[]>;
   publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
   withdrawAvailability: (windowID: string, identity: Identity) => void;
   bookAuthSlot: (input: import("./backend").BookAuthSlotInput) => Promise<void>;
+  requestAdHocAuth: (input: import("./backend").RequestAdHocAuthInput) => Promise<void>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
@@ -412,6 +413,21 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           doctorID: input.doctorID, dateISO: input.dateISO, slotMinute: input.startMinute,
           patientID: input.patientID, counterpartyName: input.identity.user.name,
         });
+      },
+      requestAdHocAuth: async (input) => {
+        if (!live) {
+          // Demo: validate against local doctor status (throws notAccepting) + mint the appointment.
+          const { appt } = backend.requestAdHocAuth(state, input);
+          setState((s) => ({ ...s, appointments: { ...s.appointments, [appt.id]: appt } }));
+          return;
+        }
+        // Live: the server is authoritative (validates online/always-accept, mints the appointment).
+        const m = await import("@/lib/firebase/mirror");
+        await m.mirrorRequestAdHocAuth({
+          doctorID: input.doctorID, dateISO: input.dateISO, atMinute: input.atMinute,
+          patientID: input.patientID, counterpartyName: input.identity.user.name,
+        });
+        setRefreshTick((t) => t + 1);
       },
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
