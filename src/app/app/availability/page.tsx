@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
@@ -102,35 +102,60 @@ function DoctorAvailability({ me }: { me: Identity }) {
 function BookConsult({ me }: { me: Identity }) {
   const store = useDemoStore();
   const todayISO = isoDay(store.now);
-  const doctors = store.doctorsWithAvailability();
+  const [doctors, setDoctors] = useState<{ doctorID: string; doctorName: string }[]>([]);
   const [doctorID, setDoctorID] = useState<string | null>(null);
-  // Fall back to the first available doctor so a freshly-published doctor is selectable
-  // without the user having to touch the dropdown.
-  const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
   const [date, setDate] = useState(todayISO);
+  const [slots, setSlots] = useState<number[]>([]);
   const [slot, setSlot] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [slotReload, setSlotReload] = useState(0);
 
-  const slots = effectiveDoctorID ? store.openSlotsForDoctorOnDay(effectiveDoctorID, date) : [];
+  // Fall back to the first available doctor so one is selectable without touching the dropdown.
+  const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
+
+  // Discover doctors with availability (demo: local selectors; live: backend callable).
+  useEffect(() => {
+    let alive = true;
+    store.listAvailableDoctors()
+      .then((d) => { if (alive) { setDoctors(d); setLoading(false); } })
+      .catch(() => { if (alive) { setError("Could not load availability. Please retry."); setLoading(false); } });
+    return () => { alive = false; };
+  }, [store]);
+
+  // The chosen doctor's open slots for the date; refetched after a booking (slotReload).
+  useEffect(() => {
+    if (!effectiveDoctorID) return; // only null when there are no doctors (guarded below)
+    let alive = true;
+    store.listDoctorOpenSlots(effectiveDoctorID, date)
+      .then((s) => { if (alive) setSlots(s); })
+      .catch(() => { if (alive) setError("Could not load open slots. Please retry."); });
+    return () => { alive = false; };
+  }, [store, effectiveDoctorID, date, slotReload]);
+
   const matches = slot !== null && query.trim() ? store.searchPatients(query, me).slice(0, 5) : [];
 
-  function book(patientID: string, patientName: string) {
+  async function book(patientID: string, patientName: string) {
     if (!effectiveDoctorID || slot === null) return;
     setError(null);
+    const at = slot;
     try {
-      store.bookAuthSlot({ doctorID: effectiveDoctorID, dateISO: date, startMinute: slot, patientID, patientName, identity: me });
-      setBooked(`Booked ${timeLabel(slot)} for ${patientName}.`);
+      await store.bookAuthSlot({ doctorID: effectiveDoctorID, dateISO: date, startMinute: at, patientID, patientName, identity: me });
+      setBooked(`Booked ${timeLabel(at)} for ${patientName}.`);
       setSlot(null); setQuery("");
     } catch (e) {
       setError(e instanceof BackendError && e.message === "slotTaken"
         ? "That slot was just taken — pick another."
         : "That slot is no longer available — pick another.");
       setSlot(null);
+    } finally {
+      setSlotReload((t) => t + 1); // reflect the booking (or a lost race) in the open list
     }
   }
 
+  if (loading) return <p className="mt-6 text-sm text-ink-soft">Loading availability…</p>;
   if (doctors.length === 0) return <p className="mt-6 text-sm text-ink-soft">No doctors have published availability yet.</p>;
 
   return (

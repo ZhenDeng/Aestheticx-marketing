@@ -150,12 +150,22 @@ export async function mirrorPublishAvailability(window: import("@/lib/demo/types
 export async function mirrorWithdrawAvailability(dateISO: string, startMinute: number): Promise<void> {
   await httpsCallable(functions(), "withdrawAuthSlots")({ dateISO, startMinute });
 }
-// TODO(nurse-slice): live nurse booking needs slotMinute + counterpartyName + a book-then-rehydrate
-// (the backend mints the appointment id) plus a nurse-facing availability read model. Payload aligned
-// to bookAuthSlot's contract; not yet exercised live (no nurse availability discovery in live mode).
-export async function mirrorBookAuthSlot(appt: import("@/lib/demo/types").Appointment): Promise<void> {
+// Nurse-facing availability reads (server-side; the nurse has no local windows).
+export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; doctorName: string }[]> {
+  const res = await httpsCallable(functions(), "listAvailableDoctors")({});
+  const raw = (res.data as { doctors?: unknown }).doctors;
+  const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string }[]) : [];
+  return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName }));
+}
+export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: string): Promise<number[]> {
+  const res = await httpsCallable(functions(), "listDoctorOpenSlots")({ doctorId: doctorID, dateISO });
+  const raw = (res.data as { slots?: unknown }).slots;
+  return Array.isArray(raw) ? (raw as number[]) : [];
+}
+// The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
+export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string; slotMinute: number; patientID?: string; counterpartyName: string }): Promise<void> {
   await httpsCallable(functions(), "bookAuthSlot")({
-    doctorId: appt.ownerID, dateISO: appt.dateISO, slotMinute: appt.startMinute,
-    patientId: appt.patientID ?? null, counterpartyName: appt.patientName ?? "",
+    doctorId: p.doctorID, dateISO: p.dateISO, slotMinute: p.slotMinute,
+    patientId: p.patientID ?? null, counterpartyName: p.counterpartyName,
   });
 }

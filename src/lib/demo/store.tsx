@@ -46,9 +46,12 @@ interface StoreValue {
   availabilityWindowsForDoctor: (doctorID: string) => ReturnType<typeof backend.availabilityWindowsForDoctor>;
   doctorsWithAvailability: () => ReturnType<typeof backend.doctorsWithAvailability>;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
+  // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
+  listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string }[]>;
+  listDoctorOpenSlots: (doctorID: string, dateISO: string) => Promise<number[]>;
   publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
   withdrawAvailability: (windowID: string, identity: Identity) => void;
-  bookAuthSlot: (input: import("./backend").BookAuthSlotInput) => void;
+  bookAuthSlot: (input: import("./backend").BookAuthSlotInput) => Promise<void>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
@@ -285,6 +288,16 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
       doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
       openSlotsForDoctorOnDay: (doctorID, dateISO) => backend.openSlotsForDoctorOnDay(state, doctorID, dateISO),
+      listAvailableDoctors: async () => {
+        if (!live) return backend.doctorsWithAvailability(state);
+        const m = await import("@/lib/firebase/mirror");
+        return m.mirrorListAvailableDoctors();
+      },
+      listDoctorOpenSlots: async (doctorID, dateISO) => {
+        if (!live) return backend.openSlotsForDoctorOnDay(state, doctorID, dateISO);
+        const m = await import("@/lib/firebase/mirror");
+        return m.mirrorListDoctorOpenSlots(doctorID, dateISO);
+      },
       bookTreatmentAppointment: (input) => {
         // Demo adds locally. Live calls bookTreatment (server-authoritative id) then rehydrates.
         if (!live) { setState((s) => backend.bookTreatmentAppointment(s, input).state); return; }
@@ -334,13 +347,20 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorWithdrawAvailability(w.dateISO, w.startMinute),
         );
       },
-      bookAuthSlot: (input) => {
-        // Validate (throws slotTaken on a double-book) + mint the appointment once, eagerly.
-        const { appt } = backend.bookAuthSlot(state, input);
-        applyAndMirror(
-          (s) => ({ ...s, appointments: { ...s.appointments, [appt.id]: appt } }),
-          (m) => m.mirrorBookAuthSlot(appt),
-        );
+      bookAuthSlot: async (input) => {
+        if (!live) {
+          // Demo: validate against local windows (throws slotTaken) + mint the appointment.
+          const { appt } = backend.bookAuthSlot(state, input);
+          setState((s) => ({ ...s, appointments: { ...s.appointments, [appt.id]: appt } }));
+          return;
+        }
+        // Live: the nurse has no local windows — the server is authoritative (validates the slot,
+        // mints the appointment, and rejects a double-book). The page refetches open slots after.
+        const m = await import("@/lib/firebase/mirror");
+        await m.mirrorBookAuthSlot({
+          doctorID: input.doctorID, dateISO: input.dateISO, slotMinute: input.startMinute,
+          patientID: input.patientID, counterpartyName: input.identity.user.name,
+        });
       },
       createPatient: (draft, identity) => {
         // Compute the patient eagerly so we can return its id synchronously (the page
