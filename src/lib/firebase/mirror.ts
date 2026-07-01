@@ -162,6 +162,17 @@ export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: strin
   const raw = (res.data as { slots?: unknown }).slots;
   return Array.isArray(raw) ? (raw as number[]) : [];
 }
+// TODO(treatment-availability): these call not-yet-deployed callables; also wire the hydrate read (hydrate.ts) when deploying.
+export async function mirrorSetTreatmentDaySchedule(ownerID: string, weekday: number, patch: Partial<import("@/lib/demo/types").DaySchedule>): Promise<void> {
+  await httpsCallable(functions(), "setTreatmentDaySchedule")({ ownerId: ownerID, weekday, ...patch });
+}
+export async function mirrorAddTreatmentBlock(block: import("@/lib/demo/types").TreatmentBlock): Promise<void> {
+  await httpsCallable(functions(), "addTreatmentBlock")({ id: block.id, dateISO: block.dateISO, startMinute: block.startMinute, endMinute: block.endMinute });
+}
+export async function mirrorRemoveTreatmentBlock(ownerID: string, blockID: string): Promise<void> {
+  await httpsCallable(functions(), "removeTreatmentBlock")({ ownerId: ownerID, blockId: blockID });
+}
+
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
 export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string; slotMinute: number; patientID?: string; counterpartyName: string }): Promise<void> {
   await httpsCallable(functions(), "bookAuthSlot")({

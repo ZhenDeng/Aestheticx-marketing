@@ -6,6 +6,7 @@ import type {
   AvailabilityWindow,
   Authorisation,
   AuthorisationRequest,
+  DaySchedule,
   DeliveryStatus,
   DemoState,
   Identity,
@@ -22,8 +23,11 @@ import type {
   PatientSummary,
   SignedFormRecord,
   FormAnswer,
+  TreatmentAvailability,
+  TreatmentBlock,
   TreatmentMedication,
 } from "./types";
+import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
@@ -51,6 +55,7 @@ export function emptyState(): DemoState {
     followUpSettingsByUser: {},
     bookingTokensByUser: {},
     availabilityWindows: {},
+    treatmentAvailabilityByOwner: {},
   };
 }
 
@@ -422,10 +427,15 @@ export interface BookTreatmentInput {
 }
 
 export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentInput): { state: DemoState; appt: Appointment } {
+  const owner = appointmentOwnerScope(input.identity);
+  const end = input.startMinute + input.durationMinutes;
+  if (!isTimeAvailableForTreatment(treatmentAvailabilityForOwner(state, owner), input.dateISO, input.startMinute, end)) {
+    throw new BackendError("unavailable");
+  }
   const appt: Appointment = {
     id: makeID("appt"),
     type: "treatment",
-    ownerID: appointmentOwnerScope(input.identity),
+    ownerID: owner,
     dateISO: input.dateISO,
     startMinute: input.startMinute,
     endMinute: input.startMinute + input.durationMinutes,
@@ -444,6 +454,12 @@ export function rescheduleAppointment(
   if (!appt) throw new BackendError("notFound");
   if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive"); // terminal appts aren't reschedulable
+  if (appt.type === "treatment") {
+    const config = treatmentAvailabilityForOwner(state, appt.ownerID);
+    if (!isTimeAvailableForTreatment(config, dateISO, startMinute, startMinute + durationMinutes)) {
+      throw new BackendError("unavailable");
+    }
+  }
   const moved = { ...appt, dateISO, startMinute, endMinute: startMinute + durationMinutes };
   return { ...state, appointments: { ...state.appointments, [id]: moved } };
 }
@@ -562,6 +578,59 @@ export function withdrawAvailability(state: DemoState, windowID: string, identit
   const next = { ...state.availabilityWindows };
   delete next[windowID];
   return { ...state, availabilityWindows: next };
+}
+
+// --- Treatment availability windows ---
+
+export function defaultTreatmentAvailability(ownerID: string): TreatmentAvailability {
+  const open: DaySchedule = { open: true, openMinute: 540, closeMinute: 1020 };   // 09:00–17:00
+  const closed: DaySchedule = { open: false, openMinute: 540, closeMinute: 1020 };
+  return { ownerID, days: [open, open, open, open, open, closed, closed], blocks: [] }; // Mon–Fri open
+}
+
+export function treatmentAvailabilityForOwner(state: DemoState, ownerID: string): TreatmentAvailability {
+  return state.treatmentAvailabilityByOwner[ownerID] ?? defaultTreatmentAvailability(ownerID);
+}
+
+export type TreatmentAvailabilityResult = ReturnType<typeof treatmentAvailabilityForOwner>;
+
+export function isTimeAvailableForTreatment(
+  config: TreatmentAvailability, dateISO: string, startMinute: number, endMinute: number,
+): boolean {
+  const day = config.days[isoWeekday(dateISO)];
+  if (!day || !day.open) return false;
+  if (startMinute < day.openMinute || endMinute > day.closeMinute) return false;
+  const overlapsBlock = config.blocks.some(
+    (b) => b.dateISO === dateISO && startMinute < b.endMinute && b.startMinute < endMinute,
+  );
+  return !overlapsBlock;
+}
+
+export function setTreatmentDaySchedule(
+  state: DemoState, ownerID: string, weekday: number, patch: Partial<DaySchedule>,
+): DemoState {
+  const config = treatmentAvailabilityForOwner(state, ownerID);
+  const merged = { ...config.days[weekday], ...patch };
+  if (merged.open && merged.openMinute >= merged.closeMinute) throw new BackendError("validationFailed");
+  const days = config.days.map((d, i) => (i === weekday ? merged : d));
+  const next = { ...config, ownerID, days };
+  return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
+}
+
+export function addTreatmentBlock(
+  state: DemoState, ownerID: string, input: { dateISO: string; startMinute: number; endMinute: number },
+): { state: DemoState; block: TreatmentBlock } {
+  if (input.endMinute <= input.startMinute) throw new BackendError("validationFailed");
+  const config = treatmentAvailabilityForOwner(state, ownerID);
+  const block: TreatmentBlock = { id: makeID("block"), ...input };
+  const next = { ...config, ownerID, blocks: [...config.blocks, block] };
+  return { state: { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } }, block };
+}
+
+export function removeTreatmentBlock(state: DemoState, ownerID: string, blockID: string): DemoState {
+  const config = treatmentAvailabilityForOwner(state, ownerID);
+  const next = { ...config, ownerID, blocks: config.blocks.filter((b) => b.id !== blockID) };
+  return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
 }
 
 // A patient's full appointment history, most-recent-first (date desc, then start desc).

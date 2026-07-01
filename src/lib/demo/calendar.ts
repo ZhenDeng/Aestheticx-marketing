@@ -10,7 +10,7 @@ function toISO(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 // 0 = Monday … 6 = Sunday
-function isoWeekday(dateISO: string): number {
+export function isoWeekday(dateISO: string): number {
   return (new Date(toUTC(dateISO)).getUTCDay() + 6) % 7;
 }
 

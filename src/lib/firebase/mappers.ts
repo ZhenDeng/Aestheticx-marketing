@@ -5,6 +5,7 @@ import type {
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
+  TreatmentAvailability, DaySchedule, TreatmentBlock,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -162,6 +163,20 @@ export function mapAvailabilityWindow(id: string, data: Doc): AvailabilityWindow
     endMinute: intValue(data.endMinute),
     // data.slotStarts is intentionally dropped — slots are recomputed by slotsForWindow().
   };
+}
+
+// treatmentAvailability/{ownerId} → TreatmentAvailability. days[] is Mon-first (0=Mon…6=Sun).
+export function mapTreatmentAvailability(id: string, data: Doc): TreatmentAvailability {
+  const rawDays = Array.isArray(data.days) ? (data.days as Doc[]) : [];
+  const days: DaySchedule[] = Array.from({ length: 7 }, (_, i) => {
+    const d = rawDays[i] ?? {};
+    return { open: Boolean((d as Doc).open), openMinute: intValue((d as Doc).openMinute), closeMinute: intValue((d as Doc).closeMinute) };
+  });
+  const rawBlocks = Array.isArray(data.blocks) ? (data.blocks as Doc[]) : [];
+  const blocks: TreatmentBlock[] = rawBlocks.map((b) => ({
+    id: str(b.id), dateISO: str(b.dateISO), startMinute: intValue(b.startMinute), endMinute: intValue(b.endMinute),
+  }));
+  return { ownerID: id, days, blocks };
 }
 
 export function mapAppointment(id: string, data: Doc): Appointment {

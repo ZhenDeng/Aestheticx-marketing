@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
-import type { Identity } from "@/lib/demo/types";
+import type { DaySchedule, Identity } from "@/lib/demo/types";
 
 function timeLabel(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -17,17 +17,26 @@ function minutesFromTime(value: string): number {
 export default function AvailabilityPage() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
+  const [tab, setTab] = useState<"authorisation" | "treatment">("authorisation");
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-ink">Authorisation availability</h1>
-      <p className="mt-1 text-ink-soft">
-        {identity.role === "doctor" ? "Publish 10-minute teleconsult slots for your nurses to book." : "Book a doctor's open authorisation slot."}
-      </p>
-      {identity.role === "doctor" ? <DoctorAvailability me={identity} /> : <BookConsult me={identity} />}
+      <h1 className="font-display text-3xl text-ink">Availability</h1>
+      <div className="mt-4 flex gap-2">
+        {(["authorisation", "treatment"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className="rounded-btn border px-3 py-1.5 text-sm"
+            style={tab === t ? { background: "var(--color-tint)", color: "var(--color-card)", borderColor: "var(--color-tint)" } : { borderColor: "var(--color-line)", color: "var(--color-ink)" }}>
+            {t === "authorisation" ? "Authorisation" : "Treatment"}
+          </button>
+        ))}
+      </div>
+      {tab === "authorisation"
+        ? (identity.role === "doctor" ? <DoctorAvailability me={identity} /> : <BookConsult me={identity} />)
+        : <TreatmentSchedule me={identity} />}
     </div>
   );
 }
@@ -95,6 +104,87 @@ function DoctorAvailability({ me }: { me: Identity }) {
         })}
         {windows.length === 0 && <li className="text-sm text-ink-soft">No windows published.</li>}
       </ul>
+    </>
+  );
+}
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function TreatmentSchedule({ me }: { me: Identity }) {
+  const store = useDemoStore();
+  const ownerID = me.context.kind === "clinic" ? me.context.clinic.id : me.user.id;
+  const config = store.treatmentAvailabilityForOwner(ownerID);
+  const [blockDate, setBlockDate] = useState(isoDay(store.now));
+  const [blockStart, setBlockStart] = useState("12:00");
+  const [blockEnd, setBlockEnd] = useState("13:00");
+  const [error, setError] = useState<string | null>(null);
+  const [dayError, setDayError] = useState<string | null>(null);
+
+  function updateDay(i: number, patch: Partial<DaySchedule>) {
+    setDayError(null);
+    try { store.setTreatmentDaySchedule(ownerID, i, patch); }
+    catch { setDayError("Open time must be before close time."); }
+  }
+
+  function addBlock() {
+    setError(null);
+    const s = minutesFromTime(blockStart), e = minutesFromTime(blockEnd);
+    if (e <= s) { setError("End time must be after the start time."); return; }
+    try { store.addTreatmentBlock(ownerID, { dateISO: blockDate, startMinute: s, endMinute: e }); }
+    catch { setError("Could not add the block. Please try again."); }
+  }
+
+  return (
+    <>
+      <div className="mt-6 rounded-card border border-line bg-card p-5">
+        <h2 className="font-display text-lg text-ink">Weekly schedule</h2>
+        <ul className="mt-3 flex flex-col gap-2">
+          {config.days.map((d, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-3">
+              <span className="w-10 text-sm text-ink">{WEEKDAY_LABELS[i]}</span>
+              <label className="flex items-center gap-1 text-sm text-ink-soft">
+                <input type="checkbox" checked={d.open}
+                  onChange={(ev) => updateDay(i, { open: ev.target.checked })} />
+                Open
+              </label>
+              <input type="time" value={timeLabel(d.openMinute)} disabled={!d.open}
+                onChange={(ev) => updateDay(i, { openMinute: minutesFromTime(ev.target.value) })}
+                className="rounded-field border border-line px-2 py-1 text-sm text-ink disabled:opacity-40" />
+              <span className="text-ink-soft">–</span>
+              <input type="time" value={timeLabel(d.closeMinute)} disabled={!d.open}
+                onChange={(ev) => updateDay(i, { closeMinute: minutesFromTime(ev.target.value) })}
+                className="rounded-field border border-line px-2 py-1 text-sm text-ink disabled:opacity-40" />
+            </li>
+          ))}
+        </ul>
+        {dayError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{dayError}</p>}
+      </div>
+
+      <div className="mt-6 rounded-card border border-line bg-card p-5">
+        <h2 className="font-display text-lg text-ink">Blocked times</h2>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-sm text-ink-soft">Date
+            <input type="date" value={blockDate} onChange={(e) => setBlockDate(e.target.value)} className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
+          </label>
+          <label className="text-sm text-ink-soft">Start
+            <input type="time" value={blockStart} onChange={(e) => setBlockStart(e.target.value)} className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
+          </label>
+          <label className="text-sm text-ink-soft">End
+            <input type="time" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)} className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
+          </label>
+          <button onClick={addBlock} className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Add block</button>
+        </div>
+        {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
+        <ul className="mt-3 flex flex-col gap-2">
+          {config.blocks.map((b) => (
+            <li key={b.id} className="flex items-center justify-between gap-3 rounded-inner border border-line px-4 py-2">
+              <span className="text-sm text-ink">{b.dateISO} · {timeLabel(b.startMinute)}–{timeLabel(b.endMinute)}</span>
+              <button onClick={() => store.removeTreatmentBlock(ownerID, b.id)} className="rounded-btn border border-line px-3 py-1 text-sm" style={{ color: "var(--color-rose)" }}>Remove</button>
+            </li>
+          ))}
+          {config.blocks.length === 0 && <li className="text-sm text-ink-soft">No blocked times.</li>}
+        </ul>
+      </div>
     </>
   );
 }
