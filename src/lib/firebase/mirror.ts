@@ -162,15 +162,16 @@ export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: strin
   const raw = (res.data as { slots?: unknown }).slots;
   return Array.isArray(raw) ? (raw as number[]) : [];
 }
-// TODO(treatment-availability): these call not-yet-deployed callables; also wire the hydrate read (hydrate.ts) when deploying.
-export async function mirrorSetTreatmentDaySchedule(ownerID: string, weekday: number, patch: Partial<import("@/lib/demo/types").DaySchedule>): Promise<void> {
-  await httpsCallable(functions(), "setTreatmentDaySchedule")({ ownerId: ownerID, weekday, ...patch });
-}
-export async function mirrorAddTreatmentBlock(block: import("@/lib/demo/types").TreatmentBlock): Promise<void> {
-  await httpsCallable(functions(), "addTreatmentBlock")({ id: block.id, dateISO: block.dateISO, startMinute: block.startMinute, endMinute: block.endMinute });
-}
-export async function mirrorRemoveTreatmentBlock(ownerID: string, blockID: string): Promise<void> {
-  await httpsCallable(functions(), "removeTreatmentBlock")({ ownerId: ownerID, blockId: blockID });
+// A clinician edits their treatment schedule → whole-config write to the backend
+// `setTreatmentAvailability` callable (the same doc public/self booking gates on). Web
+// days[7] (Mon-first) collapse to the backend's SPARSE windows[] keyed by getUTCDay()
+// weekday (0=Sun … 6=Sat) — only open days emit a window; blocks drop their synthetic id.
+export async function mirrorSetTreatmentAvailability(config: import("@/lib/demo/types").TreatmentAvailability): Promise<void> {
+  const windows = config.days.flatMap((d, i) =>
+    d.open ? [{ weekday: (i + 1) % 7, openMinute: d.openMinute, closeMinute: d.closeMinute }] : [],
+  );
+  const blocks = config.blocks.map((b) => ({ dateISO: b.dateISO, startMinute: b.startMinute, endMinute: b.endMinute }));
+  await httpsCallable(functions(), "setTreatmentAvailability")({ ownerId: config.ownerID, windows, blocks });
 }
 
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.

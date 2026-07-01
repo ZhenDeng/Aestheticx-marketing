@@ -6,6 +6,7 @@ import {
   mapAuthRequest,
   mapAppointment,
   mapAvailabilityWindow,
+  mapTreatmentAvailability,
   encodeAuthRequest,
   encodeNote,
   parseDob,
@@ -138,6 +139,33 @@ describe("mapAvailabilityWindow", () => {
       doctorId: "u-voss", dateISO: "2026-06-26", startMinute: 540, endMinute: 600, slotStarts: [540, 550],
     });
     expect(w).toMatchObject({ id: "u-voss_2026-06-26_540", doctorID: "u-voss", doctorName: "", dateISO: "2026-06-26", startMinute: 540, endMinute: 600 });
+  });
+});
+
+describe("mapTreatmentAvailability", () => {
+  it("expands the backend's sparse windows[] into a dense Mon-first days[7]", () => {
+    // Backend weekday is getUTCDay (0=Sun…6=Sat): 1=Mon, 6=Sat. Web days[] is Mon-first.
+    const cfg = mapTreatmentAvailability("u-voss", {
+      windows: [
+        { weekday: 1, openMinute: 540, closeMinute: 1020 }, // Mon → web index 0
+        { weekday: 6, openMinute: 600, closeMinute: 720 },  // Sat → web index 5
+      ],
+      blocks: [{ dateISO: "2026-07-01", startMinute: 780, endMinute: 840 }],
+    });
+    expect(cfg.ownerID).toBe("u-voss");
+    expect(cfg.days[0]).toEqual({ open: true, openMinute: 540, closeMinute: 1020 }); // Mon open
+    expect(cfg.days[5]).toEqual({ open: true, openMinute: 600, closeMinute: 720 });  // Sat open
+    expect(cfg.days[1].open).toBe(false); // Tue — no window → closed
+    expect(cfg.days[6].open).toBe(false); // Sun (backend weekday 0) — no window → closed
+  });
+
+  it("synthesises a stable id per block and handles a missing doc shape", () => {
+    const cfg = mapTreatmentAvailability("u-x", {
+      blocks: [{ dateISO: "2026-07-01", startMinute: 780, endMinute: 840 }],
+    });
+    expect(cfg.blocks[0]).toEqual({ id: "2026-07-01_780_840", dateISO: "2026-07-01", startMinute: 780, endMinute: 840 });
+    // No windows array → every day closed (falls back to default closed hours).
+    expect(cfg.days.every((d) => !d.open)).toBe(true);
   });
 });
 
