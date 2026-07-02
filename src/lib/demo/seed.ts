@@ -187,7 +187,8 @@ export function buildSeedState(): DemoState {
   const pendingBooking = {
     id: "appt-pending-1", type: "treatment" as const, ownerID: "u-voss", dateISO: "2026-07-03",
     startMinute: 600, endMinute: 630, status: "awaitingConfirmation" as const,
-    patientName: "Jordan Lee (new lead)", appointmentNote: "Consultation",
+    lead: { givenName: "Jordan", lastName: "Lee", dob: "1994-08-02", phone: "0400 555 111", email: "jordan.lee@example.com" },
+    appointmentNote: "Consultation",
   };
   state = {
     ...state,

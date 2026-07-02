@@ -357,7 +357,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             await m.mirrorBookTreatment({
               ownerID: input.identity.context.kind === "clinic" ? input.identity.context.clinic.id : input.identity.user.id,
               dateISO: input.dateISO, startMinute: input.startMinute, durationMinutes: input.durationMinutes,
-              patientID: input.patientID, patientName: input.patientName, note: input.note,
+              patientID: input.patientID, patientName: input.patientName, lead: input.lead, note: input.note,
             });
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(String(e)); }
@@ -411,7 +411,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         const m = await import("@/lib/firebase/mirror");
         await m.mirrorBookAuthSlot({
           doctorID: input.doctorID, dateISO: input.dateISO, slotMinute: input.startMinute,
-          patientID: input.patientID, counterpartyName: input.identity.user.name,
+          patientID: input.patientID, lead: input.lead, counterpartyName: input.identity.user.name,
         });
       },
       requestAdHocAuth: async (input) => {
@@ -425,7 +425,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         const m = await import("@/lib/firebase/mirror");
         await m.mirrorRequestAdHocAuth({
           doctorID: input.doctorID, dateISO: input.dateISO, atMinute: input.atMinute,
-          patientID: input.patientID, counterpartyName: input.identity.user.name,
+          patientID: input.patientID, lead: input.lead, counterpartyName: input.identity.user.name,
         });
         setRefreshTick((t) => t + 1);
       },

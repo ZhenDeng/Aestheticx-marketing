@@ -121,12 +121,12 @@ export async function mirrorConfirmAppointment(id: string): Promise<void> {
 }
 export async function mirrorBookTreatment(input: {
   ownerID: string; dateISO: string; startMinute: number; durationMinutes: number;
-  patientID?: string; patientName?: string; note?: string;
+  patientID?: string; patientName?: string; lead?: import("@/lib/demo/types").AppointmentLead; note?: string;
 }): Promise<void> {
   await httpsCallable(functions(), "bookTreatment")({
     ownerId: input.ownerID, dateISO: input.dateISO, startMinute: input.startMinute,
     durationMinutes: input.durationMinutes, patientId: input.patientID ?? null,
-    patientName: input.patientName ?? null, note: input.note ?? "",
+    patientName: input.patientName ?? null, lead: input.lead ?? null, note: input.note ?? "",
   });
 }
 export async function mirrorRescheduleAppointment(id: string, dateISO: string, startMinute: number, durationMinutes: number): Promise<void> {
@@ -181,16 +181,23 @@ export async function mirrorSetOnlineStatus(status: import("@/lib/demo/types").D
 }
 
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
-export async function mirrorBookAuthSlot(p: { doctorID: string; dateISO: string; slotMinute: number; patientID?: string; counterpartyName: string }): Promise<void> {
+// The callables require patientId XOR lead (a new-patient booking sends the lead record).
+export async function mirrorBookAuthSlot(p: {
+  doctorID: string; dateISO: string; slotMinute: number;
+  patientID?: string; lead?: import("@/lib/demo/types").AppointmentLead; counterpartyName: string;
+}): Promise<void> {
   await httpsCallable(functions(), "bookAuthSlot")({
     doctorId: p.doctorID, dateISO: p.dateISO, slotMinute: p.slotMinute,
-    patientId: p.patientID ?? null, counterpartyName: p.counterpartyName,
+    patientId: p.patientID ?? null, lead: p.lead ?? null, counterpartyName: p.counterpartyName,
   });
 }
 
-export async function mirrorRequestAdHocAuth(p: { doctorID: string; dateISO: string; atMinute: number; patientID: string; counterpartyName: string }): Promise<void> {
+export async function mirrorRequestAdHocAuth(p: {
+  doctorID: string; dateISO: string; atMinute: number;
+  patientID?: string; lead?: import("@/lib/demo/types").AppointmentLead; counterpartyName: string;
+}): Promise<void> {
   await httpsCallable(functions(), "requestAdHocAuth")({
     doctorId: p.doctorID, dateISO: p.dateISO, atMinute: p.atMinute,
-    patientId: p.patientID, counterpartyName: p.counterpartyName,
+    patientId: p.patientID ?? null, lead: p.lead ?? null, counterpartyName: p.counterpartyName,
   });
 }

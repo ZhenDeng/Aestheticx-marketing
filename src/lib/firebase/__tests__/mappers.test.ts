@@ -130,6 +130,25 @@ describe("mapAppointment", () => {
     expect(a.type).toBe("authSlot");
     expect(a.startMinute).toBe(540);
     expect(a.patientName).toBe("Mara Boyd");
+    expect(a.lead).toBeUndefined();
+  });
+
+  it("maps a new-patient lead, keeping only its string fields", () => {
+    const a = mapAppointment("ap2", {
+      type: "authorisation", ownerId: "u-voss", dateISO: "2026-06-26",
+      startMinute: 540, endMinute: 550, status: "confirmed", patientId: null,
+      lead: { givenName: "Jordan", lastName: "Lee", dob: "1990-01-15", phone: "0400111222", email: "j@example.com", junk: 42 },
+    });
+    expect(a.patientID).toBeUndefined();
+    expect(a.lead).toEqual({ givenName: "Jordan", lastName: "Lee", dob: "1990-01-15", phone: "0400111222", email: "j@example.com" });
+  });
+
+  it("ignores a non-object lead", () => {
+    const a = mapAppointment("ap3", {
+      type: "treatment", ownerId: "u-voss", dateISO: "2026-06-26",
+      startMinute: 540, endMinute: 570, status: "confirmed", lead: "nope",
+    });
+    expect(a.lead).toBeUndefined();
   });
 });
 
