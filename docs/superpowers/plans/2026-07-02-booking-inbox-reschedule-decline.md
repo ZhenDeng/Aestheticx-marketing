@@ -16,5 +16,8 @@ Branch: `feat/booking-inbox-reschedule-decline`
       crash on an already-actioned race) — fixed in 257d5cc: store eager-validates both
       (rescheduleAppointment's existing pattern) + PendingRow catches with an inline
       "already actioned elsewhere" row error; re-verified in browser (confirm empties inbox,
-      no console errors), 322 tests green
+      no console errors), 322 tests green. Re-review then flagged the knock-on (calendar's
+      four unguarded Confirm/Complete/No-show/Cancel now throw synchronously in onClick) —
+      fixed in 7f95e98 with the same act() guard on the existing scheduleError line
+      (onDone only on success); reviewer confirmed zero unguarded call sites remain → Approve
 - [ ] 4. Docs/memory sync + PR
