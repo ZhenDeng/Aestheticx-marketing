@@ -68,8 +68,18 @@ describe("classifySearch", () => {
   it("classifies a date of birth", () => {
     expect(classifySearch("4/7/1987")).toBe("dateOfBirth");
   });
+  it("classifies a zero-padded dd/mm/yyyy date of birth", () => {
+    expect(classifySearch("04/07/1987")).toBe("dateOfBirth");
+  });
   it("classifies a phone number", () => {
     expect(classifySearch("0432 901 343")).toBe("phone");
+  });
+  it("classifies unspaced digits and international format as phone", () => {
+    expect(classifySearch("0432901343")).toBe("phone");
+    expect(classifySearch("+61 432 901 343")).toBe("phone");
+  });
+  it("classifies mixed letters and digits as a name", () => {
+    expect(classifySearch("Donovan 4")).toBe("name");
   });
 });
 
@@ -107,6 +117,37 @@ describe("searchPatients", () => {
     const state = stateWith(nursePatient("p1", "u-sarah"));
     expect(searchPatients(state, "donovan", sarahIndependent)).toHaveLength(1);
     expect(searchPatients(state, "zzz", sarahIndependent)).toHaveLength(0);
+  });
+
+  // Spec (appointments — add-appointment patient search): match by phone number.
+  it("finds a patient by phone regardless of digit grouping", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah")); // stored as "0432 901 343"
+    expect(searchPatients(state, "0432 901 343", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+    expect(searchPatients(state, "0432901343", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+  });
+  it("requires the full phone number (exact digit match, iOS parity)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    expect(searchPatients(state, "0432 901", sarahIndependent)).toHaveLength(0);
+  });
+  it("scopes phone search to visible patients", () => {
+    const state = stateWith(nursePatient("p1", "u-other"));
+    expect(searchPatients(state, "0432 901 343", sarahIndependent)).toHaveLength(0);
+  });
+
+  // Spec: match by date of birth entered as dd/mm/yyyy.
+  it("finds a patient by date of birth in dd/mm/yyyy (padded or not)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah")); // dob 1987-07-04
+    expect(searchPatients(state, "04/07/1987", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+    expect(searchPatients(state, "4/7/1987", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+  });
+  it("returns nothing for a different or malformed date of birth", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    expect(searchPatients(state, "05/07/1987", sarahIndependent)).toHaveLength(0);
+    expect(searchPatients(state, "04/07", sarahIndependent)).toHaveLength(0);
+  });
+  it("scopes date-of-birth search to visible patients", () => {
+    const state = stateWith(nursePatient("p1", "u-other"));
+    expect(searchPatients(state, "04/07/1987", sarahIndependent)).toHaveLength(0);
   });
 });
 
