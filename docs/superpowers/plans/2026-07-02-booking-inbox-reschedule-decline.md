@@ -20,4 +20,4 @@ Branch: `feat/booking-inbox-reschedule-decline`
       four unguarded Confirm/Complete/No-show/Cancel now throw synchronously in onClick) —
       fixed in 7f95e98 with the same act() guard on the existing scheduleError line
       (onDone only on success); reviewer confirmed zero unguarded call sites remain → Approve
-- [ ] 4. Docs/memory sync + PR
+- [x] 4. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/42
