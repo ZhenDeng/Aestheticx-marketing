@@ -777,6 +777,18 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
 
+  // Status actions can race (the appointment may have just been actioned elsewhere); the
+  // store eager-validates so the BackendError lands here, surfaced on the existing error line.
+  function act(fn: () => void) {
+    try {
+      fn();
+      setScheduleError(null);
+      onDone();
+    } catch {
+      setScheduleError("Could not update this appointment — it may have just been actioned elsewhere.");
+    }
+  }
+
   return (
     <div className="mt-2 border-t border-line pt-2">
       {canMark ? (
@@ -802,12 +814,12 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
           {scheduleError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
             {appt.status === "awaitingConfirmation" && (
-              <button onClick={() => { store.confirmAppointment(appt.id, me); onDone(); }}
+              <button onClick={() => act(() => store.confirmAppointment(appt.id, me))}
                       className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Confirm</button>
             )}
-            <button onClick={() => { store.markAppointment(appt.id, "completed", me); onDone(); }} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
-            <button onClick={() => { store.markAppointment(appt.id, "noShow", me); onDone(); }} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
-            <button onClick={() => { store.markAppointment(appt.id, "cancelled", me); onDone(); }} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>Cancel</button>
+            <button onClick={() => act(() => store.markAppointment(appt.id, "completed", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
+            <button onClick={() => act(() => store.markAppointment(appt.id, "noShow", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
+            <button onClick={() => act(() => store.markAppointment(appt.id, "cancelled", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>Cancel</button>
           </div>
         </>
       ) : (
