@@ -5,10 +5,16 @@ Branch: `feat/booking-inbox-reschedule-decline`
 
 ## Tasks
 
-- [ ] 1. Tests: confirm/decline remove a booking from `pendingBookings`; reschedule keeps it
+- [x] 1. Tests: confirm/decline remove a booking from `pendingBookings`; reschedule keeps it
       pending at the new date/time (re-sorted); unavailable reschedule throws unchanged
-- [ ] 2. UI (`/app/bookings`): per-row Decline (cancelled) + Reschedule expander
+- [x] 2. UI (`/app/bookings`): per-row Decline (cancelled) + Reschedule expander
       (date/time/duration, Apply/Close, unavailable-error message)
-- [ ] 3. Verify: vitest + tsc + build; browser check (decline removes row, reschedule moves
-      row + stays pending, confirm still works); engineer review
+- [x] 3. Verify: vitest (322) + tsc + build green; browser-checked (Sunday reschedule rejected
+      with treatment-hours message + row unchanged; valid reschedule moved the row to
+      2026-07-09 11:30 still pending; decline emptied the inbox); engineer review found one
+      HIGH (confirm/decline BackendError thrown inside the setState updater → render-phase
+      crash on an already-actioned race) — fixed in 257d5cc: store eager-validates both
+      (rescheduleAppointment's existing pattern) + PendingRow catches with an inline
+      "already actioned elsewhere" row error; re-verified in browser (confirm empties inbox,
+      no console errors), 322 tests green
 - [ ] 4. Docs/memory sync + PR
