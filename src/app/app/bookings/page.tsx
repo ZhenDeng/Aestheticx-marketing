@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { bookingLinkUrl } from "@/lib/demo/booking";
+import { appointmentTitle } from "@/lib/demo/backend";
 
 function timeLabel(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -90,7 +91,7 @@ export default function BookingsPage() {
           {pending.map((a) => (
             <li key={a.id} className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
               <span className="min-w-0">
-                <span className="block font-medium text-ink">{a.patientName ?? "New booking"}</span>
+                <span className="block font-medium text-ink">{appointmentTitle(a, "New booking")}</span>
                 <span className="micro">{a.dateISO} · {timeLabel(a.startMinute)}–{timeLabel(a.endMinute)}</span>
               </span>
               <button onClick={() => store.confirmAppointment(a.id, me)}

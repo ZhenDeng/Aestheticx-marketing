@@ -762,6 +762,17 @@ export function draftFromLead(a: Appointment): PatientDraft {
   return { ...emptyDraft(), givenName, lastName };
 }
 
+// Calendar-item title per the appointments spec's resolution order: a new-patient lead name
+// (annotated "new patient"), else the appointment's stored patient name, else a placeholder
+// for blocked time. (Names are always stamped at booking here, so no live-lookup arm.)
+export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): string {
+  if (isLeadAppointment(a)) {
+    const name = leadName(a);
+    return name ? `${name} · new patient` : "New patient"; // a live doc's lead may be no-name
+  }
+  return a.patientName ?? blockPlaceholder;
+}
+
 // Link a lead appointment to a newly-created patient: stamp the id + calendar name, clear the lead.
 export function linkAppointmentPatient(
   state: DemoState, apptId: string, patientId: string, identity: Identity,

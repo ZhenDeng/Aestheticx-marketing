@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  emptyState, calendarName, isLeadAppointment, leadName, draftFromLead,
+  emptyState, calendarName, isLeadAppointment, leadName, draftFromLead, appointmentTitle,
   linkAppointmentPatient, createPatient, BackendError,
   bookTreatmentAppointment, bookAuthSlot, publishAvailability, requestAdHocAuth, setDoctorStatus,
 } from "@/lib/demo/backend";
@@ -101,6 +101,25 @@ function withState(...appts: Appointment[]): { state: DemoState; patient: Patien
   state = { ...state, appointments: Object.fromEntries(appts.map((a) => [a.id, a])) };
   return { state, patient: created.patient };
 }
+
+describe("appointmentTitle", () => {
+  it("resolves a lead first, annotated as a new patient", () => {
+    expect(appointmentTitle(appt({ lead: jordan }))).toBe("Jordan Lee · new patient");
+  });
+  it("annotates a no-name legacy lead too", () => {
+    expect(appointmentTitle(appt({ patientName: "Sam Vale (new lead)" }))).toBe("Sam Vale · new patient");
+  });
+  it("falls back to the stored patient name", () => {
+    expect(appointmentTitle(appt({ patientID: "p1", patientName: "Mara Boyd" }))).toBe("Mara Boyd");
+  });
+  it("shows plain 'New patient' for a no-name lead", () => {
+    expect(appointmentTitle(appt({ lead: { givenName: "", lastName: "" } }))).toBe("New patient");
+  });
+  it("shows the placeholder for block time", () => {
+    expect(appointmentTitle(appt({}))).toBe("—");
+    expect(appointmentTitle(appt({}), "Blocked time")).toBe("Blocked time");
+  });
+});
 
 describe("booking with a new-patient lead", () => {
   it("books a treatment appointment carrying the lead and no patient", () => {
