@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, nowFlooredTo10, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
-import type { DaySchedule, Identity } from "@/lib/demo/types";
+import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
+import type { AppointmentLead, DaySchedule, Identity } from "@/lib/demo/types";
 
 function timeLabel(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -221,6 +222,10 @@ function BookConsult({ me }: { me: Identity }) {
   const [slotReload, setSlotReload] = useState(0);
   const [adHocQuery, setAdHocQuery] = useState("");
   const [requesting, setRequesting] = useState(false);
+  const [slotNewPatient, setSlotNewPatient] = useState(false);
+  const [slotLeadDraft, setSlotLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
+  const [adHocNewPatient, setAdHocNewPatient] = useState(false);
+  const [adHocLeadDraft, setAdHocLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
 
   // Fall back to the first available doctor so one is selectable without touching the dropdown.
   const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
@@ -248,14 +253,18 @@ function BookConsult({ me }: { me: Identity }) {
 
   const matches = slot !== null && query.trim() ? store.searchPatients(query, me).slice(0, 5) : [];
 
-  async function book(patientID: string, patientName: string) {
+  // Books the picked slot for an existing patient file XOR a new-patient lead.
+  async function book(patient: { patientID: string; patientName: string } | { lead: AppointmentLead }) {
     if (!effectiveDoctorID || slot === null) return;
     setError(null);
     const at = slot;
+    const forName = "lead" in patient
+      ? `${`${patient.lead.givenName} ${patient.lead.lastName}`.trim()} (new patient)`
+      : patient.patientName;
     try {
-      await store.bookAuthSlot({ doctorID: effectiveDoctorID, dateISO: date, startMinute: at, patientID, patientName, identity: me });
-      setBooked(`Booked ${timeLabel(at)} for ${patientName}.`);
-      setSlot(null); setQuery("");
+      await store.bookAuthSlot({ doctorID: effectiveDoctorID, dateISO: date, startMinute: at, ...patient, identity: me });
+      setBooked(`Booked ${timeLabel(at)} for ${forName}.`);
+      setSlot(null); setQuery(""); setSlotNewPatient(false); setSlotLeadDraft(emptyLeadDraft());
     } catch (e) {
       setError(e instanceof BackendError && e.message === "slotTaken"
         ? "That slot was just taken — pick another."
@@ -268,17 +277,21 @@ function BookConsult({ me }: { me: Identity }) {
 
   const adHocMatches = adHocQuery.trim() ? store.searchPatients(adHocQuery, me).slice(0, 5) : [];
 
-  async function requestNow(patientID: string, patientName: string) {
+  // Sends an ad-hoc "now" request for an existing patient file XOR a new-patient lead.
+  async function requestNow(patient: { patientID: string; patientName: string } | { lead: AppointmentLead }) {
     if (!effectiveDoctorID) return;
     setError(null);
     setRequesting(true);
+    const forName = "lead" in patient
+      ? `${`${patient.lead.givenName} ${patient.lead.lastName}`.trim()} (new patient)`
+      : patient.patientName;
     try {
       await store.requestAdHocAuth({
         doctorID: effectiveDoctorID, dateISO: isoDay(store.now), atMinute: nowFlooredTo10(store.now),
-        patientID, patientName, identity: me,
+        ...patient, identity: me,
       });
-      setBooked(`Sent an ad-hoc request for ${patientName}.`);
-      setAdHocQuery("");
+      setBooked(`Sent an ad-hoc request for ${forName}.`);
+      setAdHocQuery(""); setAdHocNewPatient(false); setAdHocLeadDraft(emptyLeadDraft());
     } catch (e) {
       setError(e instanceof BackendError && e.message === "notAccepting"
         ? "That doctor isn't accepting requests right now — pick another."
@@ -324,36 +337,70 @@ function BookConsult({ me }: { me: Identity }) {
       {canRequestNow && (
         <div className="rounded-inner border border-line bg-card p-4">
           <p className="text-sm text-ink">Request an ad-hoc consult now for…</p>
-          <input value={adHocQuery} onChange={(e) => setAdHocQuery(e.target.value)} placeholder="Search patient…"
-            className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
-          <ul className="mt-1 flex flex-col gap-1">
-            {adHocMatches.map((p) => (
-              <li key={p.id}>
-                <button disabled={requesting} onClick={() => requestNow(p.id, `${p.givenName} ${p.lastName}`)}
-                  className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint disabled:opacity-50">
-                  {p.givenName} {p.lastName}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <label className="mt-2 flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={adHocNewPatient} onChange={(e) => { setAdHocNewPatient(e.target.checked); setAdHocQuery(""); }} />
+            New patient (no file yet)
+          </label>
+          {adHocNewPatient ? (
+            <div className="mt-2">
+              <LeadFields value={adHocLeadDraft} onChange={setAdHocLeadDraft} />
+              <button disabled={requesting || leadFromDraft(adHocLeadDraft) === null}
+                onClick={() => { const lead = leadFromDraft(adHocLeadDraft); if (lead) void requestNow({ lead }); }}
+                className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
+                Request for new patient
+              </button>
+            </div>
+          ) : (
+            <>
+              <input value={adHocQuery} onChange={(e) => setAdHocQuery(e.target.value)} placeholder="Search patient…"
+                className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+              <ul className="mt-1 flex flex-col gap-1">
+                {adHocMatches.map((p) => (
+                  <li key={p.id}>
+                    <button disabled={requesting} onClick={() => requestNow({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
+                      className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint disabled:opacity-50">
+                      {p.givenName} {p.lastName}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
       {slot !== null && (
         <div className="rounded-inner border border-line bg-card p-4">
           <p className="text-sm text-ink">Book {timeLabel(slot)} for…</p>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patient…"
-            className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
-          <ul className="mt-1 flex flex-col gap-1">
-            {matches.map((p) => (
-              <li key={p.id}>
-                <button onClick={() => book(p.id, `${p.givenName} ${p.lastName}`)}
-                  className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint">
-                  {p.givenName} {p.lastName}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <label className="mt-2 flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={slotNewPatient} onChange={(e) => { setSlotNewPatient(e.target.checked); setQuery(""); }} />
+            New patient (no file yet)
+          </label>
+          {slotNewPatient ? (
+            <div className="mt-2">
+              <LeadFields value={slotLeadDraft} onChange={setSlotLeadDraft} />
+              <button disabled={leadFromDraft(slotLeadDraft) === null}
+                onClick={() => { const lead = leadFromDraft(slotLeadDraft); if (lead) void book({ lead }); }}
+                className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
+                Book for new patient
+              </button>
+            </div>
+          ) : (
+            <>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patient…"
+                className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+              <ul className="mt-1 flex flex-col gap-1">
+                {matches.map((p) => (
+                  <li key={p.id}>
+                    <button onClick={() => book({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
+                      className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint">
+                      {p.givenName} {p.lastName}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
     </div>

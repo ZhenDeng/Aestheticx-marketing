@@ -1,7 +1,7 @@
 // Pure Firestore <-> domain mappers. Field names ported verbatim from the iOS
 // LiveBackend.swift static decoders/encoders. No Firebase imports here (testable).
 import type {
-  Appointment, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
+  Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
@@ -186,6 +186,17 @@ export function mapTreatmentAvailability(id: string, data: Doc): TreatmentAvaila
   return { ownerID: id, days, blocks };
 }
 
+// The appointment doc's new-patient lead record → AppointmentLead (string fields only).
+function mapLead(raw: unknown): AppointmentLead | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const d = raw as Doc;
+  const lead: AppointmentLead = { givenName: str(d.givenName), lastName: str(d.lastName) };
+  if (typeof d.dob === "string") lead.dob = d.dob;
+  if (typeof d.phone === "string") lead.phone = d.phone;
+  if (typeof d.email === "string") lead.email = d.email;
+  return lead;
+}
+
 export function mapAppointment(id: string, data: Doc): Appointment {
   const type: AppointmentType = data.type === "authorisation" ? "authSlot" : "treatment";
   return {
@@ -198,6 +209,7 @@ export function mapAppointment(id: string, data: Doc): Appointment {
     status: (str(data.status) || "confirmed") as Appointment["status"],
     patientID: typeof data.patientId === "string" ? data.patientId : undefined,
     patientName: typeof data.patientName === "string" ? data.patientName : undefined,
+    lead: mapLead(data.lead),
     appointmentNote: typeof data.appointmentNote === "string" ? data.appointmentNote : undefined,
   };
 }

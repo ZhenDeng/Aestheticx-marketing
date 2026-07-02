@@ -170,6 +170,17 @@ export type AppointmentStatus =
   | "noShow"
   | "cancelled";
 
+// A new-patient lead captured at booking for a patient not yet on file (spec: appointments —
+// nurse slot booking / add-appointment). Mirrors the backend appointment doc's lead record;
+// dob is ISO yyyy-mm-dd (the wire format every producer emits, e.g. the public booking form).
+export interface AppointmentLead {
+  givenName: string;
+  lastName: string;
+  dob?: string; // ISO yyyy-mm-dd
+  phone?: string;
+  email?: string;
+}
+
 export interface Appointment {
   id: string;
   type: AppointmentType;
@@ -180,6 +191,7 @@ export interface Appointment {
   status: AppointmentStatus;
   patientID?: string;
   patientName?: string;
+  lead?: AppointmentLead; // set only while no patientID (cleared on linking)
   appointmentNote?: string;
 }
 

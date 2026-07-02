@@ -4,8 +4,9 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentTitle, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
 import { PatientForm } from "@/components/app/PatientForm";
+import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
@@ -377,11 +378,11 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
         zIndex: dragDy !== 0 || resizeDy !== 0 ? 10 : 1,
       }}
-      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appt.patientName ?? "Blocked time"}, ${STATUS_LABEL[appt.status]}`}
-      title={`${timeLabel(appt.startMinute)} ${appt.patientName ?? "Blocked time"}`}>
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentTitle(appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
+      title={`${timeLabel(appt.startMinute)} ${appointmentTitle(appt, "Blocked time")}`}>
       {showText && (
         <span className="block text-[11px] leading-tight">
-          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appt.patientName ?? "—"}
+          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentTitle(appt)}
         </span>
       )}
       {draggable && (
@@ -501,11 +502,11 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
         touchAction: "none", cursor: draggable ? "grab" : "pointer",
         zIndex: move || resizeDy !== 0 ? 10 : 1,
       }}
-      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appt.patientName ?? "Blocked time"}, ${STATUS_LABEL[appt.status]}`}
-      title={`${timeLabel(appt.startMinute)} ${appt.patientName ?? "Blocked time"}`}>
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentTitle(appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
+      title={`${timeLabel(appt.startMinute)} ${appointmentTitle(appt, "Blocked time")}`}>
       {showText && (
         <span className="block text-[11px] leading-tight">
-          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appt.patientName ?? "—"}
+          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentTitle(appt)}
         </span>
       )}
       {draggable && (
@@ -611,7 +612,7 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
                 <span key={a.id} className="flex items-center gap-1 truncate text-[10px] leading-tight"
                   style={{ color: isSelected ? "var(--color-card)" : "var(--color-ink)" }}>
                   <span className="inline-block h-2 w-1 flex-none rounded-sm" style={{ background: apptColor(a) }} />
-                  <span className="truncate">{timeLabel(a.startMinute)} {a.patientName ?? "—"}</span>
+                  <span className="truncate">{timeLabel(a.startMinute)} {appointmentTitle(a)}</span>
                 </span>
               ))}
               {list.length > MONTH_MAX_CHIPS && (
@@ -632,21 +633,26 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
 }) {
   const store = useDemoStore();
   const [blockTime, setBlockTime] = useState(initialBlock ?? false);
+  const [newPatient, setNewPatient] = useState(false);
+  const [leadDraft, setLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
   const [time, setTime] = useState(initialStart != null ? timeValue(initialStart) : "10:00");
   const [duration, setDuration] = useState(30);
   const [note, setNote] = useState("");
 
-  const matches = !blockTime && query.trim() && !picked ? store.searchPatients(query, me).slice(0, 5) : [];
-  const canSave = blockTime || picked !== null;
+  const matches = !blockTime && !newPatient && query.trim() && !picked ? store.searchPatients(query, me).slice(0, 5) : [];
+  const lead = newPatient ? leadFromDraft(leadDraft) : null;
+  const canSave = blockTime || (newPatient ? lead !== null : picked !== null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   function save() {
     try {
       store.bookTreatmentAppointment({
         dateISO, startMinute: minutesFromTime(time), durationMinutes: duration,
-        patientID: blockTime ? undefined : picked?.id, patientName: blockTime ? undefined : picked?.name,
+        patientID: blockTime || newPatient ? undefined : picked?.id,
+        patientName: blockTime || newPatient ? undefined : picked?.name,
+        lead: lead ?? undefined,
         note: note.trim() || undefined, identity: me,
       });
       setScheduleError(null);
@@ -660,12 +666,24 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
 
   return (
     <div className="mt-4 rounded-inner border border-line bg-card p-4">
-      <label className="flex items-center gap-2 text-sm text-ink">
-        <input type="checkbox" checked={blockTime} onChange={(e) => { setBlockTime(e.target.checked); setPicked(null); }} />
-        Block time (no patient)
-      </label>
+      <div className="flex flex-wrap gap-4">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={blockTime} onChange={(e) => { setBlockTime(e.target.checked); if (e.target.checked) setNewPatient(false); setPicked(null); }} />
+          Block time (no patient)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={newPatient} onChange={(e) => { setNewPatient(e.target.checked); if (e.target.checked) setBlockTime(false); setPicked(null); }} />
+          New patient (no file yet)
+        </label>
+      </div>
 
-      {!blockTime && (
+      {newPatient && (
+        <div className="mt-3">
+          <LeadFields value={leadDraft} onChange={setLeadDraft} />
+        </div>
+      )}
+
+      {!blockTime && !newPatient && (
         <div className="mt-3">
           {picked ? (
             <p className="text-sm text-ink">{picked.name} <button onClick={() => setPicked(null)} className="ml-2 text-ink-soft underline">change</button></p>
@@ -727,7 +745,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
           {appt.patientID ? (
             <Link href={`/app/patients/${appt.patientID}`} className="underline decoration-line underline-offset-2 hover:decoration-tint">{appt.patientName ?? "Patient"}</Link>
           ) : lead ? (
-            <>{leadName(appt)} <span className="micro text-ink-soft">· new lead</span></>
+            <>{leadName(appt) || "New patient"} <span className="micro text-ink-soft">· new patient</span></>
           ) : "Blocked time"}
           {" · "}{timeLabel(appt.startMinute)}–{timeLabel(appt.endMinute)}
         </span>

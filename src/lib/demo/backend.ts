@@ -2,10 +2,12 @@
 // Every mutator returns a NEW DemoState (immutable). `now` is passed in for deterministic tests.
 import type {
   Appointment,
+  AppointmentLead,
   AppointmentStatus,
   AvailabilityWindow,
   Authorisation,
   AuthorisationRequest,
+  DateOfBirth,
   DaySchedule,
   DeliveryStatus,
   DemoState,
@@ -431,11 +433,22 @@ export interface BookTreatmentInput {
   durationMinutes: number;
   patientID?: string;
   patientName?: string;
+  lead?: AppointmentLead;
   note?: string;
   identity: Identity;
 }
 
+// A booking's patient arm: an existing file XOR a new-patient lead carrying at least a name.
+// `allowNeither` admits treatment block time (auth bookings always need one or the other) —
+// matching the deployed callables' (!patientId && !lead) guard.
+function validateBookingPatient(input: { patientID?: string; lead?: AppointmentLead }, allowNeither: boolean): void {
+  if (input.patientID && input.lead) throw new BackendError("validationFailed");
+  if (input.lead && !input.lead.givenName.trim() && !input.lead.lastName.trim()) throw new BackendError("validationFailed");
+  if (!allowNeither && !input.patientID && !input.lead) throw new BackendError("validationFailed");
+}
+
 export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentInput): { state: DemoState; appt: Appointment } {
+  validateBookingPatient(input, true); // neither = block time
   const owner = appointmentOwnerScope(input.identity);
   const end = input.startMinute + input.durationMinutes;
   if (!isTimeAvailableForTreatment(treatmentAvailabilityForOwner(state, owner), input.dateISO, input.startMinute, end)) {
@@ -451,6 +464,7 @@ export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentI
     status: "confirmed", // a clinician's own booking lands confirmed
     patientID: input.patientID,
     patientName: input.patientName,
+    lead: input.lead,
     appointmentNote: input.note || undefined,
   };
   return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
@@ -576,17 +590,19 @@ function slotInAnyWindow(state: DemoState, doctorID: string, dateISO: string, st
 
 export interface BookAuthSlotInput {
   doctorID: string; dateISO: string; startMinute: number;
-  patientID?: string; patientName?: string; identity: Identity;
+  patientID?: string; patientName?: string; lead?: AppointmentLead; identity: Identity;
 }
 
-// Book a published 10-minute slot. The slot must belong to a window and be open (no double-book).
+// Book a published 10-minute slot for an existing patient or a new-patient lead. The slot
+// must belong to a window and be open (no double-book).
 export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { state: DemoState; appt: Appointment } {
+  validateBookingPatient(input, false);
   if (!slotInAnyWindow(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("notActive");
   if (isSlotTaken(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("slotTaken");
   const appt: Appointment = {
     id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
     startMinute: input.startMinute, endMinute: input.startMinute + SLOT_MINUTES, status: "confirmed",
-    patientID: input.patientID, patientName: input.patientName,
+    patientID: input.patientID, patientName: input.patientName, lead: input.lead,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
   };
   return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
@@ -594,19 +610,21 @@ export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { stat
 
 export interface RequestAdHocAuthInput {
   doctorID: string; dateISO: string; atMinute: number;
-  patientID: string; patientName: string; identity: Identity;
+  patientID?: string; patientName?: string; lead?: AppointmentLead; identity: Identity;
 }
 
-// Ad-hoc (no published slot) request to an online/always-accepting doctor. No double-book
-// check — an ad-hoc request targets the current moment, matching the deployed adHocAuthTx,
-// which also has none. Mirrors bookAuthSlot's appointment shape (10-minute, confirmed).
+// Ad-hoc (no published slot) request to an online/always-accepting doctor, for an existing
+// patient or a new-patient lead. No double-book check — an ad-hoc request targets the current
+// moment, matching the deployed adHocAuthTx, which also has none. Mirrors bookAuthSlot's
+// appointment shape (10-minute, confirmed).
 export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput): { state: DemoState; appt: Appointment } {
+  validateBookingPatient(input, false);
   const status = doctorStatusForUser(state, input.doctorID);
   if (!status.online && !status.alwaysAcceptAuth) throw new BackendError("notAccepting");
   const appt: Appointment = {
     id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
     startMinute: input.atMinute, endMinute: input.atMinute + SLOT_MINUTES, status: "confirmed",
-    patientID: input.patientID, patientName: input.patientName,
+    patientID: input.patientID, patientName: input.patientName, lead: input.lead,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
   };
   return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
@@ -707,18 +725,36 @@ export function calendarName(p: { preferredName?: string; givenName: string; las
   return `${first} ${p.lastName}`.trim();
 }
 
-// A lead appointment has a name but no linked patient file yet (block-time has neither).
+// A lead appointment has a structured lead — or, legacy, a bare name — but no linked patient
+// file yet (block-time has neither).
 export function isLeadAppointment(a: Appointment): boolean {
-  return !a.patientID && !!a.patientName;
+  return !a.patientID && (!!a.lead || !!a.patientName);
 }
 
-// The lead's display name, with a trailing "(new lead)" marker stripped.
+// The lead's display name: the structured lead's names, else the legacy patientName with a
+// trailing "(new lead)" marker stripped.
 export function leadName(a: Appointment): string {
+  if (a.lead) return `${a.lead.givenName} ${a.lead.lastName}`.trim();
   return (a.patientName ?? "").replace(/\s*\(new lead\)\s*$/i, "").trim();
 }
 
-// A create-patient draft prefilled from a lead's name (first token given, remainder last).
+// ISO yyyy-mm-dd (the lead wire format) → DateOfBirth; anything else → null.
+function dobFromISO(dob: string | undefined): DateOfBirth | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob ?? "");
+  return m ? { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) } : null;
+}
+
+// A create-patient draft prefilled from the lead: a structured lead maps its captured fields
+// directly; a legacy name-only lead splits first token given, remainder last.
 export function draftFromLead(a: Appointment): PatientDraft {
+  if (a.lead) {
+    return {
+      ...emptyDraft(),
+      givenName: a.lead.givenName.trim(), lastName: a.lead.lastName.trim(),
+      phone: a.lead.phone ?? "", email: a.lead.email ?? "",
+      dateOfBirth: dobFromISO(a.lead.dob),
+    };
+  }
   const name = leadName(a);
   const space = name.indexOf(" ");
   const givenName = space === -1 ? name : name.slice(0, space);
@@ -726,7 +762,18 @@ export function draftFromLead(a: Appointment): PatientDraft {
   return { ...emptyDraft(), givenName, lastName };
 }
 
-// Link a lead appointment to a newly-created patient: stamp the id + calendar name.
+// Calendar-item title per the appointments spec's resolution order: a new-patient lead name
+// (annotated "new patient"), else the appointment's stored patient name, else a placeholder
+// for blocked time. (Names are always stamped at booking here, so no live-lookup arm.)
+export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): string {
+  if (isLeadAppointment(a)) {
+    const name = leadName(a);
+    return name ? `${name} · new patient` : "New patient"; // a live doc's lead may be no-name
+  }
+  return a.patientName ?? blockPlaceholder;
+}
+
+// Link a lead appointment to a newly-created patient: stamp the id + calendar name, clear the lead.
 export function linkAppointmentPatient(
   state: DemoState, apptId: string, patientId: string, identity: Identity,
 ): DemoState {
@@ -738,7 +785,7 @@ export function linkAppointmentPatient(
   if (!patient) throw new BackendError("notFound");
   return {
     ...state,
-    appointments: { ...state.appointments, [apptId]: { ...appt, patientID: patientId, patientName: calendarName(patient) } },
+    appointments: { ...state.appointments, [apptId]: { ...appt, patientID: patientId, patientName: calendarName(patient), lead: undefined } },
   };
 }
 
