@@ -5,11 +5,12 @@ Branch: `feat/appointment-search-dob-phone`
 
 ## Tasks
 
-- [ ] 1. Characterization tests (`backend.test.ts`): `classifySearch` table; `searchPatients`
+- [x] 1. Characterization tests (`backend.test.ts`): `classifySearch` table; `searchPatients`
       phone arm (formatted/unformatted digit-normalised exact match, non-match); dateOfBirth arm
       (exact d/m/y, malformed → empty); visibility scoping on both arms
-- [ ] 2. UI: "Search by name, DOB (dd/mm/yyyy), or phone" placeholder in calendar
+- [x] 2. UI: "Search by name, DOB (dd/mm/yyyy), or phone" placeholder in calendar
       `NewAppointmentForm` + BookConsult slot + ad-hoc panels
-- [ ] 3. Verify: vitest + tsc + build green; browser check of DOB/phone search in the
-      add-appointment flow; engineer review
+- [x] 3. Verify: vitest (317) + tsc + build green; browser-checked DOB `17/01/1979` and phone
+      spaced/unspaced/partial in the add-appointment flow (Grace Huang matches; partial doesn't);
+      engineer review below
 - [ ] 4. Docs/memory sync + PR
