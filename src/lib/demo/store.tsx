@@ -284,11 +284,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (m) => token ? m.mirrorSetBookingToken(identity.user.id, token) : Promise.resolve(),
         );
       },
-      confirmAppointment: (id, identity) =>
+      confirmAppointment: (id, identity) => {
+        backend.confirmAppointment(state, id, identity); // eager validate — throws synchronously (e.g. already actioned)
         applyAndMirror(
           (s) => backend.confirmAppointment(s, id, identity),
           (m) => m.mirrorConfirmAppointment(id),
-        ),
+        );
+      },
       appointmentsForOwnerOnDay: (ownerID, dateISO) => backend.appointmentsForOwnerOnDay(state, ownerID, dateISO),
       appointmentsForOwnerInRange: (ownerID, startISO, endISO) => backend.appointmentsForOwnerInRange(state, ownerID, startISO, endISO),
       appointmentsForPatient: (patientID) => backend.appointmentsForPatient(state, patientID),
@@ -370,11 +372,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
         );
       },
-      markAppointment: (id, status, identity) =>
+      markAppointment: (id, status, identity) => {
+        backend.markAppointment(state, id, status, identity); // eager validate — throws synchronously (e.g. already actioned)
         applyAndMirror(
           (s) => backend.markAppointment(s, id, status, identity),
           (m) => m.mirrorMarkAppointment(id, status),
-        ),
+        );
+      },
       linkAppointmentPatient: (apptId, patientId, identity) =>
         applyAndMirror(
           (s) => backend.linkAppointmentPatient(s, apptId, patientId, identity),

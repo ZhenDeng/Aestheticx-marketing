@@ -125,6 +125,17 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
     }
   }
 
+  // Confirm/decline can race (another staff member actions the same row); the store
+  // eager-validates so the BackendError lands here, not mid-render.
+  function act(fn: () => void) {
+    try {
+      fn();
+      setError(null);
+    } catch {
+      setError("Could not update this booking — it may have just been actioned elsewhere.");
+    }
+  }
+
   return (
     <li className="rounded-inner border border-line bg-card px-4 py-3">
       <div className="flex items-center justify-between gap-3">
@@ -133,7 +144,7 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
           <span className="micro">{appt.dateISO} · {timeLabel(appt.startMinute)}–{timeLabel(appt.endMinute)}</span>
         </span>
         <span className="flex flex-none gap-2">
-          <button onClick={() => store.confirmAppointment(appt.id, me)}
+          <button onClick={() => act(() => store.confirmAppointment(appt.id, me))}
                   className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
             Confirm
           </button>
@@ -141,7 +152,7 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
                   className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">
             Reschedule
           </button>
-          <button onClick={() => store.markAppointment(appt.id, "cancelled", me)}
+          <button onClick={() => act(() => store.markAppointment(appt.id, "cancelled", me))}
                   className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
             Decline
           </button>
