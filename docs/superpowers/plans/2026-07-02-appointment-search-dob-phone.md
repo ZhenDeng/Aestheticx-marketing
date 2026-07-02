@@ -13,4 +13,4 @@ Branch: `feat/appointment-search-dob-phone`
 - [x] 3. Verify: vitest (317) + tsc + build green; browser-checked DOB `17/01/1979` and phone
       spaced/unspaced/partial in the add-appointment flow (Grace Huang matches; partial doesn't);
       engineer review below
-- [ ] 4. Docs/memory sync + PR
+- [x] 4. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/41
