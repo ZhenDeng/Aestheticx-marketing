@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { BOOKING_HOST, bookingLinkUrl } from "@/lib/demo/booking";
 import {
-  emptyState, bookingTokenForUser, mintBookingToken, pendingBookings, confirmAppointment, BackendError,
+  emptyState, bookingTokenForUser, mintBookingToken, pendingBookings, confirmAppointment,
+  markAppointment, rescheduleAppointment, BackendError,
 } from "@/lib/demo/backend";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
@@ -62,5 +63,41 @@ describe("confirmAppointment", () => {
   });
   it("rejects re-confirming an already-confirmed booking", () => {
     expect(() => confirmAppointment(withAppts(appt("a1", "u-voss", "2026-07-03", 600, "confirmed")), "a1", voss)).toThrow(BackendError);
+  });
+});
+
+// Spec (patient-self-booking — requests inbox): the clinician may also reschedule or decline a
+// pending booking; once confirmed or declined it SHALL leave the pending inbox.
+describe("inbox reschedule/decline", () => {
+  const pending = () => withAppts(appt("a1", "u-voss", "2026-07-03", 600, "awaitingConfirmation"));
+
+  it("a confirmed booking leaves the pending inbox", () => {
+    const s = confirmAppointment(pending(), "a1", voss);
+    expect(pendingBookings(s, "u-voss")).toHaveLength(0);
+  });
+  it("a declined (cancelled) booking leaves the pending inbox", () => {
+    const s = markAppointment(pending(), "a1", "cancelled", voss);
+    expect(s.appointments.a1.status).toBe("cancelled");
+    expect(pendingBookings(s, "u-voss")).toHaveLength(0);
+  });
+  it("another owner cannot decline the booking", () => {
+    expect(() => markAppointment(pending(), "a1", "cancelled", sarah)).toThrow(BackendError);
+  });
+
+  it("a rescheduled booking stays pending at its new date and time, re-sorted", () => {
+    const s0 = withAppts(
+      appt("a1", "u-voss", "2026-07-03", 600, "awaitingConfirmation"),
+      appt("a2", "u-voss", "2026-07-06", 540, "awaitingConfirmation"),
+    );
+    const s = rescheduleAppointment(s0, "a1", "2026-07-09", 630, 45, voss); // Thu, in default hours
+    expect(s.appointments.a1).toMatchObject({
+      dateISO: "2026-07-09", startMinute: 630, endMinute: 675, status: "awaitingConfirmation",
+    });
+    expect(pendingBookings(s, "u-voss").map((a) => a.id)).toEqual(["a2", "a1"]);
+  });
+  it("rejects a reschedule outside treatment hours, leaving the booking unchanged", () => {
+    const s0 = pending();
+    expect(() => rescheduleAppointment(s0, "a1", "2026-07-05", 600, 30, voss)).toThrow(BackendError); // Sunday: closed
+    expect(s0.appointments.a1).toMatchObject({ dateISO: "2026-07-03", startMinute: 600, status: "awaitingConfirmation" });
   });
 });
