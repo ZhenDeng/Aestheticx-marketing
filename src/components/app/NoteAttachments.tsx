@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { isImageAttachment } from "@/lib/demo/backend";
 import type { NoteAttachment } from "@/lib/demo/types";
 
@@ -23,7 +23,9 @@ function readAsDataUrl(file: File): Promise<string> {
 export function NoteAttachmentsInput({ patientID, value, onChange }: {
   patientID: string;
   value: NoteAttachment[];
-  onChange: (next: NoteAttachment[]) => void;
+  // Functional updates only: add() finishes after slow FileReader awaits, so merging into
+  // a render-scope snapshot would lose attachments picked while a previous read ran.
+  onChange: Dispatch<SetStateAction<NoteAttachment[]>>;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -41,14 +43,14 @@ export function NoteAttachmentsInput({ patientID, value, onChange }: {
       const fileID = `patients/${patientID}/${isImage ? "photos" : "files"}/${crypto.randomUUID()}.${ext}`;
       added.push({ fileID, displayName: file.name, mimeType: file.type, dataUrl: await readAsDataUrl(file) });
     }
-    if (added.length) onChange([...value, ...added]);
+    if (added.length) onChange((prev) => [...prev, ...added]);
   }
 
   function rename(fileID: string, displayName: string) {
-    onChange(value.map((a) => (a.fileID === fileID ? { ...a, displayName } : a)));
+    onChange((prev) => prev.map((a) => (a.fileID === fileID ? { ...a, displayName } : a)));
   }
   function remove(fileID: string) {
-    onChange(value.filter((a) => a.fileID !== fileID));
+    onChange((prev) => prev.filter((a) => a.fileID !== fileID));
   }
 
   return (
@@ -109,19 +111,21 @@ function useAttachmentUrl(a: NoteAttachment): string | null {
   return url;
 }
 
-function AttachmentImage({ a, size }: { a: NoteAttachment; size: string }) {
+function AttachmentImage({ a, size, decorative = false }: { a: NoteAttachment; size: string; decorative?: boolean }) {
   const url = useAttachmentUrl(a);
   // Spec: photos render as thumbnails without showing file names.
   if (!url) return <span aria-hidden className={`${size} inline-block rounded-inner border border-line bg-paper-deep`} />;
   // eslint-disable-next-line @next/next/no-img-element -- resolved Storage/data url
-  return <img src={url} alt="Note photo" className={`${size} rounded-inner border border-line object-cover`} />;
+  return <img src={url} alt={decorative ? "" : "Note photo"} className={`${size} rounded-inner border border-line object-cover`} />;
 }
 
 // Spec: list rows with photos show a thumbnail strip beneath the title without opening.
+// The strip sits inside the row-toggle <button>, so it is decorative there — hidden from
+// the accessible name (the note title is the row's label; opening reads the real photos).
 export function AttachmentThumbStrip({ photos }: { photos: NoteAttachment[] }) {
   return (
-    <span className="mt-1 flex gap-1">
-      {photos.map((a) => <AttachmentImage key={a.fileID} a={a} size="h-10 w-10" />)}
+    <span aria-hidden className="mt-1 flex gap-1">
+      {photos.map((a) => <AttachmentImage key={a.fileID} a={a} size="h-10 w-10" decorative />)}
     </span>
   );
 }
