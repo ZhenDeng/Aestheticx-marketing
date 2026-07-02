@@ -23,4 +23,4 @@ Branch: `feat/new-patient-lead-booking`
 - [x] 6. Verify: full vitest (308) + tsc + `next build` green; typescript-reviewer approved
       (no CRITICAL/HIGH; prefer-const nit fixed; permissive mapLead kept deliberately — a
       no-name live lead must render "New patient", not blocked time)
-- [ ] 7. Docs/memory sync + PR
+- [x] 7. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/40
