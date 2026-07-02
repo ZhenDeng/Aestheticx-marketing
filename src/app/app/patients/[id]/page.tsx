@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { patientPermissions, notePreview, canSendAftercare } from "@/lib/demo/backend";
+import { patientPermissions, notePreview, canSendAftercare, imageAttachments } from "@/lib/demo/backend";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
+import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
-import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
 
 const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
 function deliveryColor(s: DeliveryStatus): string {
@@ -38,6 +39,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const [noteBody, setNoteBody] = useState("");
+  const [noteAttachments, setNoteAttachments] = useState<NoteAttachment[]>([]);
   const router = useRouter();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mergeFrom, setMergeFrom] = useState("");
@@ -79,9 +81,13 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
 
   function addNote(e: React.FormEvent) {
     e.preventDefault();
-    if (!noteBody.trim()) return;
-    store.saveGeneralNote({ patientID: id, title: "", body: noteBody.trim(), identity: me });
+    if (!noteBody.trim() && noteAttachments.length === 0) return;
+    store.saveGeneralNote({
+      patientID: id, title: "", body: noteBody.trim(),
+      attachments: noteAttachments.length ? noteAttachments : undefined, identity: me,
+    });
     setNoteBody("");
+    setNoteAttachments([]);
   }
 
   return (
@@ -139,6 +145,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               rows={2}
               className="w-full rounded-inner border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint"
             />
+            <NoteAttachmentsInput patientID={id} value={noteAttachments} onChange={setNoteAttachments} />
             <button type="submit" className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
               Save note
             </button>
@@ -160,6 +167,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-ink">{notePreview(n)}</span>
+                    {/* Spec: photo notes show a thumbnail strip in the list without being opened. */}
+                    {imageAttachments(n).length > 0 && <AttachmentThumbStrip photos={imageAttachments(n)} />}
                     <span className="micro">{new Date(n.createdAt).toLocaleDateString()}</span>
                   </span>
                   <span className="flex flex-none items-center gap-2">
@@ -179,6 +188,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                 {isOpen && (
                   <div className="mt-2 border-t border-line pt-2">
                     <p className="whitespace-pre-wrap text-sm text-ink-soft">{n.body}</p>
+                    {(n.attachments?.length ?? 0) > 0 && <NoteAttachmentList attachments={n.attachments!} />}
                     {n.medications.length > 0 && (
                       <ul className="mt-2 flex flex-col gap-1">
                         {/* Index key is safe: TreatmentMedication has no stable id and this list is render-only (never reordered/deleted). */}
