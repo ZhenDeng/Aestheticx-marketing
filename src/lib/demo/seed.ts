@@ -208,5 +208,25 @@ export function buildSeedState(): DemoState {
     notesByPatient: { ...state.notesByPatient, [amara.id]: [...(state.notesByPatient[amara.id] ?? []), failedAftercare] },
   };
 
+  // A note with photo + file attachments so the thumbnail strip and rename-able file
+  // chip are demonstrable (1×1 PNG data-urls — the demo has no Storage).
+  const photoNote: Note = {
+    id: "n-photos-seed", patientID: amara.id, kind: "general", title: "Treatment area photos",
+    body: "Baseline photos before the next antiwrinkle cycle.",
+    createdAt: SEED_NOW - 3 * 60 * 60 * 1000, authorID: "u-voss", authorBadge: "Dr Elena Voss",
+    consumedAuthorisationIDs: [], medications: [],
+    attachments: [
+      { fileID: `patients/${amara.id}/photos/seed-before-l.png`, displayName: "before-left.png", mimeType: "image/png",
+        dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGM4UlICAAOsAa2J5Of/AAAAAElFTkSuQmCC" },
+      { fileID: `patients/${amara.id}/photos/seed-before-r.png`, displayName: "before-right.png", mimeType: "image/png",
+        dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGOomtICAAMeAZNlnyRkAAAAAElFTkSuQmCC" },
+      { fileID: `patients/${amara.id}/files/seed-referral.pdf`, displayName: "GP referral.pdf", mimeType: "application/pdf" },
+    ],
+  };
+  state = {
+    ...state,
+    notesByPatient: { ...state.notesByPatient, [amara.id]: [...(state.notesByPatient[amara.id] ?? []), photoNote] },
+  };
+
   return state;
 }

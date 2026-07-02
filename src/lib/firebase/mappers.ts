@@ -2,7 +2,7 @@
 // LiveBackend.swift static decoders/encoders. No Firebase imports here (testable).
 import type {
   Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
-  MedicationItem, Note, Patient, PatientOwner, PatientSummary, ProductCategory,
+  MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock,
@@ -84,6 +84,16 @@ export function mapPatient(id: string, data: Doc): Patient {
   };
 }
 
+// The note doc's attachments[] → NoteAttachment[] (string fields only; junk entries dropped).
+function mapAttachments(raw: unknown): NoteAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((a): NoteAttachment[] => {
+    if (typeof a !== "object" || a === null) return [];
+    const d = a as Doc;
+    return [{ fileID: str(d.fileId), displayName: str(d.displayName), mimeType: str(d.mimeType) }];
+  });
+}
+
 export function mapNote(id: string, patientID: string, data: Doc): Note {
   const meds = Array.isArray(data.medications) ? (data.medications as Doc[]) : [];
   return {
@@ -99,6 +109,7 @@ export function mapNote(id: string, patientID: string, data: Doc): Note {
     medications: meds.map((m): TreatmentMedication => ({
       name: str(m.name), batch: str(m.batch), expiry: str(m.expiry), dosage: str(m.dosage),
     })),
+    attachments: mapAttachments(data.attachments),
     deliveryStatus: ((): DeliveryStatus | undefined => {
       const s = str(data.deliveryStatus);
       return s === "queued" || s === "delivered" || s === "failed" ? s : undefined;
@@ -257,6 +268,8 @@ export function encodeNote(n: Note): Doc {
     authorBadge: n.authorBadge,
     consumedAuthorisationIds: n.consumedAuthorisationIDs,
     medications: n.medications.map((m) => ({ name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "" })),
+    // Always written (iOS parity); the demo-only dataUrl never reaches Firestore.
+    attachments: (n.attachments ?? []).map((a) => ({ fileId: a.fileID, displayName: a.displayName, mimeType: a.mimeType })),
     // Aftercare-only fields — omitted on general/treatment notes (iOS parity, no schema noise).
     ...(n.deliveryStatus !== undefined && { deliveryStatus: n.deliveryStatus }),
     ...(n.aftercareCategories !== undefined && { aftercareCategories: n.aftercareCategories }),

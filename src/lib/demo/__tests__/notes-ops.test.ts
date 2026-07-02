@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyState, recordAftercareSend, canSendAftercare, usableAuthorisations, notePreview,
-  notesForPatient, BackendError,
+  notesForPatient, saveGeneralNote, saveTreatmentNote, isImageAttachment, imageAttachments,
+  BackendError,
 } from "@/lib/demo/backend";
-import type { DemoState, Identity, Note, Patient } from "@/lib/demo/types";
+import type { DemoState, Identity, Note, NoteAttachment, Patient } from "@/lib/demo/types";
 
 const nurse: Identity = {
   user: { id: "u-sarah", name: "Sarah Chen" },
@@ -45,6 +46,46 @@ describe("notePreview", () => {
   });
   it("handles an empty note", () => {
     expect(notePreview({ ...base, title: "", body: "" })).toBe("(empty note)");
+  });
+});
+
+// Spec (clinical-notes — photo and file attachments): both note kinds accept attachments;
+// photos are the image/* ones.
+describe("note attachments", () => {
+  const photo: NoteAttachment = {
+    fileID: "patients/p1/photos/a1.png", displayName: "before.png", mimeType: "image/png",
+    dataUrl: "data:image/png;base64,x",
+  };
+  const pdf: NoteAttachment = {
+    fileID: "patients/p1/files/a2.pdf", displayName: "Consent.pdf", mimeType: "application/pdf",
+  };
+  const doctor: Identity = { user: { id: "u-voss", name: "Voss" }, role: "doctor", context: { kind: "independent" } };
+
+  it("saveGeneralNote stamps attachments onto the note", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const { note } = saveGeneralNote(state, {
+      patientID: "p1", title: "", body: "photos attached", attachments: [photo, pdf], identity: nurse,
+    }, 0);
+    expect(note.attachments).toEqual([photo, pdf]);
+  });
+  it("saveTreatmentNote (doctor direct, nothing ticked) stamps attachments", () => {
+    const p: Patient = { ...nursePatient("p1", "u-voss"), owner: { kind: "doctor", id: "u-voss" } };
+    const { note } = saveTreatmentNote(stateWith(p), {
+      patientID: "p1", tickedIDs: [], title: "T", body: "b", medications: [], attachments: [photo], identity: doctor,
+    }, 0);
+    expect(note.attachments).toEqual([photo]);
+  });
+  it("classifies images by mime type", () => {
+    expect(isImageAttachment(photo)).toBe(true);
+    expect(isImageAttachment(pdf)).toBe(false);
+  });
+  it("imageAttachments filters photos only, tolerating notes without attachments", () => {
+    const base: Note = {
+      id: "n1", patientID: "p1", kind: "general", title: "", body: "",
+      createdAt: 0, authorID: "u", authorBadge: "RN", consumedAuthorisationIDs: [], medications: [],
+    };
+    expect(imageAttachments({ ...base, attachments: [photo, pdf] })).toEqual([photo]);
+    expect(imageAttachments(base)).toEqual([]);
   });
 });
 

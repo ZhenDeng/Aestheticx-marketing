@@ -117,6 +117,19 @@ describe("mapNote", () => {
     expect(n.kind).toBe("treatment");
     expect(n.consumedAuthorisationIDs).toEqual(["a1"]);
     expect(n.medications[0].batch).toBe("C1");
+    expect(n.attachments).toEqual([]);
+  });
+  it("maps attachments, keeping only their string fields", () => {
+    const n = mapNote("n2", "p1", {
+      kind: "general", title: "", body: "", createdAt: 0, authorId: "u", authorBadge: "RN",
+      attachments: [
+        { fileId: "patients/p1/photos/a.png", displayName: "before.png", mimeType: "image/png", junk: 1 },
+        "nope",
+      ],
+    });
+    expect(n.attachments).toEqual([
+      { fileID: "patients/p1/photos/a.png", displayName: "before.png", mimeType: "image/png" },
+    ]);
   });
 });
 
@@ -211,6 +224,21 @@ describe("encoders", () => {
     expect(doc.kind).toBe("general");
     expect(doc.authorId).toBe("u-sarah");
     expect(doc.body).toBe("hi");
+    expect(doc.attachments).toEqual([]); // iOS parity: always written
+  });
+  it("encodeNote writes attachments without the demo-only dataUrl", () => {
+    const doc = encodeNote({
+      id: "n1", patientID: "p1", kind: "general", title: "", body: "", createdAt: 0,
+      authorID: "u", authorBadge: "RN", consumedAuthorisationIDs: [], medications: [],
+      attachments: [
+        { fileID: "patients/p1/photos/a.png", displayName: "before.png", mimeType: "image/png", dataUrl: "data:image/png;base64,x" },
+        { fileID: "patients/p1/files/b.pdf", displayName: "Consent.pdf", mimeType: "application/pdf" },
+      ],
+    });
+    expect(doc.attachments).toEqual([
+      { fileId: "patients/p1/photos/a.png", displayName: "before.png", mimeType: "image/png" },
+      { fileId: "patients/p1/files/b.pdf", displayName: "Consent.pdf", mimeType: "application/pdf" },
+    ]);
   });
 });
 
