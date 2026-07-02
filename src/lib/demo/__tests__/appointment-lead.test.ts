@@ -193,8 +193,9 @@ describe("linkAppointmentPatient", () => {
     expect(next.appointments.a1.patientID).toBe(patient.id);
   });
   it("uses the patient's preferred name for the stamped calendar name", () => {
-    let { state, patient } = withState(appt({ patientName: "Jordan Lee (new lead)" }));
-    state = { ...state, patients: { ...state.patients, [patient.id]: { ...patient, preferredName: "Jode" } } };
+    const base = withState(appt({ patientName: "Jordan Lee (new lead)" }));
+    const { patient } = base;
+    const state = { ...base.state, patients: { ...base.state.patients, [patient.id]: { ...patient, preferredName: "Jode" } } };
     const next = linkAppointmentPatient(state, "a1", patient.id, voss);
     expect(next.appointments.a1.patientName).toBe("Jode Lee");
   });
