@@ -352,7 +352,7 @@ function BookConsult({ me }: { me: Identity }) {
             </div>
           ) : (
             <>
-              <input value={adHocQuery} onChange={(e) => setAdHocQuery(e.target.value)} placeholder="Search patient…"
+              <input value={adHocQuery} onChange={(e) => setAdHocQuery(e.target.value)} placeholder="Search by name, DOB (dd/mm/yyyy), or phone"
                 className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
               <ul className="mt-1 flex flex-col gap-1">
                 {adHocMatches.map((p) => (
@@ -387,7 +387,7 @@ function BookConsult({ me }: { me: Identity }) {
             </div>
           ) : (
             <>
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patient…"
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name, DOB (dd/mm/yyyy), or phone"
                 className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
               <ul className="mt-1 flex flex-col gap-1">
                 {matches.map((p) => (
