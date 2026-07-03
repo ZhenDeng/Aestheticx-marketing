@@ -192,6 +192,23 @@ export async function mirrorSetTreatmentAvailability(config: import("@/lib/demo/
   await httpsCallable(functions(), "setTreatmentAvailability")({ ownerId: config.ownerID, windows, blocks });
 }
 
+// Google Calendar linking (deployed callables): authUrl begins the OAuth consent (the
+// googleCalendarCallback Function stores the tokens server-side — never client-readable);
+// sync pulls 14 days of free/busy into externalBusy/{uid} and mirrors confirmed treatment
+// appointments to the linked calendar, returning the counts.
+export async function mirrorGoogleCalendarAuthUrl(): Promise<string> {
+  const res = await httpsCallable(functions(), "googleCalendarAuthUrl")({});
+  return String((res.data as { url?: unknown }).url ?? "");
+}
+export async function mirrorSyncGoogleCalendar(timeZone: string): Promise<{ busyCount: number; mirrored: number }> {
+  const res = await httpsCallable(functions(), "syncGoogleCalendar")({ timeZone });
+  const d = res.data as { busyCount?: unknown; mirrored?: unknown };
+  return {
+    busyCount: typeof d.busyCount === "number" ? d.busyCount : 0,
+    mirrored: typeof d.mirrored === "number" ? d.mirrored : 0,
+  };
+}
+
 // A doctor toggles online/always-accept status → the existing, already-deployed
 // setOnlineStatus callable (writes users/{uid}.onlineStatus/alwaysAcceptAuth, merge:true).
 export async function mirrorSetOnlineStatus(status: import("@/lib/demo/types").DoctorStatus): Promise<void> {

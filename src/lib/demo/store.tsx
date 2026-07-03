@@ -51,6 +51,8 @@ interface StoreValue {
   removeTreatmentBlock: (ownerID: string, blockID: string) => void;
   doctorStatusForUser: (doctorID: string) => import("./backend").DoctorStatusResult;
   setDoctorStatus: (doctorID: string, patch: Partial<import("./types").DoctorStatus>) => void;
+  googleCalendarAuthUrl: () => Promise<string>;
+  syncGoogleCalendar: (timeZone: string, ownerID: string) => Promise<{ busyCount: number; mirrored: number }>;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
   // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
   listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]>;
@@ -337,6 +339,23 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (s) => backend.setDoctorStatus(s, doctorID, patch),
           (m) => m.mirrorSetOnlineStatus(merged),
         );
+      },
+      // Google Calendar link + two-way sync (deployed callables). Demo simulates: the seed
+      // already carries busy events, so a demo "sync" just reports what's there.
+      googleCalendarAuthUrl: async () => {
+        if (!live) return ""; // demo: no OAuth — the card explains instead
+        const m = await import("@/lib/firebase/mirror");
+        return m.mirrorGoogleCalendarAuthUrl();
+      },
+      syncGoogleCalendar: async (timeZone, ownerID) => {
+        if (!live) {
+          const cal = state.externalBusyByOwner[ownerID];
+          return { busyCount: cal?.events.length ?? 0, mirrored: 0 };
+        }
+        const m = await import("@/lib/firebase/mirror");
+        const result = await m.mirrorSyncGoogleCalendar(timeZone);
+        setRefreshTick((t) => t + 1); // pull the fresh externalBusy doc into state
+        return result;
       },
       openSlotsForDoctorOnDay: (doctorID, dateISO) => backend.openSlotsForDoctorOnDay(state, doctorID, dateISO),
       listAvailableDoctors: async () => {

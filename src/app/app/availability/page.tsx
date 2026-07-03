@@ -203,7 +203,85 @@ function TreatmentSchedule({ me }: { me: Identity }) {
           {config.blocks.length === 0 && <li className="text-sm text-ink-soft">No blocked times.</li>}
         </ul>
       </div>
+
+      <ExternalCalendarCard me={me} ownerID={ownerID} />
     </>
+  );
+}
+
+// Google Calendar link + two-way sync (spec: calendar sync). Linking and token storage run
+// server-side (the deployed OAuth callables); "connected" isn't client-knowable — like iOS,
+// link then sync, and a failed sync says to link first. Apple Calendar sync is on-device in
+// the iOS app; its busy times land in the same externalBusy doc and render here regardless.
+function ExternalCalendarCard({ me, ownerID }: { me: Identity; ownerID: string }) {
+  const store = useDemoStore();
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyWorking, setBusyWorking] = useState(false);
+  const isLive = store.status !== "demo";
+  const cal = store.state.externalBusyByOwner[ownerID];
+
+  async function linkGoogle() {
+    setError(null);
+    try {
+      const url = await store.googleCalendarAuthUrl();
+      if (url) {
+        window.open(url, "_blank", "noopener");
+        setStatus("Opened Google consent. After approving, return and press Sync now.");
+      }
+    } catch {
+      setError("Could not start Google linking. Please try again.");
+    }
+  }
+
+  async function syncNow() {
+    setError(null);
+    setBusyWorking(true);
+    try {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Sydney";
+      const r = await store.syncGoogleCalendar(zone, ownerID);
+      setStatus(`Synced — ${r.busyCount} busy time${r.busyCount === 1 ? "" : "s"}, ${r.mirrored} appointment${r.mirrored === 1 ? "" : "s"} mirrored to Google.`);
+    } catch {
+      setError("Sync failed — make sure Google Calendar is linked.");
+    } finally {
+      setBusyWorking(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 rounded-card border border-line bg-card p-5">
+      <h2 className="font-display text-lg text-ink">External calendar</h2>
+      <p className="mt-2 text-sm text-ink-soft">
+        Link your Google Calendar so times you&apos;re committed elsewhere block public and self-service
+        booking, and confirmed appointments appear on your calendar. Busy times show on the day and
+        week views. Apple Calendar sync runs on-device in the iOS app.
+      </p>
+      {!isLive && (
+        <p className="mt-2 rounded-inner border-l-4 p-2 text-sm" style={{ borderColor: "var(--color-tint)", background: "var(--color-tint-soft)" }}>
+          Demo — linking needs a live account; the seeded busy times below stand in for a synced calendar.
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {isLive && (
+          <button onClick={() => void linkGoogle()}
+                  className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+            Link Google Calendar
+          </button>
+        )}
+        <button onClick={() => void syncNow()} disabled={busyWorking}
+                className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint disabled:opacity-50">
+          {busyWorking ? "Syncing…" : "Sync now"}
+        </button>
+      </div>
+      {status && <p className="mt-2 text-sm" style={{ color: "var(--color-sage)" }}>{status}</p>}
+      {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
+      {cal && (
+        <p className="mt-2 micro">
+          {cal.events.length} synced busy time{cal.events.length === 1 ? "" : "s"} · zone {cal.timeZone}
+          {cal.updatedAtMillis ? ` · updated ${new Date(cal.updatedAtMillis).toLocaleString()}` : ""}
+        </p>
+      )}
+    </div>
   );
 }
 

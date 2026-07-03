@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, isLeadAppointment, leadName, appointmentTitle, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
+import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
 import {
@@ -155,7 +156,7 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
         </div>
       )}
 
-      <DayTimeline appts={dayAppts} me={me} selectedId={selectedId} onSelect={setSelectedId}
+      <DayTimeline appts={dayAppts} me={me} ownerID={ownerID} dateISO={dateISO} selectedId={selectedId} onSelect={setSelectedId}
         onEmptyTap={(startMinute) => { setChooser(startMinute); setSlotForm(null); }} />
       {dayAppts.length === 0 && (
         <p className="mt-3 text-sm text-ink-soft">No appointments{dateISO === todayISO ? " today" : ""}. Tap the timeline to add one.</p>
@@ -227,8 +228,8 @@ function canReschedule(a: Appointment): boolean {
 // Full-width day timeline: hour rail + time-positioned blocks. Overlapping appointments
 // lay out side-by-side (via layoutDay); a block can be dragged to reschedule its start,
 // and a tap (movement under the threshold) selects it.
-function DayTimeline({ appts, me, selectedId, onSelect, onEmptyTap }: {
-  appts: Appointment[]; me: Identity; selectedId: string | null;
+function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmptyTap }: {
+  appts: Appointment[]; me: Identity; ownerID: string; dateISO: string; selectedId: string | null;
   onSelect: (id: string | null) => void; onEmptyTap: (startMinute: number) => void;
 }) {
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
@@ -257,12 +258,45 @@ function DayTimeline({ appts, me, selectedId, onSelect, onEmptyTap }: {
           <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
         ))}
+        <BusyBlocks ownerID={ownerID} dateISO={dateISO} />
         {appts.map((a) => (
           <TimelineBlock key={a.id} appt={a} me={me} layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
             selected={a.id === selectedId} onSelect={onSelect} />
         ))}
       </div>
     </div>
+  );
+}
+
+// External-calendar busy times as muted, non-interactive background bands behind the
+// appointment chips (spec: calendar sync — externally-committed times are visible; they
+// gate PUBLIC/self booking server-side, while staff may still deliberately double-book).
+function BusyBlocks({ ownerID, dateISO }: { ownerID: string; dateISO: string }) {
+  const store = useDemoStore();
+  const cal = store.state.externalBusyByOwner[ownerID];
+  if (!cal) return null;
+  const bands = externalBusyForDate(cal.events, dateISO, cal.timeZone)
+    .map((b) => ({ start: Math.max(b.start, WIN_START), end: Math.min(b.end, WIN_END) }))
+    .filter((b) => b.end > b.start);
+  return (
+    <>
+      {bands.map((b) => {
+        const height = (b.end - b.start) * PX_PER_MIN;
+        return (
+          <div key={`${b.start}-${b.end}`} aria-hidden
+            className="pointer-events-none absolute inset-x-0 overflow-hidden rounded-[6px]"
+            style={{
+              top: (b.start - WIN_START) * PX_PER_MIN, height,
+              background: "repeating-linear-gradient(-45deg, var(--color-paper-deep), var(--color-paper-deep) 6px, transparent 6px, transparent 12px)",
+              border: "1px dashed var(--color-line)",
+            }}>
+            {height >= TEXT_MIN_PX && (
+              <span className="micro block px-1.5 pt-0.5 text-ink-faint">Busy · external calendar</span>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -726,6 +760,7 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay }: {
                 <div key={h} className="absolute left-0 right-0 border-t border-line/60"
                   style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
               ))}
+              <BusyBlocks ownerID={ownerID} dateISO={iso} />
               {dayAppts.map((a) => (
                 <WeekBlock key={a.id} appt={a} me={me} days={days} dayIndex={dayIndex}
                   layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }} openDay={openDay} />
