@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDay, dragStartMinute, dragEndMinute, slotStartMinute, dayDelta } from "@/lib/demo/calendar";
+import { layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, slotStartMinute, dayDelta } from "@/lib/demo/calendar";
 
 type Span = { id: string; startMinute: number; endMinute: number };
 const span = (id: string, startMinute: number, endMinute: number): Span => ({ id, startMinute, endMinute });
@@ -66,6 +66,29 @@ describe("dragStartMinute", () => {
   it("respects a non-unit pixels-per-minute scale", () => {
     // 24px at 0.8px/min = 30min → 540 + 30 = 570
     expect(dragStartMinute(540, 24, 0.8, STEP, 30, W_START, W_END)).toBe(570);
+  });
+});
+
+describe("dragTopMinute", () => {
+  const W_START = 420, PX = 1, STEP = 5, MIN = 15;
+  it("is the identity for zero delta", () => {
+    expect(dragTopMinute(540, 0, PX, STEP, 600, MIN, W_START)).toBe(540);
+  });
+  it("moves the start later (shortening from the front), snapped to the step", () => {
+    expect(dragTopMinute(540, 12, PX, STEP, 600, MIN, W_START)).toBe(550);
+  });
+  it("moves the start earlier (lengthening), snapped to the step", () => {
+    expect(dragTopMinute(540, -22, PX, STEP, 600, MIN, W_START)).toBe(520);
+  });
+  it("clamps to the top of the window", () => {
+    expect(dragTopMinute(430, -100, PX, STEP, 600, MIN, W_START)).toBe(420);
+  });
+  it("never crosses the end minus the minimum duration (no inversion)", () => {
+    // end 600, min 15 → start can't go past 585
+    expect(dragTopMinute(540, 200, PX, STEP, 600, MIN, W_START)).toBe(585);
+  });
+  it("respects a non-unit pixels-per-minute scale", () => {
+    expect(dragTopMinute(540, 24, 0.8, STEP, 600, MIN, W_START)).toBe(570); // +30min
   });
 });
 

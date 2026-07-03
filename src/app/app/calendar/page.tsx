@@ -10,7 +10,7 @@ import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/com
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
-  layoutDay, dragStartMinute, dragEndMinute, slotStartMinute, dayDelta, type DayColumn,
+  layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
 import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
 
@@ -272,22 +272,27 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const store = useDemoStore();
   const [dragDy, setDragDy] = useState(0);
   const [resizeDy, setResizeDy] = useState(0);
+  const [topDy, setTopDy] = useState(0);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
   const drag = useRef<{ startY: number; moved: boolean; dy: number } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
+  const topResize = useRef<{ startY: number; dy: number } | null>(null);
   const draggable = canReschedule(appt);
 
   const start = Math.max(appt.startMinute, WIN_START);
   const end = Math.min(appt.endMinute, WIN_END);
   if (end <= start) return null;
-  const top = (start - WIN_START) * PX_PER_MIN;
-  // Preview the resize through the same clamp used at commit time, so the visual height never
-  // collapses below the minimum or runs past the window.
+  // Preview both resizes through the same clamps used at commit time, so the visual edges
+  // never invert, collapse below the minimum, or run past the window.
+  const previewStart = topDy !== 0
+    ? dragTopMinute(appt.startMinute, topDy, PX_PER_MIN, DRAG_STEP, appt.endMinute, MIN_DURATION, WIN_START)
+    : start;
   const previewEnd = resizeDy !== 0
     ? dragEndMinute(appt.endMinute, resizeDy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END)
     : end;
-  const height = Math.max(4, (previewEnd - start) * PX_PER_MIN);
+  const top = (previewStart - WIN_START) * PX_PER_MIN;
+  const height = Math.max(4, (previewEnd - previewStart) * PX_PER_MIN);
   const showText = height >= TEXT_MIN_PX;
   const width = 100 / layout.cols;
   const left = layout.col * width;
@@ -367,6 +372,44 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     setResizeDy(0);
   }
 
+  // Top-edge resize — moves the start while the end stays put (the mirror of the bottom
+  // handle). Same gesture discipline: stopPropagation from the body drag, pointer capture,
+  // cancel-safe.
+  function onTopDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
+    topResize.current = { startY: e.clientY, dy: 0 };
+  }
+  function onTopMove(e: React.PointerEvent) {
+    if (!topResize.current) return;
+    e.stopPropagation();
+    const dy = e.clientY - topResize.current.startY;
+    topResize.current.dy = dy;
+    setTopDy(dy);
+  }
+  function onTopUp(e: React.PointerEvent) {
+    e.stopPropagation(); // always stop, regardless of ref state, so the parent never sees this up
+    const st = topResize.current;
+    topResize.current = null;
+    setTopDy(0);
+    if (!st) return;
+    const newStart = dragTopMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.endMinute, MIN_DURATION, WIN_START);
+    if (newStart !== appt.startMinute) {
+      try {
+        store.rescheduleAppointment(appt.id, appt.dateISO, newStart, appt.endMinute - newStart, me);
+        setScheduleError(null);
+      } catch (e) {
+        setScheduleError(e instanceof BackendError && e.message === "unavailable"
+          ? "That time is outside your treatment hours or on a blocked time."
+          : "Could not move the appointment. Please try again.");
+      }
+    }
+  }
+  function onTopCancel() {
+    topResize.current = null;
+    setTopDy(0);
+  }
+
   return (
     <button
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
@@ -376,7 +419,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         background: apptColor(appt), borderLeft: `3px solid ${apptTypeAccent(appt)}`,
         touchAction: "none", cursor: draggable ? "grab" : "pointer",
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
-        zIndex: dragDy !== 0 || resizeDy !== 0 ? 10 : 1,
+        zIndex: dragDy !== 0 || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
       aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentTitle(appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
       title={`${timeLabel(appt.startMinute)} ${appointmentTitle(appt, "Blocked time")}`}>
@@ -386,11 +429,18 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         </span>
       )}
       {draggable && (
-        <span
-          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeCancel}
-          className="absolute inset-x-0 bottom-0 h-2"
-          style={{ cursor: "ns-resize", touchAction: "none" }}
-          aria-hidden />
+        <>
+          <span
+            onPointerDown={onTopDown} onPointerMove={onTopMove} onPointerUp={onTopUp} onPointerCancel={onTopCancel}
+            className="absolute inset-x-0 top-0 h-2"
+            style={{ cursor: "ns-resize", touchAction: "none" }}
+            aria-hidden />
+          <span
+            onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeCancel}
+            className="absolute inset-x-0 bottom-0 h-2"
+            style={{ cursor: "ns-resize", touchAction: "none" }}
+            aria-hidden />
+        </>
       )}
       {scheduleError && (
         <p className="mt-1 text-[10px] leading-tight" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>
@@ -400,26 +450,31 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 }
 
 // A week chip with the day-timeline gestures adapted to the grid: drag to reschedule
-// (vertical → time, horizontal → another day), bottom-edge drag to resize, tap → open the day.
+// (vertical → time, horizontal → another day), top/bottom-edge drag to resize, tap → open the day.
 function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   appt: Appointment; me: Identity; days: string[]; dayIndex: number; layout: DayColumn; openDay: (iso: string) => void;
 }) {
   const store = useDemoStore();
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
   const [resizeDy, setResizeDy] = useState(0);
+  const [topDy, setTopDy] = useState(0);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const drag = useRef<{ startX: number; startY: number; moved: boolean; dx: number; dy: number; colW: number } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
+  const topResize = useRef<{ startY: number; dy: number } | null>(null);
   const draggable = canReschedule(appt);
 
   const start = Math.max(appt.startMinute, WIN_START);
   const end = Math.min(appt.endMinute, WIN_END);
   if (end <= start) return null;
-  const top = (start - WIN_START) * PX_PER_MIN;
+  const previewStart = topDy !== 0
+    ? dragTopMinute(appt.startMinute, topDy, PX_PER_MIN, DRAG_STEP, appt.endMinute, MIN_DURATION, WIN_START)
+    : start;
   const previewEnd = resizeDy !== 0
     ? dragEndMinute(appt.endMinute, resizeDy, PX_PER_MIN, DRAG_STEP, appt.startMinute, MIN_DURATION, WIN_END)
     : end;
-  const height = Math.max(4, (previewEnd - start) * PX_PER_MIN);
+  const top = (previewStart - WIN_START) * PX_PER_MIN;
+  const height = Math.max(4, (previewEnd - previewStart) * PX_PER_MIN);
   const showText = height >= TEXT_MIN_PX;
   const width = 100 / layout.cols;
   const left = layout.col * width;
@@ -491,6 +546,37 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   }
   function onResizeCancel() { resize.current = null; setResizeDy(0); }
 
+  // Top-edge resize — moves the start, end fixed (mirror of the bottom handle).
+  function onTopDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
+    topResize.current = { startY: e.clientY, dy: 0 };
+  }
+  function onTopMove(e: React.PointerEvent) {
+    if (!topResize.current) return;
+    e.stopPropagation();
+    const dy = e.clientY - topResize.current.startY;
+    topResize.current.dy = dy;
+    setTopDy(dy);
+  }
+  function onTopUp(e: React.PointerEvent) {
+    e.stopPropagation();
+    const st = topResize.current; topResize.current = null; setTopDy(0);
+    if (!st) return;
+    const newStart = dragTopMinute(appt.startMinute, st.dy, PX_PER_MIN, DRAG_STEP, appt.endMinute, MIN_DURATION, WIN_START);
+    if (newStart !== appt.startMinute) {
+      try {
+        store.rescheduleAppointment(appt.id, appt.dateISO, newStart, appt.endMinute - newStart, me);
+        setScheduleError(null);
+      } catch (e) {
+        setScheduleError(e instanceof BackendError && e.message === "unavailable"
+          ? "That time is outside your treatment hours or on a blocked time."
+          : "Could not move the appointment. Please try again.");
+      }
+    }
+  }
+  function onTopCancel() { topResize.current = null; setTopDy(0); }
+
   return (
     <button
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
@@ -500,7 +586,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
         background: apptColor(appt), borderLeft: `3px solid ${apptTypeAccent(appt)}`,
         transform: move ? `translate(${move.dx}px, ${move.dy}px)` : undefined,
         touchAction: "none", cursor: draggable ? "grab" : "pointer",
-        zIndex: move || resizeDy !== 0 ? 10 : 1,
+        zIndex: move || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
       aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentTitle(appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
       title={`${timeLabel(appt.startMinute)} ${appointmentTitle(appt, "Blocked time")}`}>
@@ -510,11 +596,18 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
         </span>
       )}
       {draggable && (
-        <span
-          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeCancel}
-          className="absolute inset-x-0 bottom-0 h-2"
-          style={{ cursor: "ns-resize", touchAction: "none" }}
-          aria-hidden />
+        <>
+          <span
+            onPointerDown={onTopDown} onPointerMove={onTopMove} onPointerUp={onTopUp} onPointerCancel={onTopCancel}
+            className="absolute inset-x-0 top-0 h-2"
+            style={{ cursor: "ns-resize", touchAction: "none" }}
+            aria-hidden />
+          <span
+            onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp} onPointerCancel={onResizeCancel}
+            className="absolute inset-x-0 bottom-0 h-2"
+            style={{ cursor: "ns-resize", touchAction: "none" }}
+            aria-hidden />
+        </>
       )}
       {scheduleError && (
         <p className="mt-1 text-[10px] leading-tight" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>
