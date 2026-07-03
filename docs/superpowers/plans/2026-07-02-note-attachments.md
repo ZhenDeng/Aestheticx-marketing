@@ -25,4 +25,4 @@ Branch: `feat/note-attachments`
       aria-hidden with empty alts) → re-review **Approve**, no new findings. MEDIUM/LOW items
       (silent useAttachmentUrl catch, mapAttachments empty-string tolerance, sequential
       uploads, demo dataUrl memory) accepted as documented trade-offs
-- [ ] 6. Docs/memory sync + PR
+- [x] 6. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/43
