@@ -18,4 +18,6 @@ Branch: `feat/calendar-autoscroll-month-drag`
       ~430px pointer travel), month chip dragged 2026-07-03 → 2026-06-29 staying in month
       view (post-drag click suppressed), plain tap opened the day showing the moved booking
       at its unchanged 10:00 time; no console errors; engineer review below
-- [ ] 5. Docs/memory sync + PR
+- [x] 5. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/45
+      (review Approve; LOW lost-capture backstop applied in-branch; MEDIUM dedup-hook
+      suggestion deferred deliberately — mirrors the file's existing duplicated block idiom)
