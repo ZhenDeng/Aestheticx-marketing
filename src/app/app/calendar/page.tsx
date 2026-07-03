@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
@@ -274,10 +274,15 @@ function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmpt
 function BusyBlocks({ ownerID, dateISO }: { ownerID: string; dateISO: string }) {
   const store = useDemoStore();
   const cal = store.state.externalBusyByOwner[ownerID];
-  if (!cal) return null;
-  const bands = externalBusyForDate(cal.events, dateISO, cal.timeZone)
-    .map((b) => ({ start: Math.max(b.start, WIN_START), end: Math.min(b.end, WIN_END) }))
-    .filter((b) => b.end > b.start);
+  // Memoised: Intl.DateTimeFormat runs per event inside externalBusyForDate, and the week
+  // view mounts seven of these — recompute only when the calendar doc or day changes.
+  const bands = useMemo(() => {
+    if (!cal) return [];
+    return externalBusyForDate(cal.events, dateISO, cal.timeZone)
+      .map((b) => ({ start: Math.max(b.start, WIN_START), end: Math.min(b.end, WIN_END) }))
+      .filter((b) => b.end > b.start);
+  }, [cal, dateISO]);
+  if (bands.length === 0) return null;
   return (
     <>
       {bands.map((b) => {

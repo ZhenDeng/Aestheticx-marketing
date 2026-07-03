@@ -204,7 +204,7 @@ function TreatmentSchedule({ me }: { me: Identity }) {
         </ul>
       </div>
 
-      <ExternalCalendarCard me={me} ownerID={ownerID} />
+      <ExternalCalendarCard ownerID={ownerID} />
     </>
   );
 }
@@ -213,21 +213,32 @@ function TreatmentSchedule({ me }: { me: Identity }) {
 // server-side (the deployed OAuth callables); "connected" isn't client-knowable — like iOS,
 // link then sync, and a failed sync says to link first. Apple Calendar sync is on-device in
 // the iOS app; its busy times land in the same externalBusy doc and render here regardless.
-function ExternalCalendarCard({ me, ownerID }: { me: Identity; ownerID: string }) {
+function ExternalCalendarCard({ ownerID }: { ownerID: string }) {
   const store = useDemoStore();
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [busyWorking, setBusyWorking] = useState(false);
   const isLive = store.status !== "demo";
   const cal = store.state.externalBusyByOwner[ownerID];
 
   async function linkGoogle() {
     setError(null);
+    setConsentUrl(null);
     try {
       const url = await store.googleCalendarAuthUrl();
-      if (url) {
-        window.open(url, "_blank", "noopener");
+      if (!url) {
+        setError("Could not start Google linking. Please try again.");
+        return;
+      }
+      // The await broke the user-gesture chain, so popup blockers may stop window.open —
+      // when they do, fall back to a real link the user can click directly.
+      const opened = window.open(url, "_blank", "noopener");
+      if (opened) {
         setStatus("Opened Google consent. After approving, return and press Sync now.");
+      } else {
+        setStatus(null);
+        setConsentUrl(url);
       }
     } catch {
       setError("Could not start Google linking. Please try again.");
@@ -273,6 +284,15 @@ function ExternalCalendarCard({ me, ownerID }: { me: Identity; ownerID: string }
           {busyWorking ? "Syncing…" : "Sync now"}
         </button>
       </div>
+      {consentUrl && (
+        <p className="mt-2 text-sm text-ink">
+          Your browser blocked the consent window —{" "}
+          <a href={consentUrl} target="_blank" rel="noreferrer noopener" onClick={() => setStatus("Opened Google consent. After approving, return and press Sync now.")}
+             className="underline decoration-line underline-offset-2 hover:decoration-tint">
+            open the Google consent page
+          </a>.
+        </p>
+      )}
       {status && <p className="mt-2 text-sm" style={{ color: "var(--color-sage)" }}>{status}</p>}
       {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
       {cal && (
