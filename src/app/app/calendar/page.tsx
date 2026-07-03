@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
@@ -10,7 +10,7 @@ import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/com
 import {
   addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
-  layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, slotStartMinute, dayDelta, type DayColumn,
+  layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, edgeScrollVelocity, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
 import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
 
@@ -275,10 +275,36 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const [topDy, setTopDy] = useState(0);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
-  const drag = useRef<{ startY: number; moved: boolean; dy: number } | null>(null);
+  // clientY + startScrollY feed the edge auto-scroll loop: scrolling moves the drop time under a
+  // stationary pointer, so the scroll delta joins the pointer delta.
+  const drag = useRef<{ startY: number; moved: boolean; dy: number; clientY: number; startScrollY: number } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const topResize = useRef<{ startY: number; dy: number } | null>(null);
+  const scrollLoop = useRef<number | null>(null);
   const draggable = canReschedule(appt);
+
+  const stopScrollLoop = useCallback(() => {
+    if (scrollLoop.current !== null) { cancelAnimationFrame(scrollLoop.current); scrollLoop.current = null; }
+  }, []);
+  useEffect(() => stopScrollLoop, [stopScrollLoop]); // unmount safety
+
+  // While a move drag sits in an edge zone, scroll the window and refresh the compensated
+  // delta — pointermove doesn't fire for a stationary pointer, so the loop does both.
+  function startScrollLoop() {
+    if (scrollLoop.current !== null) return;
+    const step = () => {
+      const st = drag.current;
+      if (!st || !st.moved) { scrollLoop.current = null; return; }
+      const v = edgeScrollVelocity(st.clientY, window.innerHeight);
+      if (v !== 0) {
+        window.scrollBy(0, v);
+        st.dy = (st.clientY - st.startY) + (window.scrollY - st.startScrollY);
+        setDragDy(st.dy);
+      }
+      scrollLoop.current = requestAnimationFrame(step);
+    };
+    scrollLoop.current = requestAnimationFrame(step);
+  }
 
   const start = Math.max(appt.startMinute, WIN_START);
   const end = Math.min(appt.endMinute, WIN_END);
@@ -299,16 +325,21 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 
   function onPointerDown(e: React.PointerEvent) {
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
-    drag.current = { startY: e.clientY, moved: false, dy: 0 };
+    drag.current = { startY: e.clientY, moved: false, dy: 0, clientY: e.clientY, startScrollY: window.scrollY };
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return;
-    const dy = e.clientY - drag.current.startY;
+    drag.current.clientY = e.clientY;
+    const dy = (e.clientY - drag.current.startY) + (window.scrollY - drag.current.startScrollY);
     drag.current.dy = dy;
     if (Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
-    if (draggable && drag.current.moved) setDragDy(dy);
+    if (draggable && drag.current.moved) {
+      setDragDy(dy);
+      startScrollLoop();
+    }
   }
   function onPointerUp() {
+    stopScrollLoop();
     const st = drag.current;
     drag.current = null;
     setDragDy(0);
@@ -330,6 +361,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   // OS/browser interruptions (call, notification, home-bar swipe) fire pointercancel, not
   // pointerup — reset so the captured pointer state isn't leaked into the next gesture.
   function onPointerCancel() {
+    stopScrollLoop();
     drag.current = null;
     setDragDy(0);
   }
@@ -459,10 +491,37 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   const [resizeDy, setResizeDy] = useState(0);
   const [topDy, setTopDy] = useState(0);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  const drag = useRef<{ startX: number; startY: number; moved: boolean; dx: number; dy: number; colW: number } | null>(null);
+  const drag = useRef<{
+    startX: number; startY: number; moved: boolean; dx: number; dy: number; colW: number;
+    clientY: number; startScrollY: number;
+  } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const topResize = useRef<{ startY: number; dy: number } | null>(null);
+  const scrollLoop = useRef<number | null>(null);
   const draggable = canReschedule(appt);
+
+  const stopScrollLoop = useCallback(() => {
+    if (scrollLoop.current !== null) { cancelAnimationFrame(scrollLoop.current); scrollLoop.current = null; }
+  }, []);
+  useEffect(() => stopScrollLoop, [stopScrollLoop]); // unmount safety
+
+  // Edge auto-scroll during the move drag — see TimelineBlock; vertical only (the week grid
+  // fits the viewport horizontally).
+  function startScrollLoop() {
+    if (scrollLoop.current !== null) return;
+    const step = () => {
+      const st = drag.current;
+      if (!st || !st.moved) { scrollLoop.current = null; return; }
+      const v = edgeScrollVelocity(st.clientY, window.innerHeight);
+      if (v !== 0) {
+        window.scrollBy(0, v);
+        st.dy = (st.clientY - st.startY) + (window.scrollY - st.startScrollY);
+        setMove({ dx: st.dx, dy: st.dy });
+      }
+      scrollLoop.current = requestAnimationFrame(step);
+    };
+    scrollLoop.current = requestAnimationFrame(step);
+  }
 
   const start = Math.max(appt.startMinute, WIN_START);
   const end = Math.min(appt.endMinute, WIN_END);
@@ -484,17 +543,25 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
     // Reconstruct the full column width from the chip's own rect (chip width = colW/cols),
     // which is always available and transform/scroll-invariant (unlike offsetParent).
     const colW = e.currentTarget.getBoundingClientRect().width * layout.cols;
-    drag.current = { startX: e.clientX, startY: e.clientY, moved: false, dx: 0, dy: 0, colW };
+    drag.current = {
+      startX: e.clientX, startY: e.clientY, moved: false, dx: 0, dy: 0, colW,
+      clientY: e.clientY, startScrollY: window.scrollY,
+    };
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return;
+    drag.current.clientY = e.clientY;
     const dx = e.clientX - drag.current.startX;
-    const dy = e.clientY - drag.current.startY;
+    const dy = (e.clientY - drag.current.startY) + (window.scrollY - drag.current.startScrollY);
     drag.current.dx = dx; drag.current.dy = dy;
     if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
-    if (draggable && drag.current.moved) setMove({ dx, dy });
+    if (draggable && drag.current.moved) {
+      setMove({ dx, dy });
+      startScrollLoop();
+    }
   }
   function onPointerUp() {
+    stopScrollLoop();
     const st = drag.current; drag.current = null; setMove(null);
     if (!st) return;
     if (!st.moved) { openDay(appt.dateISO); return; } // a tap opens the day
@@ -513,7 +580,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
       }
     }
   }
-  function onPointerCancel() { drag.current = null; setMove(null); }
+  function onPointerCancel() { stopScrollLoop(); drag.current = null; setMove(null); }
 
   function onResizeDown(e: React.PointerEvent) {
     e.stopPropagation();

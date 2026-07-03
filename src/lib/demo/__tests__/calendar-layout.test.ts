@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, slotStartMinute, dayDelta } from "@/lib/demo/calendar";
+import { layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, edgeScrollVelocity, slotStartMinute, dayDelta } from "@/lib/demo/calendar";
 
 type Span = { id: string; startMinute: number; endMinute: number };
 const span = (id: string, startMinute: number, endMinute: number): Span => ({ id, startMinute, endMinute });
@@ -66,6 +66,30 @@ describe("dragStartMinute", () => {
   it("respects a non-unit pixels-per-minute scale", () => {
     // 24px at 0.8px/min = 30min → 540 + 30 = 570
     expect(dragStartMinute(540, 24, 0.8, STEP, 30, W_START, W_END)).toBe(570);
+  });
+});
+
+describe("edgeScrollVelocity", () => {
+  const H = 800, EDGE = 48, MAX = 14;
+  it("is zero across the middle of the viewport", () => {
+    expect(edgeScrollVelocity(400, H, EDGE, MAX)).toBe(0);
+    expect(edgeScrollVelocity(EDGE, H, EDGE, MAX)).toBe(0);      // zone boundaries inclusive-out
+    expect(edgeScrollVelocity(H - EDGE, H, EDGE, MAX)).toBe(0);
+  });
+  it("ramps up linearly toward the top edge (negative = scroll up)", () => {
+    expect(edgeScrollVelocity(24, H, EDGE, MAX)).toBe(-7);  // halfway into the zone
+    expect(edgeScrollVelocity(0, H, EDGE, MAX)).toBe(-14);  // at the very edge
+  });
+  it("ramps down linearly toward the bottom edge", () => {
+    expect(edgeScrollVelocity(H - 24, H, EDGE, MAX)).toBe(7);
+    expect(edgeScrollVelocity(H, H, EDGE, MAX)).toBe(14);
+  });
+  it("clamps beyond the viewport (captured pointer outside the window)", () => {
+    expect(edgeScrollVelocity(-100, H, EDGE, MAX)).toBe(-14);
+    expect(edgeScrollVelocity(H + 100, H, EDGE, MAX)).toBe(14);
+  });
+  it("honours custom edge and speed parameters", () => {
+    expect(edgeScrollVelocity(10, 600, 40, 20)).toBe(-15); // 30/40 into the zone
   });
 });
 

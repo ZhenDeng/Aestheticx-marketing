@@ -171,6 +171,24 @@ export function dragTopMinute(
   return Math.max(winStart, Math.min(snapped, endMin - minDuration));
 }
 
+// Scroll velocity (px/frame) for a drag pointer at `clientY`: 0 outside the top/bottom edge
+// zones, ramping linearly to ±maxSpeed at (or beyond — captured pointers can leave the
+// window) the viewport edges. Negative scrolls up. Pure so the ramp is unit-testable; the
+// rAF loop that applies it is DOM-bound.
+export function edgeScrollVelocity(
+  clientY: number, viewportHeight: number, edge = 48, maxSpeed = 14,
+): number {
+  if (clientY < edge) {
+    const depth = Math.min(1, (edge - clientY) / edge);
+    return depth <= 0 ? 0 : -maxSpeed * depth;
+  }
+  if (clientY > viewportHeight - edge) {
+    const depth = Math.min(1, (clientY - (viewportHeight - edge)) / edge);
+    return depth <= 0 ? 0 : maxSpeed * depth;
+  }
+  return 0;
+}
+
 // How many equal-width day-columns a horizontal drag of `dx` pixels crossed (week move).
 export function dayDelta(dx: number, dayWidth: number): number {
   return dayWidth > 0 ? Math.round(dx / dayWidth) || 0 : 0; // `|| 0` normalises -0 → 0
