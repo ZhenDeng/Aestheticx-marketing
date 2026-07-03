@@ -14,4 +14,4 @@ Branch: `feat/calendar-top-edge-resize`
 - [x] 4. Verify: vitest (334) + tsc + `next build` green; browser-checked — day up-drag
       (09:00→08:35, end pinned), 500px down-drag clamps at end−minimum (10:15–10:30, no
       inversion), week up-drag (10:15→10:00); no console errors; engineer review below
-- [ ] 5. Docs/memory sync + PR
+- [x] 5. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/44
