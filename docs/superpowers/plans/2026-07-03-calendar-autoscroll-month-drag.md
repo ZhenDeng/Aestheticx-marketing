@@ -5,15 +5,17 @@ Branch: `feat/calendar-autoscroll-month-drag`
 
 ## Tasks
 
-- [ ] 1. `edgeScrollVelocity` in `calendar.ts` (test-first in `calendar-layout.test.ts`):
+- [x] 1. `edgeScrollVelocity` in `calendar.ts` (test-first in `calendar-layout.test.ts`):
       zero mid-viewport, linear ramp in both zones, max/clamp at + beyond the edges,
       custom parameters
-- [ ] 2. Day `TimelineBlock` + week `WeekBlock` move drag: rAF auto-scroll loop while
+- [x] 2. Day `TimelineBlock` + week `WeekBlock` move drag: rAF auto-scroll loop while
       dragging + scroll-compensated dy (preview + commit); stops on up/cancel/unmount
-- [ ] 3. Month view: `data-iso` cells; draggable chips (threshold, translate preview,
+- [x] 3. Month view: `data-iso` cells; draggable chips (threshold, translate preview,
       elementFromPoint drop, click suppression after drag); reschedule to target day;
       error line above the grid
-- [ ] 4. Verify: vitest + tsc + build; browser check (auto-scroll both directions in day +
-      week, month chip drag to another day + spill cell, tap still opens day, unavailable
-      error); engineer review loop
+- [x] 4. Verify: vitest (339) + tsc + `next build` green; browser-checked — day-view edge
+      hold auto-scrolled 124px and committed the compensated time (09:00 → 17:15 from a
+      ~430px pointer travel), month chip dragged 2026-07-03 → 2026-06-29 staying in month
+      view (post-drag click suppressed), plain tap opened the day showing the moved booking
+      at its unchanged 10:00 time; no console errors; engineer review below
 - [ ] 5. Docs/memory sync + PR

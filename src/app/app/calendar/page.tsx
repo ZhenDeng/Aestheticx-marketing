@@ -445,6 +445,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   return (
     <button
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onPointerCancel} // backstop: a silently-released capture must stop the scroll loop
       className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
       style={{
         top: top + dragDy, height, left: `calc(${left}% + 2px)`, width: `calc(${width}% - 4px)`,
@@ -647,6 +648,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   return (
     <button
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onPointerCancel} // backstop: a silently-released capture must stop the scroll loop
       className="absolute overflow-hidden rounded-[6px] px-1.5 py-0.5 text-left text-card"
       style={{
         top, height, left: `calc(${left}% + 1px)`, width: `calc(${width}% - 2px)`,
@@ -848,7 +850,7 @@ function MonthChip({ appt, me, selected, onError }: {
   return (
     <span
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel} onClick={onClick}
+      onPointerCancel={onPointerCancel} onLostPointerCapture={onPointerCancel} onClick={onClick}
       className="flex items-center gap-1 truncate text-[10px] leading-tight"
       style={{
         color: selected ? "var(--color-card)" : "var(--color-ink)",
