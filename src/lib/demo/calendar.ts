@@ -158,6 +158,19 @@ export function dragEndMinute(
   return Math.max(startMin + minDuration, Math.min(snapped, winEnd));
 }
 
+// New start minute for a block whose TOP edge is dragged by `deltaPx`, snapped to `step`
+// and clamped to [winStart, endMin - minDuration]. The end never moves — the mirror of
+// dragEndMinute. endMin is always on the step grid (bookings only move in step increments),
+// so endMin - minDuration stays on-grid when minDuration is a step multiple.
+export function dragTopMinute(
+  origStart: number, deltaPx: number, pxPerMin: number, step: number,
+  endMin: number, minDuration: number, winStart: number,
+): number {
+  const raw = origStart + deltaPx / pxPerMin;
+  const snapped = Math.round(raw / step) * step;
+  return Math.max(winStart, Math.min(snapped, endMin - minDuration));
+}
+
 // How many equal-width day-columns a horizontal drag of `dx` pixels crossed (week move).
 export function dayDelta(dx: number, dayWidth: number): number {
   return dayWidth > 0 ? Math.round(dx / dayWidth) || 0 : 0; // `|| 0` normalises -0 → 0
