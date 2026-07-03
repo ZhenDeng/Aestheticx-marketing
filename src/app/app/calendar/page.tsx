@@ -117,7 +117,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
           showNew={showNew} setShowNew={setShowNew} />
       )}
       {view === "week" && <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
-      {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} openDay={openDay} />}
+      {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
     </div>
   );
 }
@@ -738,10 +738,11 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay }: {
 
 const MONTH_MAX_CHIPS = 3;
 
-function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
-  ownerID: string; selectedISO: string; todayISO: string; openDay: (iso: string) => void;
+function MonthView({ ownerID, selectedISO, todayISO, me, openDay }: {
+  ownerID: string; selectedISO: string; todayISO: string; me: Identity; openDay: (iso: string) => void;
 }) {
   const store = useDemoStore();
+  const [dragError, setDragError] = useState<string | null>(null);
   const cells = monthGridFor(selectedISO);
   const appts = store.appointmentsForOwnerInRange(ownerID, cells[0].iso, cells[cells.length - 1].iso);
   const byDay = new Map<string, Appointment[]>();
@@ -750,6 +751,7 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
 
   return (
     <div className="mt-6">
+      {dragError && <p className="mb-2 text-sm" style={{ color: "var(--color-rose)" }}>{dragError}</p>}
       <div className="grid grid-cols-7 gap-px">
         {weekdayHeads.map((d) => <div key={d} className="pb-1 text-center text-xs text-ink-soft">{d}</div>)}
         {cells.map((c) => {
@@ -758,7 +760,7 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
           const isToday = c.iso === todayISO;
           const isSelected = c.iso === selectedISO;
           return (
-            <button key={c.iso} onClick={() => openDay(c.iso)}
+            <button key={c.iso} data-iso={c.iso} onClick={() => openDay(c.iso)}
               className="flex min-h-[92px] flex-col gap-1 rounded-inner border border-line p-1.5 text-left hover:border-tint"
               style={{
                 background: isSelected ? "var(--color-tint)" : c.isWeekend ? "var(--color-paper-deep)" : "var(--color-card)",
@@ -769,11 +771,7 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
                 {isToday && !isSelected ? `• ${day}` : day}
               </span>
               {list.slice(0, MONTH_MAX_CHIPS).map((a) => (
-                <span key={a.id} className="flex items-center gap-1 truncate text-[10px] leading-tight"
-                  style={{ color: isSelected ? "var(--color-card)" : "var(--color-ink)" }}>
-                  <span className="inline-block h-2 w-1 flex-none rounded-sm" style={{ background: apptColor(a) }} />
-                  <span className="truncate">{timeLabel(a.startMinute)} {appointmentTitle(a)}</span>
-                </span>
+                <MonthChip key={a.id} appt={a} me={me} selected={isSelected} onError={setDragError} />
               ))}
               {list.length > MONTH_MAX_CHIPS && (
                 <span className="text-[10px]" style={{ color: isSelected ? "var(--color-card)" : "var(--color-ink-soft)" }}>
@@ -785,6 +783,85 @@ function MonthView({ ownerID, selectedISO, todayISO, openDay }: {
         })}
       </div>
     </div>
+  );
+}
+
+// A month-grid chip, draggable to another day cell (same time, new date). A tap is left to
+// bubble so the cell's own click still opens the day; after a real drag the chip suppresses
+// that click. The drop cell is resolved by hit-testing under the pointer — the chip disables
+// its own pointer-events while dragging so elementFromPoint sees the cell beneath it (the
+// captured pointer keeps delivering events to the chip regardless).
+function MonthChip({ appt, me, selected, onError }: {
+  appt: Appointment; me: Identity; selected: boolean; onError: (msg: string | null) => void;
+}) {
+  const store = useDemoStore();
+  const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
+  const drag = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
+  const movedRef = useRef(false);
+  const draggable = canReschedule(appt);
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (!draggable) return;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
+    drag.current = { startX: e.clientX, startY: e.clientY, moved: false };
+    movedRef.current = false;
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag.current) return;
+    const dx = e.clientX - drag.current.startX;
+    const dy = e.clientY - drag.current.startY;
+    if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+      drag.current.moved = true;
+      movedRef.current = true;
+    }
+    if (drag.current.moved) setMove({ dx, dy });
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    const st = drag.current;
+    drag.current = null;
+    setMove(null);
+    if (!st?.moved) return; // a tap — the bubbling click opens the day
+    const iso = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-iso]")?.getAttribute("data-iso");
+    if (!iso || iso === appt.dateISO) return;
+    try {
+      store.rescheduleAppointment(appt.id, iso, appt.startMinute, appt.endMinute - appt.startMinute, me);
+      onError(null);
+    } catch (err) {
+      onError(err instanceof BackendError && err.message === "unavailable"
+        ? "That day is outside your treatment hours or on a blocked time."
+        : "Could not move the appointment. Please try again.");
+    }
+  }
+  function onPointerCancel() {
+    drag.current = null;
+    setMove(null);
+  }
+  // The drag already handled the gesture — keep the click from reaching the day cell.
+  function onClick(e: React.MouseEvent) {
+    if (movedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      movedRef.current = false;
+    }
+  }
+
+  return (
+    <span
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel} onClick={onClick}
+      className="flex items-center gap-1 truncate text-[10px] leading-tight"
+      style={{
+        color: selected ? "var(--color-card)" : "var(--color-ink)",
+        transform: move ? `translate(${move.dx}px, ${move.dy}px)` : undefined,
+        position: "relative",
+        zIndex: move ? 10 : undefined,
+        pointerEvents: move ? "none" : undefined,
+        touchAction: draggable ? "none" : undefined,
+        cursor: draggable ? "grab" : undefined,
+      }}>
+      <span className="inline-block h-2 w-1 flex-none rounded-sm" style={{ background: apptColor(appt) }} />
+      <span className="truncate">{timeLabel(appt.startMinute)} {appointmentTitle(appt)}</span>
+    </span>
   );
 }
 
