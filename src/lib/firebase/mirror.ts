@@ -11,7 +11,20 @@ export async function mirrorCreateRequest(request: AuthorisationRequest): Promis
   await setDoc(doc(firestore(), "authRequests", request.id), encodeAuthRequest(request));
 }
 
+// Attachments upload their bytes (carried as a composer data-url) to Storage first, then
+// the note doc references them by fileId. The doc write follows the uploads so a note never
+// points at missing objects; a failed upload aborts into the lastSyncError path.
+async function uploadNoteAttachments(note: { attachments?: import("@/lib/demo/types").NoteAttachment[] }): Promise<void> {
+  const pending = (note.attachments ?? []).filter((a) => a.dataUrl);
+  for (const a of pending) {
+    const blob = await (await fetch(a.dataUrl!)).blob();
+    const { uploadAttachment } = await import("./storage");
+    await uploadAttachment(a.fileID, blob, a.mimeType);
+  }
+}
+
 export async function mirrorCreateNote(patientID: string, note: Note): Promise<void> {
+  await uploadNoteAttachments(note);
   await setDoc(doc(firestore(), `patients/${patientID}/notes`, note.id), encodeNote(note));
 }
 
@@ -31,10 +44,14 @@ export interface ConsumeRepeatsInput {
   patientId: string;
   clinicId: string | null;
   authorisationIds: string[];
-  note: { title: string; body: string; medications: TreatmentMedication[] };
+  note: { title: string; body: string; medications: TreatmentMedication[]; attachments?: import("@/lib/demo/types").NoteAttachment[] };
 }
 
 export async function mirrorConsumeRepeats(input: ConsumeRepeatsInput): Promise<void> {
+  // Attachment bytes upload here so they exist the moment the deployed callable learns to
+  // persist attachments[]; today it drops the metadata (same gap as iOS, which shares this
+  // Function), so a ticked note's attachments survive locally but not a rehydrate.
+  await uploadNoteAttachments({ attachments: input.note.attachments });
   await httpsCallable(functions(), "consumeRepeats")({
     patientId: input.patientId,
     clinicId: input.clinicId,
@@ -45,6 +62,7 @@ export async function mirrorConsumeRepeats(input: ConsumeRepeatsInput): Promise<
       medications: input.note.medications.map((m) => ({
         name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "",
       })),
+      attachments: (input.note.attachments ?? []).map((a) => ({ fileId: a.fileID, displayName: a.displayName, mimeType: a.mimeType })),
     },
   });
 }

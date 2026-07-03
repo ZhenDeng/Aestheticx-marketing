@@ -25,8 +25,8 @@ interface StoreValue {
   submitRequest: (input: { patientID: string; doctorID: string; items: MedicationItem[]; identity: Identity }) => void;
   approveRequest: (requestID: string, identity: Identity) => void;
   requireEdit: (requestID: string, identity: Identity) => void;
-  saveGeneralNote: (input: { patientID: string; title: string; body: string; identity: Identity }) => void;
-  saveTreatmentNote: (input: { patientID: string; tickedIDs: string[]; title: string; body: string; medications: TreatmentMedication[]; identity: Identity }) => void;
+  saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
+  saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
   retryAftercare: (patientID: string, noteID: string, identity: Identity) => void;
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
@@ -211,7 +211,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
                 patientId: input.patientID,
                 clinicId: clinicId(input.identity),
                 authorisationIds: input.tickedIDs,
-                note: { title: input.title, body: input.body, medications: input.medications },
+                note: { title: input.title, body: input.body, medications: input.medications, attachments: input.attachments },
               });
             } else {
               await m.mirrorCreateNote(input.patientID, note);

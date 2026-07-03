@@ -18,6 +18,7 @@ import type {
   FollowUpTask,
   MedicationItem,
   Note,
+  NoteAttachment,
   NoteTemplate,
   Patient,
   PatientDraft,
@@ -862,10 +863,20 @@ export function setNoteDeliveryStatus(
   return { ...state, notesByPatient: { ...state.notesByPatient, [patientID]: next } };
 }
 
+// Spec (clinical-notes): photos are the image/* attachments; they thumbnail inline and in
+// the note list, while other files show a renameable display name.
+export function isImageAttachment(a: NoteAttachment): boolean {
+  return a.mimeType.startsWith("image/");
+}
+export function imageAttachments(n: Note): NoteAttachment[] {
+  return (n.attachments ?? []).filter(isImageAttachment);
+}
+
 export interface SaveGeneralNoteInput {
   patientID: string;
   title: string;
   body: string;
+  attachments?: NoteAttachment[];
   identity: Identity;
 }
 
@@ -884,6 +895,7 @@ export function saveGeneralNote(state: DemoState, input: SaveGeneralNoteInput, n
     authorBadge: identityBadge(input.identity),
     consumedAuthorisationIDs: [],
     medications: [],
+    attachments: input.attachments,
   };
   return appendNote(state, note);
 }
@@ -894,6 +906,7 @@ export interface SaveTreatmentNoteInput {
   title: string;
   body: string;
   medications: TreatmentMedication[];
+  attachments?: NoteAttachment[];
   identity: Identity;
 }
 
@@ -933,6 +946,7 @@ export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInpu
     authorBadge: identityBadge(input.identity),
     consumedAuthorisationIDs: input.tickedIDs,
     medications: input.medications,
+    attachments: input.attachments,
   };
   const withNote = appendNote({ ...state, authorisations, usages }, note);
 

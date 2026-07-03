@@ -122,6 +122,17 @@ export interface TreatmentMedication {
   dosage?: string;
 }
 
+// A note's photo/file attachment (spec: clinical-notes — photo and file attachments).
+// Mirrors the iOS Attachment: fileID is the Storage object key and never changes after
+// upload; renaming touches only displayName. dataUrl is DEMO-ONLY inline preview bytes
+// (the demo has no Storage) — never encoded to Firestore.
+export interface NoteAttachment {
+  fileID: string;
+  displayName: string;
+  mimeType: string;
+  dataUrl?: string;
+}
+
 export interface Note {
   id: string;
   patientID: string;
@@ -133,6 +144,7 @@ export interface Note {
   authorBadge: string;
   consumedAuthorisationIDs: string[];
   medications: TreatmentMedication[];
+  attachments?: NoteAttachment[];        // absent on legacy/aftercare notes
   deliveryStatus?: DeliveryStatus;       // aftercare records only
   aftercareCategories?: AftercareCategory[]; // audit trail of an aftercare send
 }

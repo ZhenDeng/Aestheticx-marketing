@@ -22,3 +22,9 @@ export async function uploadSignature(patientID: string, formId: string, png: Bl
 export async function signatureUrl(path: string): Promise<string> {
   return fileDownloadUrl(path);
 }
+
+// Note attachments live under patients/{id}/photos/** and patients/{id}/files/** — the
+// catch-all patient path allows image/PDF uploads (<25MB) by a patientVisible user.
+export async function uploadAttachment(fileID: string, blob: Blob, mimeType: string): Promise<void> {
+  await uploadBytes(ref(storage(), fileID), blob, { contentType: mimeType });
+}

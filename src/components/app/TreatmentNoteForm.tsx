@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
 import { usableAuthorisations } from "@/lib/demo/backend";
-import type { Identity, TreatmentMedication } from "@/lib/demo/types";
+import { NoteAttachmentsInput } from "@/components/app/NoteAttachments";
+import type { Identity, NoteAttachment, TreatmentMedication } from "@/lib/demo/types";
 
 type MedEdit = { batch: string; expiry: string; dosage: string };
 
@@ -17,6 +18,7 @@ export function TreatmentNoteForm({
   const [edits, setEdits] = useState<Record<string, MedEdit>>({});
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
   const [appliedTemplate, setAppliedTemplate] = useState("");
 
   const isDoctor = identity.role === "doctor";
@@ -45,7 +47,10 @@ export function TreatmentNoteForm({
       const e = edits[id] ?? { batch: "", expiry: "", dosage: "" };
       return { name: a.medication.name, batch: e.batch, expiry: e.expiry, dosage: e.dosage };
     });
-    store.saveTreatmentNote({ patientID, tickedIDs: [...ticked], title, body, medications, identity });
+    store.saveTreatmentNote({
+      patientID, tickedIDs: [...ticked], title, body, medications,
+      attachments: attachments.length ? attachments : undefined, identity,
+    });
     onDone();
   }
 
@@ -102,6 +107,7 @@ export function TreatmentNoteForm({
                className="mt-1 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Treatment details…" rows={4}
                className="mt-2 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+        <NoteAttachmentsInput patientID={patientID} value={attachments} onChange={setAttachments} />
       </div>
 
       <div className="mt-3 flex gap-2">
