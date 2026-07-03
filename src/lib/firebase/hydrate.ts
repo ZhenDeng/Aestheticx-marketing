@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy } from "./mappers";
 import type { DemoState } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -25,6 +25,7 @@ export interface HydrationRows {
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
   slotPublications?: Row[];
   treatmentAvailability?: Row[];
+  externalBusy?: Row[];
   currentUserID: string;
 }
 
@@ -79,7 +80,10 @@ export function assembleState(rows: HydrationRows): DemoState {
 
   const doctorStatusByID: DemoState["doctorStatusByID"] = { [rows.currentUserID]: rows.doctorStatus };
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID };
+  const externalBusyByOwner: DemoState["externalBusyByOwner"] = {};
+  for (const r of rows.externalBusy ?? []) externalBusyByOwner[r.id] = mapExternalBusy(r.id, r.data);
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -93,6 +97,16 @@ async function runQuery(path: string, ...constraints: QueryConstraint[]): Promis
 async function readAvailability(ownerIds: string[]): Promise<Row[]> {
   const rows = await Promise.all(ownerIds.map(async (ownerId) => {
     const snap = await getDoc(doc(firestore(), "availability", ownerId));
+    return snap.exists() ? { id: ownerId, data: snap.data() as Record<string, unknown> } : null;
+  }));
+  return rows.filter((r): r is Row => r !== null);
+}
+
+// externalBusy/{ownerId}: one doc per calendar owner (rules: owner or clinic member reads).
+// A missing doc simply means no linked external calendar.
+async function readExternalBusy(ownerIds: string[]): Promise<Row[]> {
+  const rows = await Promise.all(ownerIds.map(async (ownerId) => {
+    const snap = await getDoc(doc(firestore(), "externalBusy", ownerId));
     return snap.exists() ? { id: ownerId, data: snap.data() as Record<string, unknown> } : null;
   }));
   return rows.filter((r): r is Row => r !== null);
@@ -154,6 +168,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       doctorStatus: profile.doctorStatus,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       treatmentAvailability: await readAvailability([uid]),
+      externalBusy: await readExternalBusy([uid]),
       currentUserID: uid,
     });
   }
@@ -231,6 +246,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     doctorStatus: profile.doctorStatus,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
+    externalBusy: await readExternalBusy([uid, ...clinicIds]),
     currentUserID: uid,
   });
 }

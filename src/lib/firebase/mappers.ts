@@ -2,6 +2,7 @@
 // LiveBackend.swift static decoders/encoders. No Firebase imports here (testable).
 import type {
   Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
+  ExternalBusyCalendar, ExternalBusyEvent,
   MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
@@ -206,6 +207,28 @@ function mapLead(raw: unknown): AppointmentLead | undefined {
   if (typeof d.phone === "string") lead.phone = d.phone;
   if (typeof d.email === "string") lead.email = d.email;
   return lead;
+}
+
+// externalBusy/{ownerId}: synced busy times from a linked Google/Apple calendar (written by
+// the sync Functions; owner + clinic members may read). Events are instants + the owner's zone.
+export function mapExternalBusy(id: string, data: Doc): ExternalBusyCalendar {
+  const raw = Array.isArray(data.events) ? (data.events as Doc[]) : [];
+  const events: ExternalBusyEvent[] = raw.flatMap((e): ExternalBusyEvent[] => {
+    if (typeof e !== "object" || e === null) return [];
+    const startISO = str((e as Doc).startISO), endISO = str((e as Doc).endISO);
+    if (!startISO || !endISO) return [];
+    return [{
+      startISO, endISO,
+      ...(typeof (e as Doc).transparent === "boolean" && { transparent: (e as Doc).transparent as boolean }),
+      ...(typeof (e as Doc).id === "string" && { id: (e as Doc).id as string }),
+    }];
+  });
+  return {
+    ownerID: id,
+    timeZone: str(data.timeZone) || "Australia/Sydney",
+    events,
+    updatedAtMillis: toMillis(data.updatedAt) || undefined,
+  };
 }
 
 export function mapAppointment(id: string, data: Doc): Appointment {

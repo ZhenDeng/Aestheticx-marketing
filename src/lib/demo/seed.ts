@@ -228,5 +228,22 @@ export function buildSeedState(): DemoState {
     notesByPatient: { ...state.notesByPatient, [amara.id]: [...(state.notesByPatient[amara.id] ?? []), photoNote] },
   };
 
+  // Synced external-calendar busy times for Voss (as if syncGoogleCalendar ran): a
+  // mid-day gym block and a dinner running past local midnight — instants + IANA zone,
+  // exactly the wire shape of externalBusy/{ownerId}. AEST = UTC+10 on these dates.
+  state = {
+    ...state,
+    externalBusyByOwner: {
+      "u-voss": {
+        ownerID: "u-voss",
+        timeZone: "Australia/Sydney",
+        events: [
+          { startISO: "2026-06-26T02:30:00Z", endISO: "2026-06-26T03:30:00Z", id: "seed-gym" },        // 12:30–13:30
+          { startISO: "2026-06-26T09:00:00Z", endISO: "2026-06-26T15:00:00Z", id: "seed-dinner" },     // 19:00–01:00(+1)
+        ],
+      },
+    },
+  };
+
   return state;
 }
