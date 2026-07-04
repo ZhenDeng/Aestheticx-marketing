@@ -286,6 +286,18 @@ export interface UserProfile {
 // any write touching roles/clinics/abn/mustChangePassword.
 export type UserProfileEdit = Partial<Pick<UserProfile, "ahpra" | "phone" | "address" | "avatarFileId" | "avatarDataUrl">>;
 
+// One row of the super-admin account inventory. Live: a users/{uid} doc (rules allow
+// superAdmin to list the collection); demo: derived from DEMO_ACCOUNTS. mustChangePassword
+// true means the account still holds its temporary password (createUser sets it; the
+// user's first login clears it).
+export interface AccountRecord {
+  id: string;
+  name: string;
+  email: string; // "" for demo-cast accounts (the demo has no sign-in emails)
+  roles: Role[];
+  mustChangePassword: boolean;
+}
+
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -336,6 +348,8 @@ export interface DemoState {
   lastCalledDoctorByUser: Record<string, string>;
   // users/{uid} profile fields (ahpra/abn/phone/address + avatar) keyed by user id.
   profileByUser: Record<string, UserProfile>;
+  // Super-admin account inventory (live: every users/{uid} doc; demo: the demo cast).
+  accountsByID: Record<string, AccountRecord>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

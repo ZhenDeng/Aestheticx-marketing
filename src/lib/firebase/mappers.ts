@@ -1,10 +1,10 @@
 // Pure Firestore <-> domain mappers. Field names ported verbatim from the iOS
 // LiveBackend.swift static decoders/encoders. No Firebase imports here (testable).
 import type {
-  Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
+  AccountRecord, Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   ExternalBusyCalendar, ExternalBusyEvent,
   MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, ProductCategory,
-  ProductUnit, RequestStatus, NoteKind, TreatmentMedication, SignedFormRecord, FormAnswer,
+  ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock,
 } from "@/lib/demo/types";
@@ -405,5 +405,22 @@ export function mapFollowUpTask(id: string, ownerID: string, data: Doc): FollowU
     dueDateISO: str(data.dueDateISO),
     status,
     sourceNoteID: typeof data.sourceNoteId === "string" ? data.sourceNoteId : undefined,
+  };
+}
+
+// users/{uid} → super-admin inventory row. Tolerant of partial docs (bootstrap-script
+// accounts may lack fields the createUser Function always writes); unknown role strings
+// are dropped rather than crashing the console.
+const isRole = (r: unknown): r is Role =>
+  r === "doctor" || r === "nurse" || r === "clinicAdmin" || r === "superAdmin";
+
+export function mapAccount(id: string, data: Doc): AccountRecord {
+  const roles = Array.isArray(data.roles) ? data.roles.filter(isRole) : [];
+  return {
+    id,
+    name: str(data.name),
+    email: str(data.email),
+    roles,
+    mustChangePassword: data.mustChangePassword === true,
   };
 }

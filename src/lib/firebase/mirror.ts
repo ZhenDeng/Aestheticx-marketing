@@ -284,3 +284,28 @@ export async function mirrorMintCallToken(requestID: string): Promise<{ room: st
   if (typeof d.token !== "string" || !d.token) throw new Error("mintCallToken returned no token");
   return { room: typeof d.room === "string" ? d.room : `req-${requestID}`, token: d.token };
 }
+
+// Super-admin user administration (both callables reject non-super-admin callers
+// server-side). createUser assigns roles at creation, sets a temporary password +
+// mustChangePassword claim, and queues the welcome email.
+export async function mirrorCreateUser(input: import("@/lib/demo/userAdmin").NewUserInput): Promise<{ uid: string }> {
+  const res = await httpsCallable(functions(), "createUser")({
+    email: input.email, name: input.name, abn: input.abn, businessName: input.businessName,
+    phone: input.phone, temporaryPassword: input.temporaryPassword, roles: input.roles,
+    ...(input.ahpra ? { ahpra: input.ahpra } : {}),
+  });
+  const d = res.data as { uid?: unknown };
+  if (typeof d.uid !== "string" || !d.uid) throw new Error("createUser returned no uid");
+  return { uid: d.uid };
+}
+
+export async function mirrorResetUserPassword(email: string): Promise<void> {
+  await httpsCallable(functions(), "resetUserPassword")({ email });
+}
+
+// Deletes the target's LOGIN (Auth record + users/{uid} profile doc); clinical
+// records are retained server-side. Self-deletion is rejected by the Function —
+// the in-app Delete account flow is the self-serve path.
+export async function mirrorDeleteUserAccount(uid: string): Promise<void> {
+  await httpsCallable(functions(), "deleteUserAccount")({ uid });
+}

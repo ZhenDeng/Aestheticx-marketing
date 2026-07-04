@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount } from "./mappers";
 import type { DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -29,6 +29,8 @@ export interface HydrationRows {
   slotPublications?: Row[];
   treatmentAvailability?: Row[];
   externalBusy?: Row[];
+  /** users collection rows — super-admin hydration only (rules gate the list to that role). */
+  accounts?: Row[];
   currentUserID: string;
 }
 
@@ -91,7 +93,10 @@ export function assembleState(rows: HydrationRows): DemoState {
   const profileByUser: DemoState["profileByUser"] = {};
   if (rows.profile) profileByUser[rows.currentUserID] = rows.profile;
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser };
+  const accountsByID: DemoState["accountsByID"] = {};
+  for (const r of rows.accounts ?? []) accountsByID[r.id] = mapAccount(r.id, r.data);
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, accountsByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -190,6 +195,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       treatmentAvailability: await readAvailability([uid]),
       externalBusy: await readExternalBusy([uid]),
+      // The admin console's account inventory (rules: users list is superAdmin-only).
+      accounts: await runQuery("users"),
       currentUserID: uid,
     });
   }

@@ -245,5 +245,21 @@ export function buildSeedState(): DemoState {
     },
   };
 
+  // Super-admin console inventory: one record per demo account (roles deduped —
+  // Sarah's independent + clinic identities are both "nurse"). The demo cast has
+  // no sign-in emails, so email stays "".
+  const accountsByID: DemoState["accountsByID"] = {};
+  for (const account of DEMO_ACCOUNTS) {
+    const { user } = account.identities[0];
+    accountsByID[user.id] = {
+      id: user.id,
+      name: user.name,
+      email: "",
+      roles: [...new Set(account.identities.map((i) => i.role))],
+      mustChangePassword: false,
+    };
+  }
+  state = { ...state, accountsByID };
+
   return state;
 }
