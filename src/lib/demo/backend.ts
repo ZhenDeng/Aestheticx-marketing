@@ -1,6 +1,7 @@
 // Pure domain rules ported from the iOS InMemoryBackend + PatientPermissions + Authorisations.
 // Every mutator returns a NEW DemoState (immutable). `now` is passed in for deterministic tests.
 import type {
+  AccountRecord,
   Appointment,
   AppointmentLead,
   AppointmentStatus,
@@ -66,7 +67,17 @@ export function emptyState(): DemoState {
     externalBusyByOwner: {},
     lastCalledDoctorByUser: {},
     profileByUser: {},
+    accountsByID: {},
   };
+}
+
+// --- Super-admin account inventory ---
+
+// Sorted for a stable console list; localeCompare with sensitivity:"base" gives a
+// case-insensitive order that keeps equal names in insertion order.
+export function accountsInventory(state: DemoState): AccountRecord[] {
+  return Object.values(state.accountsByID)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
 // --- Search ---
