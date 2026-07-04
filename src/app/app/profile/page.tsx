@@ -92,7 +92,7 @@ export default function ProfilePage() {
         </>
       )}
 
-      {isSuperAdmin && <AdminConsole />}
+      {isSuperAdmin && <AdminConsole live={mode === "live"} />}
 
       {identities.length > 1 && (
         <>
@@ -283,10 +283,17 @@ function ProfileFieldsEditor({ me, profile, showsAhpra, store }: {
   );
 }
 
-// Super admin console (port of iOS AdminConsoleView): account inventory with read-only
-// inspection. iOS lists its static demo accounts even in live mode, and its "Create user"
-// button is an empty placeholder — user creation stays a Cloud Function concern.
-function AdminConsole() {
+// Super admin console. Demo keeps iOS AdminConsoleView parity (static demo cast,
+// disabled create button — the demo has no Auth backend). Live lists the real
+// users collection (rules: superAdmin may list it) and drives the deployed
+// createUser / resetUserPassword Functions — roles are assigned at creation;
+// the deployed backend has no callable for re-roling an existing account.
+function AdminConsole({ live }: { live: boolean }) {
+  if (!live) return <DemoAdminConsole />;
+  return <LiveAdminConsole />;
+}
+
+function DemoAdminConsole() {
   return (
     <>
       <h2 className="mt-8 font-display text-lg text-ink">Accounts</h2>
@@ -309,15 +316,202 @@ function AdminConsole() {
           );
         })}
       </ul>
-      <button disabled className="mt-4 w-full rounded-btn bg-ink px-4 py-2.5 text-sm font-medium text-card opacity-60" title="Coming soon">
+      <button disabled className="mt-4 w-full rounded-btn bg-ink px-4 py-2.5 text-sm font-medium text-card opacity-60" title="Sign in live as a super admin to administer accounts">
         Create user · assign roles
       </button>
       <p className="mt-3 text-sm text-ink-soft">
-        User creation issues a Firebase Auth email invite and writes roles to custom claims
-        (createUser Cloud Function). Super admin reads any account&apos;s patients and statistics;
-        every write is blocked by security rules.
+        User administration is live-only in the demo. In the live app the super admin sees
+        every real account here and creates users through the createUser Cloud Function.
       </p>
     </>
+  );
+}
+
+const ROLE_LABEL: Record<Role, string> = {
+  doctor: "Doctor", nurse: "Nurse", clinicAdmin: "Clinic admin", superAdmin: "Super admin",
+};
+
+function LiveAdminConsole() {
+  const store = useDemoStore();
+  const accounts = store.accounts();
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState<string | null>(null);
+
+  return (
+    <>
+      <h2 className="mt-8 font-display text-lg text-ink">Accounts</h2>
+      {accounts.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-soft">No accounts loaded yet.</p>
+      ) : (
+        <ul className="mt-3 rounded-card border border-line bg-card shadow-card">
+          {accounts.map((account) => <AccountRow key={account.id} account={account} />)}
+        </ul>
+      )}
+      {created && (
+        <p className="mt-3 rounded-field px-3 py-2 text-sm" style={{ background: "var(--color-umber-soft)", color: "var(--color-umber)" }}>
+          {created} created. They sign in with the temporary password and are asked to set
+          their own on first login.
+        </p>
+      )}
+      {creating ? (
+        <CreateUserForm
+          onDone={(name) => { setCreating(false); setCreated(name); }}
+          onCancel={() => setCreating(false)}
+        />
+      ) : (
+        <button
+          onClick={() => { setCreated(null); setCreating(true); }}
+          className="mt-4 w-full rounded-btn bg-ink px-4 py-2.5 text-sm font-medium text-card transition-opacity hover:opacity-90"
+        >
+          Create user · assign roles
+        </button>
+      )}
+      <p className="mt-3 text-sm text-ink-soft">
+        Creation writes roles to custom claims and emails the new user (createUser Cloud
+        Function). Role changes on existing accounts go through AestheticX operations.
+      </p>
+    </>
+  );
+}
+
+function AccountRow({ account }: { account: import("@/lib/demo/types").AccountRecord }) {
+  const store = useDemoStore();
+  const [reset, setReset] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const display = account.name || account.email || account.id;
+
+  async function sendReset() {
+    setReset("sending");
+    try {
+      await store.resetUserPassword(account.email);
+      setReset("sent");
+    } catch {
+      setReset("error");
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-3.5 border-b border-line px-4 py-3 last:border-b-0">
+      <span className="grid h-9 w-9 flex-none place-items-center rounded-full font-display text-card" style={{ background: "var(--color-tint)" }}>
+        {initials(display)[0] ?? "?"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-ink">{display}</span>
+        <span className="micro block truncate">
+          {[account.roles.map((r) => ROLE_LABEL[r]).join(" · ") || "No role", account.email].filter(Boolean).join(" — ")}
+        </span>
+      </span>
+      {account.mustChangePassword && (
+        <span className="micro flex-none rounded-full px-2 py-0.5" style={{ background: "var(--color-umber-soft)", color: "var(--color-umber)" }}>
+          Awaiting first login
+        </span>
+      )}
+      {account.email && (
+        <button
+          onClick={() => void sendReset()}
+          disabled={reset === "sending" || reset === "sent"}
+          className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
+          title="Email this account a password-reset link"
+        >
+          {reset === "idle" && "Reset password"}
+          {reset === "sending" && "Sending…"}
+          {reset === "sent" && "Reset sent"}
+          {reset === "error" && "Failed — retry"}
+        </button>
+      )}
+    </li>
+  );
+}
+
+// Inline create-user form. Pre-validates with the client port of the Function's
+// validateNewUser so field errors show before any network call; Function errors
+// (e.g. email already in use) surface underneath.
+function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; onCancel: () => void }) {
+  const store = useDemoStore();
+  const [draft, setDraft] = useState({
+    name: "", email: "", phone: "", abn: "", businessName: "", ahpra: "", temporaryPassword: "",
+  });
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [missing, setMissing] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const input = (field: keyof typeof draft) =>
+    `w-full rounded-field border bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint ${missing.includes(field) ? "border-rose" : "border-line"}`;
+
+  function toggleRole(role: Role) {
+    setRoles((r) => (r.includes(role) ? r.filter((x) => x !== role) : [...r, role]));
+  }
+
+  async function submit() {
+    const { validateNewUser } = await import("@/lib/demo/userAdmin");
+    const inputPayload = { ...draft, roles };
+    const invalid = validateNewUser(inputPayload);
+    setMissing(invalid);
+    setServerError(null);
+    if (invalid.length) return;
+    setSubmitting(true);
+    try {
+      await store.createUser(inputPayload);
+      onDone(draft.name);
+    } catch (e) {
+      setServerError(e instanceof Error ? e.message : String(e));
+      setSubmitting(false);
+    }
+  }
+
+  const field = (label: string, key: keyof typeof draft, extra?: { type?: string; hint?: string }) => (
+    <label className="block">
+      <span className="micro">{label}</span>
+      <input
+        type={extra?.type ?? "text"}
+        value={draft[key]}
+        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+        className={`mt-1 ${input(key)}`}
+      />
+      {extra?.hint && <span className="micro mt-1 block text-ink-soft">{extra.hint}</span>}
+    </label>
+  );
+
+  return (
+    <section className="mt-4 rounded-card border border-line bg-card px-5 py-4 shadow-card">
+      <h3 className="font-display text-base text-ink">New user</h3>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {field("Full name", "name")}
+        {field("Email", "email", { type: "email" })}
+        {field("Phone", "phone")}
+        {field("ABN", "abn")}
+        {field("Business name", "businessName")}
+        {field("AHPRA", "ahpra", { hint: "Required for doctors and nurses" })}
+        {field("Temporary password", "temporaryPassword", { type: "text", hint: "At least 8 characters — they change it on first login" })}
+        <div>
+          <span className="micro">Roles</span>
+          <div className={`mt-1 flex gap-4 rounded-field border px-2.5 py-1.5 ${missing.includes("roles") ? "border-rose" : "border-line"}`}>
+            {(["doctor", "nurse"] as const).map((role) => (
+              <label key={role} className="flex items-center gap-1.5 text-sm text-ink">
+                <input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} className="accent-[var(--color-tint)]" />
+                {ROLE_LABEL[role]}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+      {missing.length > 0 && (
+        <p className="mt-3 text-sm" style={{ color: "var(--color-rose)" }}>
+          Please complete the highlighted fields.
+        </p>
+      )}
+      {serverError && (
+        <p className="mt-3 text-sm" style={{ color: "var(--color-rose)" }}>{serverError}</p>
+      )}
+      <div className="mt-4 flex justify-end gap-2.5">
+        <button onClick={onCancel} disabled={submitting} className="rounded-btn border border-line px-4 py-1.5 text-sm text-ink-soft hover:border-tint/50">
+          Cancel
+        </button>
+        <button onClick={() => void submit()} disabled={submitting} className="rounded-btn px-4 py-1.5 text-sm font-medium text-card disabled:opacity-60" style={{ background: "var(--color-tint)" }}>
+          {submitting ? "Creating…" : "Create user"}
+        </button>
+      </div>
+    </section>
   );
 }
 
