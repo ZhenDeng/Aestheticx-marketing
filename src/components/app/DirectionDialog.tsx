@@ -1,0 +1,175 @@
+"use client";
+
+// NSW Clause 68C direction capture + preview + PDF export. Port of iOS
+// DirectionCaptureView/DirectionPreviewView (AXFeatures/FeedbackRound2ConsultViews.swift):
+// capture the fields a direction needs, preview it, and export once — and only
+// once — every required field is present (missingDirectionFields gates both steps).
+// Like iOS, nothing here persists: the direction is assembled on demand.
+import { useState } from "react";
+import type { Authorisation, Patient } from "@/lib/demo/types";
+import { fullName } from "@/lib/demo/types";
+import {
+  DEFAULT_CAPTURED_FIELDS,
+  buildDirectionDraft,
+  directionPrescriberName,
+  directionResponsibleProvider,
+  missingDirectionFields,
+  type CapturedDirectionFields,
+} from "@/lib/demo/direction";
+import { directionPdfFilename, renderDirectionPdf } from "@/lib/demo/directionPdf";
+
+export function DirectionDialog({ authorisation, patient, onClose }: {
+  authorisation: Authorisation;
+  patient: Patient;
+  onClose: () => void;
+}) {
+  const [captured, setCaptured] = useState<CapturedDirectionFields>(DEFAULT_CAPTURED_FIELDS);
+  const [previewing, setPreviewing] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const direction = buildDirectionDraft({
+    directionId: authorisation.id,
+    patientName: fullName(patient),
+    patientAddress: patient.address,
+    prescriberName: directionPrescriberName(authorisation.doctorID),
+    responsibleProvider: directionResponsibleProvider(authorisation.nurseID, authorisation.clinicID),
+    medications: [authorisation.medication],
+    captured,
+  });
+  const missing = missingDirectionFields(direction);
+
+  function set<K extends keyof CapturedDirectionFields>(key: K, value: string) {
+    setCaptured((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function downloadPdf() {
+    setExportError(null);
+    try {
+      const bytes = renderDirectionPdf(direction);
+      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = directionPdfFilename(direction.directionId);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Defer revocation: some browsers start the download asynchronously from the
+      // click, and revoking synchronously can abort it (0-byte download).
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setExportError("Couldn't create the PDF");
+    }
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Clause 68C direction"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "color-mix(in srgb, var(--color-ink) 45%, transparent)" }}>
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-card border border-line bg-card p-5 shadow-card">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="font-display text-lg text-ink">{previewing ? "Direction" : "Clause 68C direction"}</h2>
+          <button type="button" onClick={onClose} className="rounded-btn border border-line px-3 py-1 text-sm text-ink-soft hover:border-tint">
+            Done
+          </button>
+        </div>
+
+        {!previewing ? (
+          <div className="mt-4 flex flex-col gap-3">
+            <p className="micro">Prescriber</p>
+            <Field label="Phone" value={captured.prescriberPhone} onChange={(v) => set("prescriberPhone", v)} />
+            <Field label="Principal place of practice" value={captured.prescriberPrincipalPlace} onChange={(v) => set("prescriberPrincipalPlace", v)} />
+
+            <p className="micro mt-2">Administration</p>
+            <Field label="Premises of administration" value={captured.premisesOfAdministration} onChange={(v) => set("premisesOfAdministration", v)} />
+            <Field label="Route (applies to all)" value={captured.route} onChange={(v) => set("route", v)} />
+            <Field label="Number & intervals" value={captured.administrationCountAndIntervals} onChange={(v) => set("administrationCountAndIntervals", v)} />
+
+            <p className="micro mt-2">Direction</p>
+            <Field label="Patient reviewed (YYYY-MM-DD)" value={captured.patientReviewedISO} onChange={(v) => set("patientReviewedISO", v)} />
+            <Field label="Period direction has effect" value={captured.directionPeriod} onChange={(v) => set("directionPeriod", v)} />
+
+            {missing.length === 0 ? (
+              <button type="button" onClick={() => setPreviewing(true)}
+                className="mt-2 w-full rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                Preview direction
+              </button>
+            ) : (
+              <p className="mt-2 text-xs" style={{ color: "var(--color-danger)" }}>
+                Still needed: {missing.join(", ")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4">
+            <button type="button" onClick={() => setPreviewing(false)} className="text-sm text-ink-soft hover:text-ink">
+              ← Back to capture
+            </button>
+
+            <p className="micro mt-3" style={{ color: "var(--color-tint)" }}>DIRECTION TO ADMINISTER · NSW CL. 68C</p>
+            <p className="mt-1 font-display text-2xl text-ink">Treatment direction</p>
+
+            <dl className="mt-3 rounded-inner border border-line">
+              <Row label="Patient" value={direction.patientName} />
+              <Row label="Patient address" value={direction.patientAddress} />
+              <Row label="Prescriber" value={`${direction.prescriberName} · ${direction.prescriberPhone}`} />
+              <Row label="Principal place of practice" value={direction.prescriberPrincipalPlace} />
+              <Row label="Premises of administration" value={direction.premisesOfAdministration} />
+              <Row label="Responsible provider" value={direction.responsibleProvider} />
+              <Row label="Patient reviewed" value={direction.patientReviewedISO} />
+              <Row label="Direction effective" value={direction.directionPeriod} />
+              <Row label="Administrations" value={direction.administrationCountAndIntervals} />
+            </dl>
+
+            <p className="micro mt-4">Per administration — to record</p>
+            <ul className="mt-1 rounded-inner border border-line px-4">
+              {direction.administrations.map((a, i) => (
+                // Index key is safe: render-only list derived from the authorisation.
+                <li key={i} className="py-2">
+                  <p className="text-sm font-medium text-ink">{a.substanceAndForm}</p>
+                  <p className="text-xs text-ink-soft">{a.bodySite} · {a.route} · {a.quantity}</p>
+                </li>
+              ))}
+            </ul>
+
+            {missing.length === 0 ? (
+              <button type="button" onClick={downloadPdf}
+                className="mt-4 w-full rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                Download direction (PDF)
+              </button>
+            ) : (
+              <div className="mt-4 rounded-inner px-4 py-3" style={{ background: "var(--color-danger-soft)" }}>
+                <p className="micro" style={{ color: "var(--color-danger)" }}>Complete before export</p>
+                {missing.map((m) => (
+                  <p key={m} className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>· {m}</p>
+                ))}
+              </div>
+            )}
+            {exportError && <p className="mt-2 text-xs" style={{ color: "var(--color-danger)" }}>{exportError}</p>}
+
+            <p className="mt-3 text-xs text-ink-faint">Wording pending practitioner/legal sign-off before clinical use.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="micro">{label}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}
+        className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+    </label>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-b border-line px-4 py-2 last:border-b-0">
+      <dt className="micro">{label}</dt>
+      <dd className="mt-0.5 text-sm text-ink">{value.trim() === "" ? "—" : value}</dd>
+    </div>
+  );
+}

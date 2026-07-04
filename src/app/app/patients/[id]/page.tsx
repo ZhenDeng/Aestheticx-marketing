@@ -11,6 +11,7 @@ import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
 import { PatientAvatarPicker } from "@/components/app/PatientAvatar";
 import { useConsultCall } from "@/components/app/ConsultCall";
+import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
@@ -50,6 +51,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showTreatment, setShowTreatment] = useState(false);
   const [showAftercare, setShowAftercare] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
+  const [directionFor, setDirectionFor] = useState<string | null>(null);
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
@@ -261,7 +264,14 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           <ul className="mt-3 flex flex-col gap-3">
             {active.map((a) => (
               <li key={a.id}>
-                <p className="font-medium text-ink">{a.medication.name}</p>
+                <p className="flex items-baseline justify-between gap-2">
+                  <span className="font-medium text-ink">{a.medication.name}</span>
+                  {/* iOS AuthorisationCard: quiet "68C" affordance opens the Clause 68C direction capture. */}
+                  <button type="button" onClick={() => setDirectionFor(a.id)} aria-label="Clause 68C direction"
+                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-tint)" }}>
+                    68C
+                  </button>
+                </p>
                 <p className="text-sm text-ink-soft">{a.medication.areas.join(", ")}</p>
                 <p className="mt-1 flex gap-1" aria-label={`${a.repeatsRemaining} repeats remaining`}>
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -360,6 +370,13 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         )}
         <p className="mt-3 text-xs text-ink-faint">Formal name on documents: {fullName(patient)}</p>
       </aside>
+
+      {directionFor && (() => {
+        const authorisation = active.find((a) => a.id === directionFor);
+        return authorisation
+          ? <DirectionDialog authorisation={authorisation} patient={patient} onClose={() => setDirectionFor(null)} />
+          : null;
+      })()}
     </div>
   );
 }

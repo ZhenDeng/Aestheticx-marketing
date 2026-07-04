@@ -1,0 +1,77 @@
+// Clause 68C direction PDF — client-side render of the backend's
+// renderDirectionPDF layout (backend/functions/src/direction.ts is the truth).
+// Mirrors the backend's own PDF assertions plus content checks the
+// uncompressed stream makes possible.
+import { describe, expect, it } from "vitest";
+import { directionPdfFilename, renderDirectionPdf } from "@/lib/demo/directionPdf";
+import type { DirectionContent } from "@/lib/demo/direction";
+
+const complete: DirectionContent = {
+  directionId: "AUTH-7G2K-09",
+  patientName: "Amara Boyd",
+  patientAddress: "14 Marra St, Bondi NSW 2026",
+  prescriberName: "Dr Adrian Voss",
+  prescriberPhone: "02 9388 4410",
+  prescriberPrincipalPlace: "A. Voss Medical, 88 Oxford St, Paddington NSW 2021",
+  premisesOfAdministration: "Lumière Aesthetics, 12 Hall St, Bondi Beach NSW 2026",
+  responsibleProvider: "RN Sarah Chen",
+  patientReviewedISO: "2026-06-17",
+  directionPeriod: "6 months",
+  administrationCountAndIntervals: "Up to 5, at intervals of at least 4 weeks",
+  administrations: [
+    { substanceAndForm: "Botulinum toxin type A, injection", bodySite: "Glabella", route: "IM", quantity: "20 units" },
+  ],
+};
+
+function ascii(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) out += String.fromCharCode(b);
+  return out;
+}
+
+describe("direction PDF", () => {
+  it("renders an A4 direction PDF", () => {
+    const bytes = renderDirectionPdf(complete);
+    expect(ascii(bytes.subarray(0, 5))).toBe("%PDF-");
+    expect(bytes.length).toBeGreaterThan(900);
+    expect(ascii(bytes)).toContain("595.28 841.89"); // A4 media box
+  });
+
+  it("carries the document header, title, and authorisation id", () => {
+    const text = ascii(renderDirectionPdf(complete));
+    expect(text).toContain("DIRECTION TO ADMINISTER");
+    expect(text).toContain("AUTH-7G2K-09");
+    expect(text).toContain("Treatment direction");
+  });
+
+  it("prints every Clause 68C field value and the per-administration row", () => {
+    const text = ascii(renderDirectionPdf(complete));
+    for (const value of [
+      "Amara Boyd", "14 Marra St, Bondi NSW 2026", "Dr Adrian Voss", "02 9388 4410",
+      "RN Sarah Chen", "2026-06-17", "6 months",
+      "Up to 5, at intervals of at least 4 weeks",
+      "Botulinum toxin type A, injection", "Glabella",
+    ]) {
+      expect(text).toContain(value);
+    }
+    expect(text).toContain("PER ADMINISTRATION");
+    expect(text).toContain("For each administration the nurse must record");
+  });
+
+  it("draws an em-dash placeholder for a blank value instead of failing", () => {
+    const bytes = renderDirectionPdf({ ...complete, premisesOfAdministration: "" });
+    expect(ascii(bytes.subarray(0, 5))).toBe("%PDF-");
+  });
+
+  it("survives characters outside Latin-1 (transliterated, never thrown)", () => {
+    const bytes = renderDirectionPdf({
+      ...complete,
+      administrationCountAndIntervals: "Up to 5, ≥ 4 weeks apart",
+    });
+    expect(ascii(bytes)).toContain(">= 4 weeks apart");
+  });
+
+  it("names the download after the authorisation", () => {
+    expect(directionPdfFilename("AUTH-7G2K-09")).toBe("AestheticX-Direction-AUTH-7G2K-09.pdf");
+  });
+});
