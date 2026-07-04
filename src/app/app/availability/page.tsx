@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, nowFlooredTo10, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
+import { isoDay, nowFlooredTo10, isPastSlot, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
 import type { AppointmentLead, DaySchedule, Identity } from "@/lib/demo/types";
 
@@ -324,11 +324,21 @@ function BookConsult({ me }: { me: Identity }) {
   const [slotLeadDraft, setSlotLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
   const [adHocNewPatient, setAdHocNewPatient] = useState(false);
   const [adHocLeadDraft, setAdHocLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
+  const [adHocWhen, setAdHocWhen] = useState<"now" | "later">("now");
+  const [adHocDate, setAdHocDate] = useState(todayISO);
+  const [adHocTime, setAdHocTime] = useState(timeLabel(nowFlooredTo10(store.now)));
 
   // Fall back to the first available doctor so one is selectable without touching the dropdown.
   const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
   const effectiveDoctor = doctors.find((d) => d.doctorID === effectiveDoctorID) ?? null;
-  const canRequestNow = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
+  const canRequestAdHoc = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
+
+  // The ad-hoc target slot: "now" mirrors the doctor's real-time acceptance; "later" books
+  // any chosen slot (an always-accepting doctor takes requests at any time — never gated by
+  // published slots or treatment hours). Coordinates stay in the isoDay/nowFlooredTo10 UTC frame.
+  const adHocDateISO = adHocWhen === "now" ? isoDay(store.now) : adHocDate;
+  const adHocMinute = adHocWhen === "now" ? nowFlooredTo10(store.now) : minutesFromTime(adHocTime);
+  const adHocPast = adHocWhen === "later" && isPastSlot(adHocDateISO, adHocMinute, store.now);
 
   // Discover doctors with availability (demo: local selectors; live: backend callable).
   useEffect(() => {
@@ -375,9 +385,10 @@ function BookConsult({ me }: { me: Identity }) {
 
   const adHocMatches = adHocQuery.trim() ? store.searchPatients(adHocQuery, me).slice(0, 5) : [];
 
-  // Sends an ad-hoc "now" request for an existing patient file XOR a new-patient lead.
-  async function requestNow(patient: { patientID: string; patientName: string } | { lead: AppointmentLead }) {
-    if (!effectiveDoctorID) return;
+  // Sends an ad-hoc request ("now" or a chosen slot) for an existing patient file XOR a
+  // new-patient lead.
+  async function requestAdHoc(patient: { patientID: string; patientName: string } | { lead: AppointmentLead }) {
+    if (!effectiveDoctorID || adHocPast) return;
     setError(null);
     setRequesting(true);
     const forName = "lead" in patient
@@ -385,10 +396,12 @@ function BookConsult({ me }: { me: Identity }) {
       : patient.patientName;
     try {
       await store.requestAdHocAuth({
-        doctorID: effectiveDoctorID, dateISO: isoDay(store.now), atMinute: nowFlooredTo10(store.now),
+        doctorID: effectiveDoctorID, dateISO: adHocDateISO, atMinute: adHocMinute,
         ...patient, identity: me,
       });
-      setBooked(`Sent an ad-hoc request for ${forName}.`);
+      setBooked(adHocWhen === "later"
+        ? `Sent an ad-hoc request for ${forName} — ${adHocDateISO} at ${timeLabel(adHocMinute)}.`
+        : `Sent an ad-hoc request for ${forName}.`);
       setAdHocQuery(""); setAdHocNewPatient(false); setAdHocLeadDraft(emptyLeadDraft());
     } catch (e) {
       setError(e instanceof BackendError && e.message === "notAccepting"
@@ -432,9 +445,32 @@ function BookConsult({ me }: { me: Identity }) {
         </div>
       </div>
 
-      {canRequestNow && (
+      {canRequestAdHoc && (
         <div className="rounded-inner border border-line bg-card p-4">
-          <p className="text-sm text-ink">Request an ad-hoc consult now for…</p>
+          <p className="text-sm text-ink">Request an ad-hoc consult for…</p>
+          <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-ink">
+            <label className="flex items-center gap-2">
+              <input type="radio" name="adhoc-when" checked={adHocWhen === "now"} onChange={() => setAdHocWhen("now")} />
+              Now
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="adhoc-when" checked={adHocWhen === "later"} onChange={() => setAdHocWhen("later")} />
+              Pick a time
+            </label>
+          </div>
+          {adHocWhen === "later" && (
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <label className="text-sm text-ink-soft">Date
+                <input type="date" min={todayISO} value={adHocDate} onChange={(e) => setAdHocDate(e.target.value)}
+                  className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
+              </label>
+              <label className="text-sm text-ink-soft">Time
+                <input type="time" step={600} value={adHocTime} onChange={(e) => setAdHocTime(e.target.value)}
+                  className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
+              </label>
+              {adHocPast && <p className="text-sm" style={{ color: "var(--color-rose)" }}>Pick a time that isn&apos;t in the past.</p>}
+            </div>
+          )}
           <label className="mt-2 flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={adHocNewPatient} onChange={(e) => { setAdHocNewPatient(e.target.checked); setAdHocQuery(""); }} />
             New patient (no file yet)
@@ -442,8 +478,8 @@ function BookConsult({ me }: { me: Identity }) {
           {adHocNewPatient ? (
             <div className="mt-2">
               <LeadFields value={adHocLeadDraft} onChange={setAdHocLeadDraft} />
-              <button disabled={requesting || leadFromDraft(adHocLeadDraft) === null}
-                onClick={() => { const lead = leadFromDraft(adHocLeadDraft); if (lead) void requestNow({ lead }); }}
+              <button disabled={requesting || adHocPast || leadFromDraft(adHocLeadDraft) === null}
+                onClick={() => { const lead = leadFromDraft(adHocLeadDraft); if (lead) void requestAdHoc({ lead }); }}
                 className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
                 Request for new patient
               </button>
@@ -455,7 +491,7 @@ function BookConsult({ me }: { me: Identity }) {
               <ul className="mt-1 flex flex-col gap-1">
                 {adHocMatches.map((p) => (
                   <li key={p.id}>
-                    <button disabled={requesting} onClick={() => requestNow({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
+                    <button disabled={requesting || adHocPast} onClick={() => requestAdHoc({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
                       className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint disabled:opacity-50">
                       {p.givenName} {p.lastName}
                     </button>
