@@ -79,6 +79,8 @@ interface StoreValue {
   mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
   formsForPatient: (patientID: string) => ReturnType<typeof backend.formsForPatient>;
   billingSummary: (identity: Identity) => ReturnType<typeof billing.billingSummary>;
+  customTimeframeCount: (identity: Identity, fromMillis: number, toMillis: number) => number;
+  clinicBusinessStats: (identity: Identity, fromMillis: number, toMillis: number) => ReturnType<typeof billing.clinicBusinessStats>;
   invoicesFor: (identity: Identity) => ReturnType<typeof invoicing.invoicesFor>;
   scriptPrice: (doctorID: string, counterpartyID: string) => number;
   billableAuthorisations: (doctorID: string) => ReturnType<typeof backend.billableAuthorisations>;
@@ -171,6 +173,8 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       visibleNotesForPatient: (pid, id) => backend.visibleNotesForPatient(state, pid, id),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
       billingSummary: (id) => billing.billingSummary(Object.values(state.authorisations), id),
+      customTimeframeCount: (id, fromMillis, toMillis) => billing.customTimeframeCount(Object.values(state.authorisations), id, fromMillis, toMillis),
+      clinicBusinessStats: (id, fromMillis, toMillis) => billing.clinicBusinessStats(Object.values(state.authorisations), state.usages, id, fromMillis, toMillis),
       invoicesFor: (id) => invoicing.invoicesFor(state.invoices, id),
       scriptPrice: (did, cid) => state.scriptPricing[backend.scriptPriceKey(did, cid)] ?? invoicing.DEFAULT_SCRIPT_PRICE_CENTS,
       billableAuthorisations: (did) => backend.billableAuthorisations(state, did),
