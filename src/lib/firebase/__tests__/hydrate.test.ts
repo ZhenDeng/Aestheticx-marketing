@@ -23,6 +23,7 @@ const rows: HydrationRows = {
   followUpSettings: { enabled: true, intervalDays: 7 },
   bookingToken: "bk-voss",
   doctorStatus: { online: false, alwaysAcceptAuth: false },
+  profile: { ahpra: "MED0001234567", abn: "82 601 443 218", phone: "0412 884 209", address: "14 Acland St, St Kilda VIC", avatarFileId: "users/u-voss/avatar.jpg" },
   currentUserID: "u-voss",
 };
 
@@ -50,5 +51,18 @@ describe("assembleState", () => {
     const state = assembleState({ ...rows, followUpSettings: null, bookingToken: null });
     expect(state.followUpSettingsByUser).toEqual({});
     expect(state.bookingTokensByUser).toEqual({});
+  });
+
+  it("keys the users/{uid} profile fields under the current user", () => {
+    const state = assembleState(rows);
+    expect(state.profileByUser["u-voss"]).toEqual({
+      ahpra: "MED0001234567", abn: "82 601 443 218", phone: "0412 884 209",
+      address: "14 Acland St, St Kilda VIC", avatarFileId: "users/u-voss/avatar.jpg",
+    });
+  });
+
+  it("leaves profileByUser empty when the users/{uid} doc is missing", () => {
+    const state = assembleState({ ...rows, profile: null });
+    expect(state.profileByUser).toEqual({});
   });
 });

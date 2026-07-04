@@ -85,6 +85,8 @@ interface StoreValue {
   generateInvoice: (input: import("./backend").GenerateInvoiceInput, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
+  profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
+  updateProfile: (edits: import("./types").UserProfileEdit, identity: Identity) => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -508,6 +510,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       },
       deleteForm: (patientID, formId, identity) =>
         applyAndMirror((s) => backend.deleteForm(s, patientID, formId, identity), (m) => m.mirrorDeleteForm(patientID, formId)),
+      profileForUser: (userID) => backend.profileForUser(state, userID),
+      // Own-profile edit: optimistic local merge, then a rules-checked users/{uid} merge
+      // write (mirrorUpdateProfile strips the demo-only avatarDataUrl + immutable abn).
+      updateProfile: (edits, identity) =>
+        applyAndMirror(
+          (s) => backend.updateProfile(s, identity.user.id, edits),
+          (m) => m.mirrorUpdateProfile(identity.user.id, edits),
+        ),
     }),
     [state, now, status, lastSyncError, applyAndMirror, live],
   );

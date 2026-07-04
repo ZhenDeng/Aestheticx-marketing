@@ -30,6 +30,8 @@ import type {
   TreatmentAvailability,
   TreatmentBlock,
   TreatmentMedication,
+  UserProfile,
+  UserProfileEdit,
 } from "./types";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
@@ -63,6 +65,7 @@ export function emptyState(): DemoState {
     doctorStatusByID: {},
     externalBusyByOwner: {},
     lastCalledDoctorByUser: {},
+    profileByUser: {},
   };
 }
 
@@ -773,6 +776,30 @@ export function doctorStatusForUser(state: DemoState, doctorID: string): DoctorS
 export function setDoctorStatus(state: DemoState, doctorID: string, patch: Partial<DoctorStatus>): DemoState {
   const next = { ...doctorStatusForUser(state, doctorID), ...patch };
   return { ...state, doctorStatusByID: { ...state.doctorStatusByID, [doctorID]: next } };
+}
+
+// --- User profile (spec: auth-accounts / ProfileView) ---
+
+// iOS's InMemoryBackend seeds no profile data (ProfileView hardcodes its demo rows),
+// so an unseeded user resolves to empty fields rather than sample values.
+export function profileForUser(state: DemoState, userID: string): UserProfile {
+  return state.profileByUser[userID] ?? { ahpra: "", abn: "", phone: "", address: "" };
+}
+
+// Merges only the client-writable fields — abn (and roles/clinics/mustChangePassword)
+// are rules-immutable, so a stray abn in the patch is dropped, matching what Firestore
+// would reject server-side.
+export function updateProfile(state: DemoState, userID: string, edits: UserProfileEdit): DemoState {
+  const current = profileForUser(state, userID);
+  const next: UserProfile = {
+    ...current,
+    ...(edits.ahpra !== undefined ? { ahpra: edits.ahpra } : {}),
+    ...(edits.phone !== undefined ? { phone: edits.phone } : {}),
+    ...(edits.address !== undefined ? { address: edits.address } : {}),
+    ...(edits.avatarFileId !== undefined ? { avatarFileId: edits.avatarFileId } : {}),
+    ...(edits.avatarDataUrl !== undefined ? { avatarDataUrl: edits.avatarDataUrl } : {}),
+  };
+  return { ...state, profileByUser: { ...state.profileByUser, [userID]: next } };
 }
 
 export type DoctorStatusResult = ReturnType<typeof doctorStatusForUser>;

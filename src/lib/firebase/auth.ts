@@ -2,10 +2,12 @@
 
 import {
   signInWithEmailAndPassword, signOut as fbSignOut, onIdTokenChanged,
+  updatePassword, deleteUser,
   type User,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { firebaseAuth, firestore } from "./client";
+import { httpsCallable } from "firebase/functions";
+import { firebaseAuth, firestore, functions } from "./client";
 import { identitiesFromClaims, type DemoClaims } from "./identity";
 import type { Identity } from "@/lib/demo/types";
 
@@ -43,4 +45,34 @@ export async function identitiesForUser(user: User): Promise<Identity[]> {
 // Subscribe to auth state; calls back with the User (or null when signed out).
 export function watchUser(cb: (user: User | null) => void): () => void {
   return onIdTokenChanged(firebaseAuth(), cb);
+}
+
+// The first-login gate, carried on the ID token's custom claims exactly as iOS reads it
+// (AuthClaims.parse → mustChangePassword). Set by the createUser Function on super-admin-
+// created accounts; cleared by completeFirstLogin.
+export async function mustChangePasswordForUser(user: User): Promise<boolean> {
+  const tokenResult = await user.getIdTokenResult();
+  return tokenResult.claims.mustChangePassword === true;
+}
+
+// First-login completion (iOS FirstLoginPasswordView flow): set the real password on the
+// Auth record, then call the deployed completeFirstLogin callable (no payload; returns
+// { ok: true }) which clears the claim + users/{uid}.mustChangePassword, then force-refresh
+// the token so the cleared claim lands locally.
+export async function completeFirstLogin(newPassword: string): Promise<void> {
+  const user = firebaseAuth().currentUser;
+  if (!user) throw new Error("Not signed in");
+  await updatePassword(user, newPassword);
+  await httpsCallable(functions(), "completeFirstLogin")({});
+  await user.getIdToken(true);
+}
+
+// Permanently deletes the signed-in user's Firebase Authentication account — the login
+// only, never clinical data (retention is a server-side policy). Mirrors iOS
+// FirebaseAuthClient.deleteAccount (Identity Toolkit accounts:delete). May reject with
+// code "auth/requires-recent-login"; callers surface that gracefully.
+export async function deleteAccount(): Promise<void> {
+  const user = firebaseAuth().currentUser;
+  if (!user) throw new Error("Not signed in");
+  await deleteUser(user);
 }

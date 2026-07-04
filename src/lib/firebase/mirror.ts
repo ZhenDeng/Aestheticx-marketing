@@ -128,6 +128,20 @@ export async function mirrorSetFollowUpSettings(uid: string, settings: FollowUpS
   await updateDoc(doc(firestore(), "users", uid), { followUpEnabled: settings.enabled, followUpIntervalDays: settings.intervalDays });
 }
 
+// Own-profile edits are direct rules-checked writes on users/{uid} (setDoc merge so a
+// thin doc can't fail with "No document to update"). Only client-writable keys are sent —
+// never abn/roles/clinics/mustChangePassword (rules reject the whole write if any is
+// touched) and never the demo-only avatarDataUrl preview bytes.
+export async function mirrorUpdateProfile(uid: string, edits: import("@/lib/demo/types").UserProfileEdit): Promise<void> {
+  const values: Record<string, string> = {};
+  if (edits.ahpra !== undefined) values.ahpra = edits.ahpra;
+  if (edits.phone !== undefined) values.phone = edits.phone;
+  if (edits.address !== undefined) values.address = edits.address;
+  if (edits.avatarFileId !== undefined) values.avatarFileId = edits.avatarFileId;
+  if (Object.keys(values).length === 0) return; // demo-only edit (avatarDataUrl) — nothing to persist
+  await setDoc(doc(firestore(), "users", uid), values, { merge: true });
+}
+
 // Self-booking: per-user link token on the users/{uid} doc; confirm via the deployed callable.
 export async function mirrorSetBookingToken(uid: string, token: string): Promise<void> {
   // merge so a brand-new account whose profile doc isn't written yet doesn't throw

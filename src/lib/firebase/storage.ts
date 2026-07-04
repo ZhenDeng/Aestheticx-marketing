@@ -28,3 +28,15 @@ export async function signatureUrl(path: string): Promise<string> {
 export async function uploadAttachment(fileID: string, blob: Blob, mimeType: string): Promise<void> {
   await uploadBytes(ref(storage(), fileID), blob, { contentType: mimeType });
 }
+
+// The user's own profile photo. iOS keeps it session-scoped in its in-memory file store
+// (ProfileView.loadAvatar never uploads), but storage.rules reserves users/{uid}/** —
+// owner-writable images (<10MB, jpeg/png/webp), readable by any signed-in clinician —
+// for exactly this. The web persists one stable object per user and records its path
+// on users/{uid}.avatarFileId (same field name as the patient docs' avatar).
+export async function uploadUserAvatar(uid: string, blob: Blob, mimeType: string): Promise<string> {
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const path = `users/${uid}/avatar.${ext}`;
+  await uploadBytes(ref(storage(), path), blob, { contentType: mimeType });
+  return path;
+}
