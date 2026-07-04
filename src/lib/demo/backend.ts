@@ -385,6 +385,16 @@ export function mostRecentlyCalledDoctor(state: DemoState, userID: string): stri
   return state.lastCalledDoctorByUser[userID] ?? null;
 }
 
+/**
+ * The doctor a booking picker should preselect: the most-recently-called doctor when they
+ * are actually in the pickable list (iOS parity — a recent doctor who is no longer
+ * available must not be forced onto the picker), else the first doctor, else null.
+ */
+export function defaultDoctorID(doctors: { doctorID: string }[], recentDoctorID: string | null): string | null {
+  if (recentDoctorID && doctors.some((d) => d.doctorID === recentDoctorID)) return recentDoctorID;
+  return doctors[0]?.doctorID ?? null;
+}
+
 export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {
   return state.followUpSettingsByUser[userID] ?? { enabled: false, intervalDays: 14 };
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, nowFlooredTo10, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
+import { isoDay, nowFlooredTo10, slotsForWindow, isSlotTaken, defaultDoctorID, BackendError } from "@/lib/demo/backend";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
 import type { AppointmentLead, DaySchedule, Identity } from "@/lib/demo/types";
 
@@ -325,8 +325,9 @@ function BookConsult({ me }: { me: Identity }) {
   const [adHocNewPatient, setAdHocNewPatient] = useState(false);
   const [adHocLeadDraft, setAdHocLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
 
-  // Fall back to the first available doctor so one is selectable without touching the dropdown.
-  const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
+  // Default per the appointments spec: the most-recently-called doctor when pickable,
+  // never a hard-coded one. An explicit selection always wins.
+  const effectiveDoctorID = doctorID ?? defaultDoctorID(doctors, store.mostRecentlyCalledDoctor(me.user.id));
   const effectiveDoctor = doctors.find((d) => d.doctorID === effectiveDoctorID) ?? null;
   const canRequestNow = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
 

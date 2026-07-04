@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { incomingCallFromSignal, callDisplayName } from "@/lib/demo/calls";
-import { recordCalledDoctor, mostRecentlyCalledDoctor, emptyState } from "@/lib/demo/backend";
+import { recordCalledDoctor, mostRecentlyCalledDoctor, defaultDoctorID, emptyState } from "@/lib/demo/backend";
 
 const NOW = Date.UTC(2026, 6, 4, 10, 0);
 
@@ -90,5 +90,25 @@ describe("recordCalledDoctor / mostRecentlyCalledDoctor", () => {
     const before = emptyState();
     recordCalledDoctor(before, "u-sarah", "u-voss");
     expect(mostRecentlyCalledDoctor(before, "u-sarah")).toBeNull();
+  });
+});
+
+describe("defaultDoctorID", () => {
+  const doctors = [{ doctorID: "u-khan" }, { doctorID: "u-voss" }];
+
+  it("prefers the most-recently-called doctor when they are in the list", () => {
+    expect(defaultDoctorID(doctors, "u-voss")).toBe("u-voss");
+  });
+
+  it("falls back to the first doctor when the recent one is not pickable", () => {
+    expect(defaultDoctorID(doctors, "u-gone")).toBe("u-khan");
+  });
+
+  it("falls back to the first doctor when no call was ever made", () => {
+    expect(defaultDoctorID(doctors, null)).toBe("u-khan");
+  });
+
+  it("is null when there are no doctors", () => {
+    expect(defaultDoctorID([], "u-voss")).toBeNull();
   });
 });
