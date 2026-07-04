@@ -325,20 +325,29 @@ function BookConsult({ me }: { me: Identity }) {
   const [adHocNewPatient, setAdHocNewPatient] = useState(false);
   const [adHocLeadDraft, setAdHocLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
 
-  // Default per the appointments spec: the most-recently-called doctor when pickable,
-  // never a hard-coded one. An explicit selection always wins.
-  const effectiveDoctorID = doctorID ?? defaultDoctorID(doctors, store.mostRecentlyCalledDoctor(me.user.id));
+  const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
   const effectiveDoctor = doctors.find((d) => d.doctorID === effectiveDoctorID) ?? null;
   const canRequestNow = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
 
   // Discover doctors with availability (demo: local selectors; live: backend callable).
+  // The default doctor per the appointments spec — most-recently-called when pickable,
+  // never hard-coded — is resolved ONCE when the list arrives (iOS parity: a call started
+  // later in the session must not silently flip a picker the user is already looking at).
   useEffect(() => {
     let alive = true;
     store.listAvailableDoctors()
-      .then((d) => { if (alive) { setDoctors(d); setLoading(false); } })
+      .then((d) => {
+        if (!alive) return;
+        setDoctors(d);
+        setDoctorID((cur) => cur ?? defaultDoctorID(d, store.mostRecentlyCalledDoctor(me.user.id)));
+        setLoading(false);
+      })
       .catch(() => { if (alive) { setError("Could not load availability. Please retry."); setLoading(false); } });
     return () => { alive = false; };
-  }, [store]);
+    // mostRecentlyCalledDoctor is read inside intentionally: only the snapshot at list-load
+    // time matters, and the `cur ??` guard makes re-runs a no-op once a doctor is set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, me.user.id]);
 
   // The chosen doctor's open slots for the date; refetched after a booking (slotReload).
   useEffect(() => {
