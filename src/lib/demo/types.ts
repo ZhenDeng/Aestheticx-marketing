@@ -309,6 +309,8 @@ export interface DemoState {
   treatmentAvailabilityByOwner: Record<string, TreatmentAvailability>;
   doctorStatusByID: Record<string, DoctorStatus>;
   externalBusyByOwner: Record<string, ExternalBusyCalendar>;
+  // users/{uid}.lastCalledDoctorId — set whenever the user starts a consult call.
+  lastCalledDoctorByUser: Record<string, string>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

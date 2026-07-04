@@ -62,6 +62,7 @@ export function emptyState(): DemoState {
     treatmentAvailabilityByOwner: {},
     doctorStatusByID: {},
     externalBusyByOwner: {},
+    lastCalledDoctorByUser: {},
   };
 }
 
@@ -381,6 +382,27 @@ export function isPastSlot(dateISO: string, minute: number, nowMs: number): bool
   const today = isoDay(nowMs);
   if (dateISO !== today) return dateISO < today;
   return minute < nowFlooredTo10(nowMs);
+}
+
+// --- Most-recently-called doctor (iOS recordCalledDoctor/mostRecentlyCalledDoctor parity) ---
+
+/** Recorded whenever the user starts a consult call; latest call wins. */
+export function recordCalledDoctor(state: DemoState, userID: string, doctorID: string): DemoState {
+  return { ...state, lastCalledDoctorByUser: { ...state.lastCalledDoctorByUser, [userID]: doctorID } };
+}
+
+export function mostRecentlyCalledDoctor(state: DemoState, userID: string): string | null {
+  return state.lastCalledDoctorByUser[userID] ?? null;
+}
+
+/**
+ * The doctor a booking picker should preselect: the most-recently-called doctor when they
+ * are actually in the pickable list (iOS parity — a recent doctor who is no longer
+ * available must not be forced onto the picker), else the first doctor, else null.
+ */
+export function defaultDoctorID(doctors: { doctorID: string }[], recentDoctorID: string | null): string | null {
+  if (recentDoctorID && doctors.some((d) => d.doctorID === recentDoctorID)) return recentDoctorID;
+  return doctors[0]?.doctorID ?? null;
 }
 
 export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {

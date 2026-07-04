@@ -236,3 +236,31 @@ export async function mirrorRequestAdHocAuth(p: {
     patientId: p.patientID ?? null, lead: p.lead ?? null, counterpartyName: p.counterpartyName,
   });
 }
+
+// --- Consult calls (deployed startConsultCall/mintCallToken; livekit.ts + notificationsFn.ts) ---
+
+// iOS parity: LiveBackend.recordCalledDoctor does a client-side own-profile update.
+// setDoc merge (not updateDoc) so a thin users doc can't fail with "No document to update".
+export async function mirrorRecordCalledDoctor(uid: string, doctorID: string): Promise<void> {
+  await setDoc(doc(firestore(), "users", uid), { lastCalledDoctorId: doctorID }, { merge: true });
+}
+
+// Rings the other party (writes their consultSignals doc + enqueues the VoIP push).
+// delivered = number of VoIP tokens pushed; 0 means no device will background-ring,
+// though the in-app signal still reaches an open app.
+export async function mirrorStartConsultCall(requestID: string): Promise<{ room: string; delivered: number }> {
+  const res = await httpsCallable(functions(), "startConsultCall")({ requestId: requestID });
+  const d = res.data as { room?: unknown; delivered?: unknown };
+  return {
+    room: typeof d.room === "string" ? d.room : `req-${requestID}`,
+    delivered: typeof d.delivered === "number" ? d.delivered : 0,
+  };
+}
+
+// Mints the LiveKit join token for the request's room (2h TTL, publish+subscribe).
+export async function mirrorMintCallToken(requestID: string): Promise<{ room: string; token: string }> {
+  const res = await httpsCallable(functions(), "mintCallToken")({ requestId: requestID });
+  const d = res.data as { room?: unknown; token?: unknown };
+  if (typeof d.token !== "string" || !d.token) throw new Error("mintCallToken returned no token");
+  return { room: typeof d.room === "string" ? d.room : `req-${requestID}`, token: d.token };
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, nowFlooredTo10, isPastSlot, slotsForWindow, isSlotTaken, BackendError } from "@/lib/demo/backend";
+import { isoDay, nowFlooredTo10, isPastSlot, slotsForWindow, isSlotTaken, defaultDoctorID, BackendError } from "@/lib/demo/backend";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
 import type { AppointmentLead, DaySchedule, Identity } from "@/lib/demo/types";
 
@@ -328,7 +328,6 @@ function BookConsult({ me }: { me: Identity }) {
   const [adHocDate, setAdHocDate] = useState(todayISO);
   const [adHocTime, setAdHocTime] = useState(timeLabel(nowFlooredTo10(store.now)));
 
-  // Fall back to the first available doctor so one is selectable without touching the dropdown.
   const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
   const effectiveDoctor = doctors.find((d) => d.doctorID === effectiveDoctorID) ?? null;
   const canRequestAdHoc = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
@@ -345,13 +344,24 @@ function BookConsult({ me }: { me: Identity }) {
   const adHocBlocked = adHocEmpty || adHocPast;
 
   // Discover doctors with availability (demo: local selectors; live: backend callable).
+  // The default doctor per the appointments spec — most-recently-called when pickable,
+  // never hard-coded — is resolved ONCE when the list arrives (iOS parity: a call started
+  // later in the session must not silently flip a picker the user is already looking at).
   useEffect(() => {
     let alive = true;
     store.listAvailableDoctors()
-      .then((d) => { if (alive) { setDoctors(d); setLoading(false); } })
+      .then((d) => {
+        if (!alive) return;
+        setDoctors(d);
+        setDoctorID((cur) => cur ?? defaultDoctorID(d, store.mostRecentlyCalledDoctor(me.user.id)));
+        setLoading(false);
+      })
       .catch(() => { if (alive) { setError("Could not load availability. Please retry."); setLoading(false); } });
     return () => { alive = false; };
-  }, [store]);
+    // mostRecentlyCalledDoctor is read inside intentionally: only the snapshot at list-load
+    // time matters, and the `cur ??` guard makes re-runs a no-op once a doctor is set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, me.user.id]);
 
   // The chosen doctor's open slots for the date; refetched after a booking (slotReload).
   useEffect(() => {

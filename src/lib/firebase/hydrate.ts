@@ -23,6 +23,7 @@ export interface HydrationRows {
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
+  lastCalledDoctorId?: string | null;
   slotPublications?: Row[];
   treatmentAvailability?: Row[];
   externalBusy?: Row[];
@@ -70,6 +71,8 @@ export function assembleState(rows: HydrationRows): DemoState {
   if (rows.followUpSettings) followUpSettingsByUser[rows.currentUserID] = rows.followUpSettings;
   const bookingTokensByUser: DemoState["bookingTokensByUser"] = {};
   if (rows.bookingToken) bookingTokensByUser[rows.currentUserID] = rows.bookingToken;
+  const lastCalledDoctorByUser: DemoState["lastCalledDoctorByUser"] = {};
+  if (rows.lastCalledDoctorId) lastCalledDoctorByUser[rows.currentUserID] = rows.lastCalledDoctorId;
 
   // The caller's own published auth-slot windows (slotPublications where doctorId == uid).
   const availabilityWindows: DemoState["availabilityWindows"] = {};
@@ -83,7 +86,7 @@ export function assembleState(rows: HydrationRows): DemoState {
   const externalBusyByOwner: DemoState["externalBusyByOwner"] = {};
   for (const r of rows.externalBusy ?? []) externalBusyByOwner[r.id] = mapExternalBusy(r.id, r.data);
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -120,9 +123,10 @@ async function readUserProfile(uid: string): Promise<{
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
+  lastCalledDoctorId: string | null;
 }> {
   const snap = await getDoc(doc(firestore(), "users", uid));
-  if (!snap.exists()) return { followUpSettings: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false } };
+  if (!snap.exists()) return { followUpSettings: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null };
   const d = snap.data();
   const hasFU = d.followUpEnabled !== undefined || d.followUpIntervalDays !== undefined;
   const raw = d.followUpIntervalDays;
@@ -133,7 +137,8 @@ async function readUserProfile(uid: string): Promise<{
   // onlineStatus is a "online"|"offline" string on the backend doc (the setOnlineStatus
   // callable's own schema); the client model is a plain boolean, hence the coercion here.
   const doctorStatus = { online: d.onlineStatus === "online", alwaysAcceptAuth: d.alwaysAcceptAuth === true };
-  return { followUpSettings, bookingToken, doctorStatus };
+  const lastCalledDoctorId = typeof d.lastCalledDoctorId === "string" && d.lastCalledDoctorId ? d.lastCalledDoctorId : null;
+  return { followUpSettings, bookingToken, doctorStatus, lastCalledDoctorId };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
@@ -166,6 +171,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       followUpSettings: profile.followUpSettings,
       bookingToken: profile.bookingToken,
       doctorStatus: profile.doctorStatus,
+      lastCalledDoctorId: profile.lastCalledDoctorId,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       treatmentAvailability: await readAvailability([uid]),
       externalBusy: await readExternalBusy([uid]),
@@ -244,6 +250,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     followUpSettings: profile.followUpSettings,
     bookingToken: profile.bookingToken,
     doctorStatus: profile.doctorStatus,
+    lastCalledDoctorId: profile.lastCalledDoctorId,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
     externalBusy: await readExternalBusy([uid, ...clinicIds]),
