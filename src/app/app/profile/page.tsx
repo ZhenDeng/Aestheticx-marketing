@@ -7,7 +7,8 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
-import { identityBadge, type Identity, type Role, type UserProfile } from "@/lib/demo/types";
+import { identityBadge, type AccountRecord, type Identity, type Role, type UserProfile } from "@/lib/demo/types";
+import { validateNewUser } from "@/lib/demo/userAdmin";
 import { tintStyle } from "@/lib/demo/tint";
 
 // Port of iOS ProfileView (spec: auth-accounts): own details + the identity switch.
@@ -374,17 +375,22 @@ function LiveAdminConsole() {
   );
 }
 
-function AccountRow({ account }: { account: import("@/lib/demo/types").AccountRecord }) {
+function AccountRow({ account }: { account: AccountRecord }) {
   const store = useDemoStore();
   const [reset, setReset] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resetError, setResetError] = useState<string | null>(null);
   const display = account.name || account.email || account.id;
 
+  // Await-then-setState without an unmount guard matches this file's event-handler
+  // convention (see DeleteAccount.performDelete); React treats a post-unmount set as a no-op.
   async function sendReset() {
     setReset("sending");
+    setResetError(null);
     try {
       await store.resetUserPassword(account.email);
       setReset("sent");
-    } catch {
+    } catch (e) {
+      setResetError(e instanceof Error ? e.message : String(e));
       setReset("error");
     }
   }
@@ -410,7 +416,7 @@ function AccountRow({ account }: { account: import("@/lib/demo/types").AccountRe
           onClick={() => void sendReset()}
           disabled={reset === "sending" || reset === "sent"}
           className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
-          title="Email this account a password-reset link"
+          title={resetError ?? "Email this account a password-reset link"}
         >
           {reset === "idle" && "Reset password"}
           {reset === "sending" && "Sending…"}
@@ -443,7 +449,6 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   }
 
   async function submit() {
-    const { validateNewUser } = await import("@/lib/demo/userAdmin");
     const inputPayload = { ...draft, roles };
     const invalid = validateNewUser(inputPayload);
     setMissing(invalid);
@@ -464,6 +469,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
       <span className="micro">{label}</span>
       <input
         type={extra?.type ?? "text"}
+        autoComplete={extra?.type === "password" ? "new-password" : "off"}
         value={draft[key]}
         onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
         className={`mt-1 ${input(key)}`}
@@ -482,7 +488,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
         {field("ABN", "abn")}
         {field("Business name", "businessName")}
         {field("AHPRA", "ahpra", { hint: "Required for doctors and nurses" })}
-        {field("Temporary password", "temporaryPassword", { type: "text", hint: "At least 8 characters — they change it on first login" })}
+        {field("Temporary password", "temporaryPassword", { type: "password", hint: "At least 8 characters — they change it on first login" })}
         <div>
           <span className="micro">Roles</span>
           <div className={`mt-1 flex gap-4 rounded-field border px-2.5 py-1.5 ${missing.includes("roles") ? "border-rose" : "border-line"}`}>
