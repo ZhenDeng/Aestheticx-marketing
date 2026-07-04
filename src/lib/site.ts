@@ -1,10 +1,9 @@
-// Centralised, clearly-marked placeholders. Fill these in before going live.
+// Centralised site facts.
 
-// TODO: replace with the real App Store listing URL.
+// TODO: replace with the real App Store listing URL once the app is published.
 export const APP_STORE_URL = "#app-store";
 
-// TODO: replace with the real contact email.
-export const CONTACT_EMAIL = "hello@aestheticx.com.au";
+export const CONTACT_EMAIL = "info@aestheticxgroup.com";
 
 export const PRODUCT_NAME = "AestheticX";
 

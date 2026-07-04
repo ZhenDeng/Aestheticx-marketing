@@ -26,8 +26,7 @@ const fragmentMono = Fragment_Mono({
   display: "swap",
 });
 
-// TODO: replace with the deployed production domain once known.
-const SITE_URL = "https://aestheticx-marketing.vercel.app";
+const SITE_URL = "https://www.aestheticxgroup.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
