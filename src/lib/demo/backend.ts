@@ -374,6 +374,16 @@ export function nowFlooredTo10(epochMs: number): number {
   return Math.floor((d.getUTCHours() * 60 + d.getUTCMinutes()) / 10) * 10;
 }
 
+// Whether a dateISO+minute slot is already behind "now", in the same UTC frame as
+// isoDay/nowFlooredTo10. The current floored slot counts as not-past so a "now" request
+// always passes. UI guard only — neither the demo backend nor the deployed adHocAuthTx
+// rejects past times.
+export function isPastSlot(dateISO: string, minute: number, nowMs: number): boolean {
+  const today = isoDay(nowMs);
+  if (dateISO !== today) return dateISO < today;
+  return minute < nowFlooredTo10(nowMs);
+}
+
 // --- Most-recently-called doctor (iOS recordCalledDoctor/mostRecentlyCalledDoctor parity) ---
 
 /** Recorded whenever the user starts a consult call; latest call wins. */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { requestAdHocAuth, setDoctorStatus, emptyState, BackendError, isoDay, nowFlooredTo10 } from "@/lib/demo/backend";
+import { requestAdHocAuth, setDoctorStatus, emptyState, BackendError, isoDay, nowFlooredTo10, isPastSlot } from "@/lib/demo/backend";
 import type { Identity } from "@/lib/demo/types";
 
 const me: Identity = {
@@ -40,6 +40,41 @@ describe("requestAdHocAuth", () => {
       doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, patientID: "p1", patientName: "Pat One", identity: me,
     });
     expect(appt.appointmentNote).toBe("Auth request · Nurse N");
+  });
+});
+
+describe("isPastSlot", () => {
+  // 2026-07-01T14:37Z — "now" floors to slot 14:30 on 2026-07-01 (UTC frame throughout).
+  const now = Date.UTC(2026, 6, 1, 14, 37);
+
+  it("is true for an earlier date", () => {
+    expect(isPastSlot("2026-06-30", 23 * 60 + 50, now)).toBe(true);
+  });
+
+  it("is false for a later date, even at midnight", () => {
+    expect(isPastSlot("2026-07-02", 0, now)).toBe(false);
+  });
+
+  it("is true for today at an earlier minute", () => {
+    expect(isPastSlot("2026-07-01", 14 * 60 + 20, now)).toBe(true);
+  });
+
+  it("is false for today's current floored slot (a 'now' request is never past)", () => {
+    expect(isPastSlot("2026-07-01", 14 * 60 + 30, now)).toBe(false);
+  });
+
+  it("is false for today at a later minute", () => {
+    expect(isPastSlot("2026-07-01", 14 * 60 + 40, now)).toBe(false);
+  });
+
+  it("stays in the UTC frame near a day boundary", () => {
+    // 23:10 UTC on Jul 1 — at UTC+10 the local date is already Jul 2, but the app's
+    // dateISO/minute coordinates are UTC (isoDay/nowFlooredTo10), so Jul 1 23:10 is "now",
+    // not past, and Jul 2 00:00 is the future.
+    const boundary = Date.UTC(2026, 6, 1, 23, 10);
+    expect(isPastSlot("2026-07-01", 23 * 60 + 10, boundary)).toBe(false);
+    expect(isPastSlot("2026-07-01", 23 * 60, boundary)).toBe(true);
+    expect(isPastSlot("2026-07-02", 0, boundary)).toBe(false);
   });
 });
 
