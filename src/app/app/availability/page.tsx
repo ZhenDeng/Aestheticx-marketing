@@ -420,7 +420,9 @@ function BookConsult({ me }: { me: Identity }) {
     } catch (e) {
       setError(e instanceof BackendError && e.message === "notAccepting"
         ? "That doctor isn't accepting requests right now — pick another."
-        : "Could not send the request. Please try again.");
+        : e instanceof BackendError && e.message === "slotTaken"
+          ? "That time was just taken — pick another."
+          : "Could not send the request. Please try again.");
     } finally {
       setRequesting(false);
     }

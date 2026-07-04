@@ -43,6 +43,46 @@ describe("requestAdHocAuth", () => {
   });
 });
 
+describe("requestAdHocAuth — auth-overlap rule (parity with deployed adHocAuthTx)", () => {
+  const online = () => setDoctorStatus(emptyState(), "u-voss", { online: true });
+  const request = (s: ReturnType<typeof emptyState>, atMinute: number, doctorID = "u-voss", dateISO = "2026-07-01") =>
+    requestAdHocAuth(s, { doctorID, dateISO, atMinute, patientID: "p1", patientName: "Pat One", identity: me });
+
+  it("rejects a request overlapping an existing authorisation appointment", () => {
+    const s = request(online(), 615).state; // 615–625
+    expect(() => request(s, 620)).toThrow("slotTaken"); // 620–630 overlaps
+    expect(() => request(s, 610)).toThrow("slotTaken"); // 610–620 overlaps from below
+  });
+
+  it("allows a touching (adjacent, non-overlapping) request", () => {
+    const s = request(online(), 615).state; // 615–625
+    expect(request(s, 625).appt.startMinute).toBe(625);
+  });
+
+  it("ignores cancelled authorisation appointments", () => {
+    const first = request(online(), 615);
+    const cancelled = {
+      ...first.state,
+      appointments: { [first.appt.id]: { ...first.appt, status: "cancelled" as const } },
+    };
+    expect(request(cancelled, 620).appt.startMinute).toBe(620);
+  });
+
+  it("ignores treatment appointments (auth may overlap treatment) and other doctors/days", () => {
+    let s = online();
+    s = {
+      ...s,
+      appointments: {
+        t1: { id: "t1", type: "treatment" as const, ownerID: "u-voss", dateISO: "2026-07-01", startMinute: 615, endMinute: 625, status: "confirmed" as const },
+      },
+    };
+    s = setDoctorStatus(s, "u-khan", { online: true });
+    s = request(s, 615, "u-khan").state;              // other doctor, same time — fine
+    s = request(s, 615, "u-voss", "2026-07-02").state; // other day — fine
+    expect(request(s, 615).appt.startMinute).toBe(615); // over the treatment appt — allowed
+  });
+});
+
 describe("isPastSlot", () => {
   // 2026-07-01T14:37Z — "now" floors to slot 14:30 on 2026-07-01 (UTC frame throughout).
   const now = Date.UTC(2026, 6, 1, 14, 37);

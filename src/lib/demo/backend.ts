@@ -604,6 +604,17 @@ export function isSlotTaken(state: DemoState, doctorID: string, dateISO: string,
   );
 }
 
+// Spec (double-booking rules): two authorisation appointments on the same doctor must not
+// overlap — half-open intervals, so touching is allowed; treatment appointments never block.
+// Mirrors the deployed assertNoAuthOverlapTx (AestheticX#49); subsumes isSlotTaken's exact
+// match for booking (isSlotTaken stays for the open-slot display grid).
+export function hasAuthOverlap(state: DemoState, doctorID: string, dateISO: string, startMinute: number, endMinute: number): boolean {
+  return Object.values(state.appointments).some(
+    (a) => a.type === "authSlot" && a.ownerID === doctorID && a.dateISO === dateISO && a.status !== "cancelled"
+      && startMinute < a.endMinute && a.startMinute < endMinute,
+  );
+}
+
 export function openSlotsForDoctorOnDay(state: DemoState, doctorID: string, dateISO: string): number[] {
   const open = new Set<number>();
   for (const w of Object.values(state.availabilityWindows)) {
@@ -632,7 +643,8 @@ export interface BookAuthSlotInput {
 export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { state: DemoState; appt: Appointment } {
   validateBookingPatient(input, false);
   if (!slotInAnyWindow(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("notActive");
-  if (isSlotTaken(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("slotTaken");
+  // Overlap, not just exact-slot: an off-grid ad-hoc appointment also blocks (deployed parity).
+  if (hasAuthOverlap(state, input.doctorID, input.dateISO, input.startMinute, input.startMinute + SLOT_MINUTES)) throw new BackendError("slotTaken");
   const appt: Appointment = {
     id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
     startMinute: input.startMinute, endMinute: input.startMinute + SLOT_MINUTES, status: "confirmed",
@@ -648,13 +660,14 @@ export interface RequestAdHocAuthInput {
 }
 
 // Ad-hoc (no published slot) request to an online/always-accepting doctor, for an existing
-// patient or a new-patient lead. No double-book check — an ad-hoc request targets the current
-// moment, matching the deployed adHocAuthTx, which also has none. Mirrors bookAuthSlot's
-// appointment shape (10-minute, confirmed).
+// patient or a new-patient lead. Never gated by treatment hours or published slots, but IS
+// subject to the auth-overlap rule — matching the deployed adHocAuthTx since AestheticX#49.
+// Mirrors bookAuthSlot's appointment shape (10-minute, confirmed).
 export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput): { state: DemoState; appt: Appointment } {
   validateBookingPatient(input, false);
   const status = doctorStatusForUser(state, input.doctorID);
   if (!status.online && !status.alwaysAcceptAuth) throw new BackendError("notAccepting");
+  if (hasAuthOverlap(state, input.doctorID, input.dateISO, input.atMinute, input.atMinute + SLOT_MINUTES)) throw new BackendError("slotTaken");
   const appt: Appointment = {
     id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
     startMinute: input.atMinute, endMinute: input.atMinute + SLOT_MINUTES, status: "confirmed",
