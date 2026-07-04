@@ -23,17 +23,29 @@ function isVisible(r: BillableRow, identity: Identity): boolean {
   return r.counterpartyType === "nurse" && r.counterpartyID === identity.user.id;
 }
 
-// DIVERGENCE FROM iOS (deliberate until decided; flagged 2026-07-04): the web counts
-// one Authorisation per medication ITEM, while iOS's append-only ledger records one
-// BillingEvent per approved REQUEST — a multi-item request therefore shows a higher
-// count on web than on iOS. Applies to billingSummary and customTimeframeCount alike.
-// Do not "fix" either side unilaterally; pending a cross-platform decision.
-//
-// Counts un-invoiced authorisations (line items). Doctors group by the counterparty
-// they bill; everyone else groups by the doctor billing them.
+/**
+ * One ledger row per approved REQUEST — the billingEvents grain (decided 2026-07-04:
+ * iOS is correct). approveRequest writes one authorisations doc per medication item
+ * but exactly one billingEvents doc per request; all of a request's items share
+ * requestID, counterparty, and createdAt (same transaction), so deduping on requestID
+ * reconstructs the backend's billingEvents collection without hydrating it. The ledger
+ * is append-only: buildInvoiceTx flags authorisation LINE ITEMS invoiced (per-script
+ * pricing stays per item — see invoicing.ts) but never removes a ledger event.
+ */
+function ledgerEvents(authorisations: Authorisation[]): Authorisation[] {
+  const seen = new Set<string>();
+  return authorisations.filter((a) => {
+    if (seen.has(a.requestID)) return false;
+    seen.add(a.requestID);
+    return true;
+  });
+}
+
+// Counts approved requests (billingEvents grain, append-only — see ledgerEvents).
+// Doctors group by the counterparty they bill; everyone else groups by the doctor
+// billing them.
 export function billingSummary(authorisations: Authorisation[], identity: Identity): BillingSummary {
-  const rows: BillableRow[] = authorisations
-    .filter((a) => !a.invoiced)
+  const rows: BillableRow[] = ledgerEvents(authorisations)
     .map((a) => ({
       doctorID: a.doctorID,
       counterpartyType: a.clinicID ? "clinic" : "nurse",
@@ -65,17 +77,15 @@ export function billingSummary(authorisations: Authorisation[], identity: Identi
 // Ad-hoc timeframe count for the "Custom timeframe" card, port of
 // BillingLedger.count(forDoctor:/forCounterparty:from:to:) as BillingView uses it:
 // inclusive bounds, doctor scoped by doctorID, everyone else by their counterparty
-// (clinic context -> the clinic; independent nurse -> themselves). Unlike
-// billingSummary this does NOT exclude invoiced authorisations — the iOS ledger is
-// append-only, so invoicing never removes an approval from the count. Counts ITEMS,
-// not requests — see the item-vs-request divergence note above billingSummary.
+// (clinic context -> the clinic; independent nurse -> themselves). Counts approved
+// REQUESTS on the append-only billingEvents grain — see ledgerEvents.
 export function customTimeframeCount(
   authorisations: Authorisation[],
   identity: Identity,
   fromMillis: number,
   toMillis: number,
 ): number {
-  return authorisations.filter((a) => {
+  return ledgerEvents(authorisations).filter((a) => {
     if (a.createdAt < fromMillis || a.createdAt > toMillis) return false;
     if (identity.role === "doctor") return a.doctorID === identity.user.id;
     if (identity.context.kind === "clinic") return a.clinicID === identity.context.clinic.id;

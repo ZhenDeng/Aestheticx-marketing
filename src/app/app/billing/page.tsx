@@ -22,7 +22,7 @@ export default function BillingPage() {
   const isDoctor = me.role === "doctor";
   const summary = store.billingSummary(me);
   const invoices = store.invoicesFor(me);
-  const heading = isDoctor ? "Authorisations you can bill" : "Billable to you";
+  const heading = isDoctor ? "Authorisation requests you've approved" : "Approvals billed to you";
   const partyNoun = isDoctor ? "Counterparty" : "Prescribing doctor";
 
   function openGenerate(monthKey: string, counterpartyID: string) {
@@ -36,7 +36,7 @@ export default function BillingPage() {
       <p className="mt-1 text-ink-soft">{heading}</p>
 
       <div className="mt-5 rounded-card border border-line bg-card p-5 shadow-card">
-        <span className="micro">Total billable authorisations</span>
+        <span className="micro">Total approved requests</span>
         <p className="mt-1 font-display text-4xl text-ink">{summary.totalCount}</p>
       </div>
 

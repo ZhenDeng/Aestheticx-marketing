@@ -16,16 +16,26 @@ function auth(over: Partial<Authorisation>): Authorisation {
   };
 }
 
-describe("billingSummary (authorisation-based)", () => {
-  it("a doctor sees un-invoiced auths grouped by counterparty", () => {
-    const s = billingSummary([auth({ id: "a1" }), auth({ id: "a2" })], doctor);
+describe("billingSummary (per approved request — the billingEvents grain)", () => {
+  it("a doctor sees approvals grouped by counterparty, one per request", () => {
+    const s = billingSummary([auth({ id: "a1", requestID: "r1" }), auth({ id: "a2", requestID: "r2" })], doctor);
     expect(s.totalCount).toBe(2);
     expect(s.months[0].monthKey).toBe("2026-06");
     expect(s.months[0].byParty).toEqual([{ id: LUMIERE.id, type: "clinic", count: 2 }]);
   });
-  it("excludes invoiced authorisations", () => {
-    const s = billingSummary([auth({ id: "a1", invoiced: true }), auth({ id: "a2" })], doctor);
+  it("a multi-item request counts once (one BillingEvent per approved request)", () => {
+    // Three medication items from one approval share the requestID — iOS's ledger
+    // and the backend's billingEvents doc both record a single event for them.
+    const s = billingSummary(
+      [auth({ id: "r1-0", requestID: "r1" }), auth({ id: "r1-1", requestID: "r1" }), auth({ id: "r1-2", requestID: "r1" })],
+      doctor,
+    );
     expect(s.totalCount).toBe(1);
+    expect(s.months[0].byParty).toEqual([{ id: LUMIERE.id, type: "clinic", count: 1 }]);
+  });
+  it("still counts invoiced approvals (the ledger is append-only; invoicing flags line items only)", () => {
+    const s = billingSummary([auth({ id: "a1", requestID: "r1", invoiced: true }), auth({ id: "a2", requestID: "r2" })], doctor);
+    expect(s.totalCount).toBe(2);
   });
   it("a clinic admin groups by the doctor", () => {
     const s = billingSummary([auth({ id: "a1" })], clinicAdmin);
@@ -58,38 +68,42 @@ describe("customTimeframeCount", () => {
   const jun1 = Date.UTC(2026, 5, 1);
   const jun30end = Date.UTC(2026, 5, 30, 23, 59, 59, 999);
 
-  it("a doctor counts their authorisations inside the range, boundaries inclusive", () => {
+  it("a doctor counts their approvals inside the range, boundaries inclusive", () => {
     const auths = [
-      auth({ id: "a1", createdAt: jun1 }),                        // exactly at from
-      auth({ id: "a2", createdAt: jun30end }),                    // exactly at to
-      auth({ id: "a3", createdAt: jun1 - 1 }),                    // just before from
-      auth({ id: "a4", createdAt: jun30end + 1 }),                // just after to
+      auth({ id: "a1", requestID: "r1", createdAt: jun1 }),       // exactly at from
+      auth({ id: "a2", requestID: "r2", createdAt: jun30end }),   // exactly at to
+      auth({ id: "a3", requestID: "r3", createdAt: jun1 - 1 }),   // just before from
+      auth({ id: "a4", requestID: "r4", createdAt: jun30end + 1 }), // just after to
     ];
     expect(customTimeframeCount(auths, doctor, jun1, jun30end)).toBe(2);
   });
-  it("counts invoiced authorisations (the ledger is append-only)", () => {
-    const auths = [auth({ id: "a1", invoiced: true }), auth({ id: "a2" })];
+  it("a multi-item request counts once (billingEvents grain)", () => {
+    const auths = [auth({ id: "r1-0", requestID: "r1" }), auth({ id: "r1-1", requestID: "r1" })];
+    expect(customTimeframeCount(auths, doctor, jun1, jun30end)).toBe(1);
+  });
+  it("counts invoiced approvals (the ledger is append-only)", () => {
+    const auths = [auth({ id: "a1", requestID: "r1", invoiced: true }), auth({ id: "a2", requestID: "r2" })];
     expect(customTimeframeCount(auths, doctor, jun1, jun30end)).toBe(2);
   });
   it("a doctor never counts another doctor's authorisations", () => {
     const auths = [auth({ id: "a1", doctorID: "u-other" })];
     expect(customTimeframeCount(auths, doctor, jun1, jun30end)).toBe(0);
   });
-  it("clinic-context identities count authorisations billed to their clinic", () => {
+  it("clinic-context identities count approvals billed to their clinic", () => {
     const auths = [
-      auth({ id: "a1" }),                                          // billed to Lumière
-      auth({ id: "a2", nurseID: "u-other-nurse" }),                // still the clinic's
-      auth({ id: "a3", clinicID: "c-other" }),                     // another clinic
-      auth({ id: "a4", clinicID: null }),                          // independent nurse's
+      auth({ id: "a1", requestID: "r1" }),                         // billed to Lumière
+      auth({ id: "a2", requestID: "r2", nurseID: "u-other-nurse" }), // still the clinic's
+      auth({ id: "a3", requestID: "r3", clinicID: "c-other" }),    // another clinic
+      auth({ id: "a4", requestID: "r4", clinicID: null }),         // independent nurse's
     ];
     expect(customTimeframeCount(auths, clinicAdmin, jun1, jun30end)).toBe(2);
     expect(customTimeframeCount(auths, nurseClinic, jun1, jun30end)).toBe(2);
   });
-  it("an independent nurse counts only their own nurse-billed authorisations", () => {
+  it("an independent nurse counts only their own nurse-billed approvals", () => {
     const auths = [
-      auth({ id: "a1", clinicID: null }),                          // billed to u-sarah
-      auth({ id: "a2", clinicID: null, nurseID: "u-other" }),
-      auth({ id: "a3" }),                                          // clinic-billed
+      auth({ id: "a1", requestID: "r1", clinicID: null }),         // billed to u-sarah
+      auth({ id: "a2", requestID: "r2", clinicID: null, nurseID: "u-other" }),
+      auth({ id: "a3", requestID: "r3" }),                         // clinic-billed
     ];
     expect(customTimeframeCount(auths, nurseIndep, jun1, jun30end)).toBe(1);
   });
@@ -107,7 +121,11 @@ describe("clinicBusinessStats", () => {
   }
 
   it("computes approvals, distinct patients served and repeats used over the range", () => {
-    const auths = [auth({ id: "a1" }), auth({ id: "a2" }), auth({ id: "a3", clinicID: null })];
+    const auths = [
+      auth({ id: "a1", requestID: "r1" }),
+      auth({ id: "a2", requestID: "r2" }),
+      auth({ id: "a3", requestID: "r3", clinicID: null }),
+    ];
     const usages = [
       usage({ patientID: "p1" }),
       usage({ patientID: "p1" }),  // same patient, second repeat
