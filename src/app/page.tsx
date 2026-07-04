@@ -3,6 +3,7 @@ import { Hero } from "@/components/Hero";
 import { TrustStrip } from "@/components/TrustStrip";
 import { KeyPoints } from "@/components/KeyPoints";
 import { ComplianceSection } from "@/components/ComplianceSection";
+import { ShowcaseSection } from "@/components/ShowcaseSection";
 import { WhoForSection } from "@/components/WhoForSection";
 import { FaqSection } from "@/components/FaqSection";
 import { FinalCta } from "@/components/FinalCta";
@@ -43,6 +44,7 @@ export default function Home() {
         <Hero />
         <TrustStrip />
         <KeyPoints />
+        <ShowcaseSection />
         <WhoForSection />
         <ComplianceSection />
         <FaqSection />

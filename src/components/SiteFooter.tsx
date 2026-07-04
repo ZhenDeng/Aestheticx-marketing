@@ -30,16 +30,14 @@ export function SiteFooter() {
             </ul>
             <ul className="space-y-2.5">
               <li>
-                {/* TODO: link to a real privacy policy page. */}
-                <a href="#" className="text-sm text-ink-soft hover:text-ink">
+                <Link href="/privacy" className="text-sm text-ink-soft hover:text-ink">
                   Privacy
-                </a>
+                </Link>
               </li>
               <li>
-                {/* TODO: link to a real terms page. */}
-                <a href="#" className="text-sm text-ink-soft hover:text-ink">
+                <Link href="/terms" className="text-sm text-ink-soft hover:text-ink">
                   Terms
-                </a>
+                </Link>
               </li>
               <li>
                 <a href={`mailto:${CONTACT_EMAIL}`} className="text-sm text-ink-soft hover:text-ink">
