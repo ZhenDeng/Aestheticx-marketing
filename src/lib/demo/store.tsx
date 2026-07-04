@@ -90,6 +90,12 @@ interface StoreValue {
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
   updateProfile: (edits: import("./types").UserProfileEdit, identity: Identity) => void;
+  // Super-admin console. accounts() lists the hydrated inventory (demo: the demo cast;
+  // live: every users/{uid} doc). createUser/resetUserPassword are live-only — the
+  // deployed callables are the only way to touch Auth records, so demo rejects.
+  accounts: () => ReturnType<typeof backend.accountsInventory>;
+  createUser: (input: import("./userAdmin").NewUserInput) => Promise<void>;
+  resetUserPassword: (email: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -525,6 +531,20 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       deleteForm: (patientID, formId, identity) =>
         applyAndMirror((s) => backend.deleteForm(s, patientID, formId, identity), (m) => m.mirrorDeleteForm(patientID, formId)),
       profileForUser: (userID) => backend.profileForUser(state, userID),
+      accounts: () => backend.accountsInventory(state),
+      createUser: async (input) => {
+        if (!live) throw new backend.BackendError("User creation is live-only in the demo.");
+        // Server-authoritative (like bookAuthSlot): no optimistic write — the Function
+        // creates the Auth record + users doc; rehydrate pulls the new account row.
+        const m = await import("@/lib/firebase/mirror");
+        await m.mirrorCreateUser(input);
+        setRefreshTick((t) => t + 1);
+      },
+      resetUserPassword: async (email) => {
+        if (!live) throw new backend.BackendError("Password reset is live-only in the demo.");
+        const m = await import("@/lib/firebase/mirror");
+        await m.mirrorResetUserPassword(email);
+      },
       // Own-profile edit: optimistic local merge, then a rules-checked users/{uid} merge
       // write (mirrorUpdateProfile strips the demo-only avatarDataUrl + immutable abn).
       updateProfile: (edits, identity) =>

@@ -348,6 +348,8 @@ export interface DemoState {
   lastCalledDoctorByUser: Record<string, string>;
   // users/{uid} profile fields (ahpra/abn/phone/address + avatar) keyed by user id.
   profileByUser: Record<string, UserProfile>;
+  // Super-admin account inventory (live: every users/{uid} doc; demo: the demo cast).
+  accountsByID: Record<string, AccountRecord>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---
