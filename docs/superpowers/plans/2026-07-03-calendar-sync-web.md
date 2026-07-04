@@ -24,4 +24,4 @@ Branch: `feat/calendar-sync-web`
       a clickable consent-link fallback; empty authUrl → explicit error; BusyBlocks bands
       useMemo'd; unused prop dropped) → re-review **Approve**, no new findings (one cosmetic
       note deliberately accepted: the fallback link stays visible after use — harmless)
-- [ ] 6. Docs/memory sync + PR
+- [x] 6. Docs/memory sync + PR — https://github.com/ZhenDeng/Aestheticx-marketing/pull/46
