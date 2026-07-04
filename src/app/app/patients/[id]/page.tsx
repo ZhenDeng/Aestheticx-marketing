@@ -60,6 +60,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   }
   const perms = patientPermissions(identity, patient);
   const notes = store.notesForPatient(id);
+  const openRequests = identity.role === "nurse" ? store.openRequestsForPatient(id, identity.user.id) : [];
   const active = store.activeAuthorisations(id);
   const forms = store.formsForPatient(id);
   const apptHistory = store.appointmentsForPatient(id);
@@ -270,11 +271,11 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             </Link>
           )}
 
-          {identity.role === "nurse" && store.openRequestsForPatient(id, identity.user.id).length > 0 && (
+          {openRequests.length > 0 && (
             <div className="mt-4 border-t border-line pt-4">
               <p className="micro">Open requests</p>
               <ul className="mt-2 flex flex-col gap-2">
-                {store.openRequestsForPatient(id, identity.user.id).map((r) => (
+                {openRequests.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2">
                     <span className="min-w-0 truncate text-sm text-ink-soft">{r.items.map((i) => i.name).join(", ")}</span>
                     <button onClick={() => consult.start(r.id, fullName(patient))} disabled={consult.active}

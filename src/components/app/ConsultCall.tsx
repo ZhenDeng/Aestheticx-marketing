@@ -184,9 +184,12 @@ function CallOverlay({ call, onEnd }: { call: ActiveCall; onEnd: () => void }) {
               const track = pub.track;
               if (!track) continue;
               const el = track.attach();
-              const host = track.kind === "video" ? remoteRef.current : remoteRef.current;
+              const host = remoteRef.current;
               if (host && !host.contains(el)) {
-                if (track.kind === "video") { el.className = "h-full w-full object-cover"; }
+                // Audio elements autoplay but must never render chrome over the video —
+                // hide them explicitly rather than relying on browser default styling.
+                if (track.kind === "video") el.className = "h-full w-full object-cover";
+                else el.style.display = "none";
                 host.appendChild(el);
               }
             }
