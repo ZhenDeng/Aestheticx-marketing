@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
+import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 import { identityBadge, type Identity, type Role, type UserProfile } from "@/lib/demo/types";
@@ -170,6 +171,9 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
   const liveUrl = resolved && resolved.fileId === fileId ? resolved.url : null;
 
   async function pick(file: File) {
+    // Mirror the server storage rules before reading/uploading anything.
+    const invalid = avatarFileError(file);
+    if (invalid) { setError(invalid); return; }
     setError(null);
     try {
       if (live) {

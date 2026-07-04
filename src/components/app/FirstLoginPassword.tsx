@@ -26,8 +26,15 @@ export function FirstLoginPassword() {
     try {
       await completeFirstLogin(password);
       // The gate lifts via context state; the app renders underneath.
-    } catch {
-      setError("Your password could not be set. Please check your connection and try again.");
+    } catch (e) {
+      // FirstLoginConfirmError (src/lib/firebase/auth.ts): updatePassword succeeded but
+      // the callable/token refresh didn't — the new password IS set; resubmitting only
+      // needs to finish the confirmation. Matched by name so firebase stays lazy-loaded.
+      setError(
+        e instanceof Error && e.name === "FirstLoginConfirmError"
+          ? "Your new password is saved, but confirming with the server failed — try submitting again with the same password."
+          : "Your password could not be set. Please check your connection and try again.",
+      );
       setBusy(false);
     }
   }

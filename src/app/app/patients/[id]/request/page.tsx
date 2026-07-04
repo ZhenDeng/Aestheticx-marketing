@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
@@ -159,8 +159,9 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const [lines, setLines] = useState<Line[]>([]);
   const [doctorId, setDoctorId] = useState<string>("");
   // iOS ProductPickerView loads recently-used onAppear (device-local store).
-  const [recentIds, setRecentIds] = useState<string[]>([]);
-  useEffect(() => { setRecentIds(loadRecentlyUsed()); }, []);
+  // loadRecentlyUsed is SSR-guarded (returns [] without window), so a lazy
+  // initializer is safe and avoids an effect + extra render.
+  const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentlyUsed());
 
   const doctors = useMemo(() => {
     const seen = new Set<string>();

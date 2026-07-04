@@ -71,6 +71,16 @@ describe("direction PDF", () => {
     expect(ascii(bytes)).toContain(">= 4 weeks apart");
   });
 
+  it("escapes newlines in values per the PDF spec (no raw line break inside a literal string)", () => {
+    const text = ascii(renderDirectionPdf({
+      ...complete,
+      patientAddress: "Unit 2\n14 Marra St, Bondi NSW 2026",
+    }));
+    // The content stream must carry the two-character sequence \n, not a control byte.
+    expect(text).toContain("(Unit 2\\n14 Marra St, Bondi NSW 2026)");
+    expect(text).not.toContain("Unit 2\n14 Marra St");
+  });
+
   it("names the download after the authorisation", () => {
     expect(directionPdfFilename("AUTH-7G2K-09")).toBe("AestheticX-Direction-AUTH-7G2K-09.pdf");
   });

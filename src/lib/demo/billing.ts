@@ -23,6 +23,12 @@ function isVisible(r: BillableRow, identity: Identity): boolean {
   return r.counterpartyType === "nurse" && r.counterpartyID === identity.user.id;
 }
 
+// DIVERGENCE FROM iOS (deliberate until decided; flagged 2026-07-04): the web counts
+// one Authorisation per medication ITEM, while iOS's append-only ledger records one
+// BillingEvent per approved REQUEST — a multi-item request therefore shows a higher
+// count on web than on iOS. Applies to billingSummary and customTimeframeCount alike.
+// Do not "fix" either side unilaterally; pending a cross-platform decision.
+//
 // Counts un-invoiced authorisations (line items). Doctors group by the counterparty
 // they bill; everyone else groups by the doctor billing them.
 export function billingSummary(authorisations: Authorisation[], identity: Identity): BillingSummary {
@@ -61,7 +67,8 @@ export function billingSummary(authorisations: Authorisation[], identity: Identi
 // inclusive bounds, doctor scoped by doctorID, everyone else by their counterparty
 // (clinic context -> the clinic; independent nurse -> themselves). Unlike
 // billingSummary this does NOT exclude invoiced authorisations — the iOS ledger is
-// append-only, so invoicing never removes an approval from the count.
+// append-only, so invoicing never removes an approval from the count. Counts ITEMS,
+// not requests — see the item-vs-request divergence note above billingSummary.
 export function customTimeframeCount(
   authorisations: Authorisation[],
   identity: Identity,

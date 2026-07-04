@@ -79,7 +79,10 @@ function wrapText(encoded: string, size: number, maxWidth: number, charSpace: nu
   return lines.length > 0 ? lines : [""];
 }
 
-const escapePdfString = (s: string): string => s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+// PDF literal-string escaping (spec §7.3.4.2): backslash first, then parens, then
+// EOL characters — a raw newline inside (…) would be read as part of the string.
+const escapePdfString = (s: string): string =>
+  s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
 const num = (n: number): string => n.toFixed(2).replace(/\.?0+$/, "") || "0";
 
 interface Run {

@@ -55,16 +55,33 @@ export async function mustChangePasswordForUser(user: User): Promise<boolean> {
   return tokenResult.claims.mustChangePassword === true;
 }
 
+// Thrown by completeFirstLogin when the password update SUCCEEDED but the follow-up
+// confirmation (the completeFirstLogin callable / token refresh) failed. Callers key
+// off `error.name` to tell the user their new password is already set and a retry of
+// the whole flow (updatePassword with the same password is a no-op) will finish it.
+export class FirstLoginConfirmError extends Error {
+  constructor(cause: unknown) {
+    super("Password was set, but confirming first-login completion with the server failed", { cause });
+    this.name = "FirstLoginConfirmError";
+  }
+}
+
 // First-login completion (iOS FirstLoginPasswordView flow): set the real password on the
 // Auth record, then call the deployed completeFirstLogin callable (no payload; returns
 // { ok: true }) which clears the claim + users/{uid}.mustChangePassword, then force-refresh
-// the token so the cleared claim lands locally.
+// the token so the cleared claim lands locally. Failures after the password update are
+// rethrown as FirstLoginConfirmError so the UI can distinguish "password not set" from
+// "password set, confirmation pending".
 export async function completeFirstLogin(newPassword: string): Promise<void> {
   const user = firebaseAuth().currentUser;
   if (!user) throw new Error("Not signed in");
   await updatePassword(user, newPassword);
-  await httpsCallable(functions(), "completeFirstLogin")({});
-  await user.getIdToken(true);
+  try {
+    await httpsCallable(functions(), "completeFirstLogin")({});
+    await user.getIdToken(true);
+  } catch (error) {
+    throw new FirstLoginConfirmError(error);
+  }
 }
 
 // Permanently deletes the signed-in user's Firebase Authentication account — the login

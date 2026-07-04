@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
 import type { Identity, Patient } from "@/lib/demo/types";
 
@@ -68,6 +69,9 @@ export function PatientAvatarPicker({ patient, identity, canEdit, size = 72 }: {
   if (!canEdit) return <PatientAvatar patient={patient} size={size} />;
 
   async function pick(file: File) {
+    // Mirror the server storage rules before reading/uploading anything.
+    const invalid = avatarFileError(file);
+    if (invalid) { setError(invalid); return; }
     setError(null);
     try {
       if (live) {
