@@ -10,6 +10,13 @@ type Mode = "demo" | "live";
 interface AuthValue {
   mode: Mode;
   identity: Identity | null;
+  /**
+   * False only during live-mode startup, until the first Firebase auth callback
+   * (session restored or confirmed absent). Guards must not redirect before this —
+   * a full page load of a deep /app URL would bounce to /login while the persisted
+   * session is still restoring. Demo mode resolves immediately.
+   */
+  resolved: boolean;
   /** Live mode: identities resolved for the signed-in user (may be >1). */
   availableIdentities: Identity[];
   accounts: typeof DEMO_ACCOUNTS;
@@ -32,6 +39,8 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   const mode: Mode = isFirebaseConfigured() ? "live" : "demo";
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [availableIdentities, setAvailableIdentities] = useState<Identity[]>([]);
+  // Live starts unresolved (Firebase may still be restoring a persisted session).
+  const [resolved, setResolved] = useState(mode !== "live");
   // Demo mode never gates: mustChangePassword is a live-account claim (createUser sets it).
   const [mustChangePassword, setMustChangePassword] = useState(false);
 
@@ -44,7 +53,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return; // cleanup ran before the import resolved — don't subscribe
       unsub = watchUser(async (user) => {
         if (!user) {
-          if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); }
+          if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setResolved(true); }
           return;
         }
         const [ids, mustChange] = await Promise.all([
@@ -55,6 +64,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         setAvailableIdentities(ids);
         setIdentity((cur) => cur ?? ids[0] ?? null);
         setMustChangePassword(mustChange);
+        setResolved(true);
       });
     });
     return () => { cancelled = true; unsub?.(); };
@@ -64,6 +74,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     () => ({
       mode,
       identity,
+      resolved,
       availableIdentities,
       accounts: DEMO_ACCOUNTS,
       signIn: setIdentity,
@@ -91,7 +102,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         setMustChangePassword(false);
       },
     }),
-    [mode, identity, availableIdentities, mustChangePassword],
+    [mode, identity, resolved, availableIdentities, mustChangePassword],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
