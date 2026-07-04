@@ -51,6 +51,12 @@ interface StoreValue {
   removeTreatmentBlock: (ownerID: string, blockID: string) => void;
   doctorStatusForUser: (doctorID: string) => import("./backend").DoctorStatusResult;
   setDoctorStatus: (doctorID: string, patch: Partial<import("./types").DoctorStatus>) => void;
+  mostRecentlyCalledDoctor: (userID: string) => string | null;
+  // Starts a consult on an authorisation request: records the request's doctor as
+  // most-recently-called (demo + live), then live rings the other party and mints the
+  // LiveKit join token. Demo has no transport — the caller simulates the call locally.
+  startConsult: (requestID: string, identity: Identity) =>
+    Promise<{ mode: "demo" } | { mode: "live"; room: string; token: string; delivered: number }>;
   googleCalendarAuthUrl: () => Promise<string>;
   syncGoogleCalendar: (timeZone: string, ownerID: string) => Promise<{ busyCount: number; mirrored: number }>;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
@@ -339,6 +345,23 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (s) => backend.setDoctorStatus(s, doctorID, patch),
           (m) => m.mirrorSetOnlineStatus(merged),
         );
+      },
+      mostRecentlyCalledDoctor: (userID) => backend.mostRecentlyCalledDoctor(state, userID),
+      startConsult: async (requestID, identity) => {
+        // iOS parity (CallCenter.startConsult): record the REQUEST's doctor for the active
+        // user whenever a consult starts, before the transport does anything.
+        const doctorID = state.requests[requestID]?.doctorID;
+        if (doctorID) {
+          applyAndMirror(
+            (s) => backend.recordCalledDoctor(s, identity.user.id, doctorID),
+            (m) => m.mirrorRecordCalledDoctor(identity.user.id, doctorID),
+          );
+        }
+        if (!live) return { mode: "demo" as const };
+        const m = await import("@/lib/firebase/mirror");
+        const { room, delivered } = await m.mirrorStartConsultCall(requestID);
+        const { token } = await m.mirrorMintCallToken(requestID);
+        return { mode: "live" as const, room, token, delivered };
       },
       // Google Calendar link + two-way sync (deployed callables). Demo simulates: the seed
       // already carries busy events, so a demo "sync" just reports what's there.

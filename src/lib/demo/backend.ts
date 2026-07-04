@@ -62,6 +62,7 @@ export function emptyState(): DemoState {
     treatmentAvailabilityByOwner: {},
     doctorStatusByID: {},
     externalBusyByOwner: {},
+    lastCalledDoctorByUser: {},
   };
 }
 
@@ -371,6 +372,17 @@ export function isoDay(epochMs: number): string {
 export function nowFlooredTo10(epochMs: number): number {
   const d = new Date(epochMs);
   return Math.floor((d.getUTCHours() * 60 + d.getUTCMinutes()) / 10) * 10;
+}
+
+// --- Most-recently-called doctor (iOS recordCalledDoctor/mostRecentlyCalledDoctor parity) ---
+
+/** Recorded whenever the user starts a consult call; latest call wins. */
+export function recordCalledDoctor(state: DemoState, userID: string, doctorID: string): DemoState {
+  return { ...state, lastCalledDoctorByUser: { ...state.lastCalledDoctorByUser, [userID]: doctorID } };
+}
+
+export function mostRecentlyCalledDoctor(state: DemoState, userID: string): string | null {
+  return state.lastCalledDoctorByUser[userID] ?? null;
 }
 
 export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {

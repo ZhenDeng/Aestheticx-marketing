@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
+import { useConsultCall } from "@/components/app/ConsultCall";
 
 export default function AuthorisationsPage() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
+  const consult = useConsultCall();
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
@@ -36,6 +38,10 @@ export default function AuthorisationsPage() {
                 </button>
                 <button onClick={() => store.requireEdit(r.id, identity)} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint">
                   Require edit
+                </button>
+                <button onClick={() => consult.start(r.id, r.patientSummary?.fullName)} disabled={consult.active}
+                  className="rounded-btn border border-line px-4 py-2 text-sm text-ink hover:border-tint disabled:opacity-50">
+                  Start consult
                 </button>
               </div>
             </li>
@@ -75,8 +81,14 @@ export default function AuthorisationsPage() {
               <Link href={`/app/patients/${patient.id}`} className="font-medium text-ink hover:underline">{patient.givenName} {patient.lastName}</Link>
               <span className="block text-sm text-ink-soft">{request.items.map((i) => i.name).join(", ")}</span>
             </span>
-            <span className="micro rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
-              {request.status === "needsEdit" ? "Needs edit" : "Pending"}
+            <span className="flex items-center gap-3">
+              <button onClick={() => consult.start(request.id, `${patient.givenName} ${patient.lastName}`)} disabled={consult.active}
+                className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
+                Start consult
+              </button>
+              <span className="micro rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
+                {request.status === "needsEdit" ? "Needs edit" : "Pending"}
+              </span>
             </span>
           </li>
         ))}

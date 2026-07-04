@@ -9,6 +9,7 @@ import { patientPermissions, notePreview, canSendAftercare, imageAttachments } f
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
+import { useConsultCall } from "@/components/app/ConsultCall";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
@@ -38,6 +39,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const { identity } = useDemoAuth();
   const store = useDemoStore();
+  const consult = useConsultCall();
   const [noteBody, setNoteBody] = useState("");
   const [noteAttachments, setNoteAttachments] = useState<NoteAttachment[]>([]);
   const router = useRouter();
@@ -266,6 +268,23 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             <Link href={`/app/patients/${id}/request`} className="mt-4 block w-full rounded-btn border border-line px-4 py-2 text-center text-sm text-ink hover:border-tint">
               Raise authorisation request
             </Link>
+          )}
+
+          {identity.role === "nurse" && store.openRequestsForPatient(id, identity.user.id).length > 0 && (
+            <div className="mt-4 border-t border-line pt-4">
+              <p className="micro">Open requests</p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {store.openRequestsForPatient(id, identity.user.id).map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm text-ink-soft">{r.items.map((i) => i.name).join(", ")}</span>
+                    <button onClick={() => consult.start(r.id, fullName(patient))} disabled={consult.active}
+                      className="flex-none rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
+                      Start consult
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
 
