@@ -239,6 +239,22 @@ export interface TreatmentAvailability {
   blocks: TreatmentBlock[];
 }
 
+// A busy block on a linked external calendar (Google via syncGoogleCalendar, Apple via the
+// iOS device path), expressed as absolute instants — the owner's IANA zone on the calendar
+// doc makes the local-day conversion DST-correct (mirrors backend calendarSync.ts).
+export interface ExternalBusyEvent {
+  startISO: string; // RFC3339 instant
+  endISO: string;
+  transparent?: boolean; // "free" events must not block
+  id?: string;
+}
+export interface ExternalBusyCalendar {
+  ownerID: string;
+  timeZone: string; // IANA
+  events: ExternalBusyEvent[];
+  updatedAtMillis?: number;
+}
+
 // A doctor's online/always-accept status for authorisation requests (feedback: doctor online
 // status + always-on authorisations). Independent booleans — always-accept works even while
 // offline (spec: "Always-accept overrides availability"). Absent entry -> both false.
@@ -292,6 +308,7 @@ export interface DemoState {
   availabilityWindows: Record<string, AvailabilityWindow>;
   treatmentAvailabilityByOwner: Record<string, TreatmentAvailability>;
   doctorStatusByID: Record<string, DoctorStatus>;
+  externalBusyByOwner: Record<string, ExternalBusyCalendar>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

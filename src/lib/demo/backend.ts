@@ -61,6 +61,7 @@ export function emptyState(): DemoState {
     availabilityWindows: {},
     treatmentAvailabilityByOwner: {},
     doctorStatusByID: {},
+    externalBusyByOwner: {},
   };
 }
 

@@ -5,6 +5,7 @@ import {
   mapAuthorisation,
   mapAuthRequest,
   mapAppointment,
+  mapExternalBusy,
   mapAvailabilityWindow,
   mapTreatmentAvailability,
   encodeAuthRequest,
@@ -130,6 +131,30 @@ describe("mapNote", () => {
     expect(n.attachments).toEqual([
       { fileID: "patients/p1/photos/a.png", displayName: "before.png", mimeType: "image/png" },
     ]);
+  });
+});
+
+describe("mapExternalBusy", () => {
+  it("maps events, zone, and updatedAt; drops junk entries", () => {
+    const c = mapExternalBusy("u-voss", {
+      timeZone: "Australia/Sydney",
+      updatedAt: 1750000000000,
+      events: [
+        { startISO: "2026-06-26T02:30:00Z", endISO: "2026-06-26T03:30:00Z", transparent: false, id: "e1" },
+        { startISO: "", endISO: "2026-06-26T03:30:00Z" }, // missing start — dropped
+        "junk",
+      ],
+    });
+    expect(c.ownerID).toBe("u-voss");
+    expect(c.timeZone).toBe("Australia/Sydney");
+    expect(c.updatedAtMillis).toBe(1750000000000);
+    expect(c.events).toEqual([{ startISO: "2026-06-26T02:30:00Z", endISO: "2026-06-26T03:30:00Z", transparent: false, id: "e1" }]);
+  });
+  it("defaults the zone and tolerates a missing events array", () => {
+    const c = mapExternalBusy("u-voss", {});
+    expect(c.timeZone).toBe("Australia/Sydney");
+    expect(c.events).toEqual([]);
+    expect(c.updatedAtMillis).toBeUndefined();
   });
 });
 
