@@ -338,7 +338,11 @@ function BookConsult({ me }: { me: Identity }) {
   // published slots or treatment hours). Coordinates stay in the isoDay/nowFlooredTo10 UTC frame.
   const adHocDateISO = adHocWhen === "now" ? isoDay(store.now) : adHocDate;
   const adHocMinute = adHocWhen === "now" ? nowFlooredTo10(store.now) : minutesFromTime(adHocTime);
-  const adHocPast = adHocWhen === "later" && isPastSlot(adHocDateISO, adHocMinute, store.now);
+  // A cleared time field would coerce to midnight via minutesFromTime("") — treat it as not-ready
+  // instead of past so no request can target an unintended 00:00 slot.
+  const adHocEmpty = adHocWhen === "later" && (adHocDate.trim() === "" || adHocTime.trim() === "");
+  const adHocPast = adHocWhen === "later" && !adHocEmpty && isPastSlot(adHocDateISO, adHocMinute, store.now);
+  const adHocBlocked = adHocEmpty || adHocPast;
 
   // Discover doctors with availability (demo: local selectors; live: backend callable).
   useEffect(() => {
@@ -388,7 +392,7 @@ function BookConsult({ me }: { me: Identity }) {
   // Sends an ad-hoc request ("now" or a chosen slot) for an existing patient file XOR a
   // new-patient lead.
   async function requestAdHoc(patient: { patientID: string; patientName: string } | { lead: AppointmentLead }) {
-    if (!effectiveDoctorID || adHocPast) return;
+    if (!effectiveDoctorID || adHocBlocked) return;
     setError(null);
     setRequesting(true);
     const forName = "lead" in patient
@@ -450,22 +454,22 @@ function BookConsult({ me }: { me: Identity }) {
           <p className="text-sm text-ink">Request an ad-hoc consult for…</p>
           <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-ink">
             <label className="flex items-center gap-2">
-              <input type="radio" name="adhoc-when" checked={adHocWhen === "now"} onChange={() => setAdHocWhen("now")} />
+              <input type="radio" name="adhoc-when" disabled={requesting} checked={adHocWhen === "now"} onChange={() => setAdHocWhen("now")} />
               Now
             </label>
             <label className="flex items-center gap-2">
-              <input type="radio" name="adhoc-when" checked={adHocWhen === "later"} onChange={() => setAdHocWhen("later")} />
+              <input type="radio" name="adhoc-when" disabled={requesting} checked={adHocWhen === "later"} onChange={() => setAdHocWhen("later")} />
               Pick a time
             </label>
           </div>
           {adHocWhen === "later" && (
             <div className="mt-2 flex flex-wrap items-end gap-3">
               <label className="text-sm text-ink-soft">Date
-                <input type="date" min={todayISO} value={adHocDate} onChange={(e) => setAdHocDate(e.target.value)}
+                <input type="date" min={todayISO} disabled={requesting} value={adHocDate} onChange={(e) => setAdHocDate(e.target.value)}
                   className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
               </label>
               <label className="text-sm text-ink-soft">Time
-                <input type="time" step={600} value={adHocTime} onChange={(e) => setAdHocTime(e.target.value)}
+                <input type="time" step={600} disabled={requesting} value={adHocTime} onChange={(e) => setAdHocTime(e.target.value)}
                   className="ml-2 rounded-field border border-line px-2 py-1 text-sm text-ink" />
               </label>
               {adHocPast && <p className="text-sm" style={{ color: "var(--color-rose)" }}>Pick a time that isn&apos;t in the past.</p>}
@@ -478,7 +482,7 @@ function BookConsult({ me }: { me: Identity }) {
           {adHocNewPatient ? (
             <div className="mt-2">
               <LeadFields value={adHocLeadDraft} onChange={setAdHocLeadDraft} />
-              <button disabled={requesting || adHocPast || leadFromDraft(adHocLeadDraft) === null}
+              <button disabled={requesting || adHocBlocked || leadFromDraft(adHocLeadDraft) === null}
                 onClick={() => { const lead = leadFromDraft(adHocLeadDraft); if (lead) void requestAdHoc({ lead }); }}
                 className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
                 Request for new patient
@@ -491,7 +495,7 @@ function BookConsult({ me }: { me: Identity }) {
               <ul className="mt-1 flex flex-col gap-1">
                 {adHocMatches.map((p) => (
                   <li key={p.id}>
-                    <button disabled={requesting || adHocPast} onClick={() => requestAdHoc({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
+                    <button disabled={requesting || adHocBlocked} onClick={() => requestAdHoc({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
                       className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint disabled:opacity-50">
                       {p.givenName} {p.lastName}
                     </button>
