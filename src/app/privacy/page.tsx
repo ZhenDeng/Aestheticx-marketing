@@ -90,8 +90,9 @@ export default function Privacy() {
                   confirmed-appointment details — and can be unlinked at any time.
                 </li>
                 <li>
-                  Video consults are carried over LiveKit; calls are transported for the
-                  session and are not recorded by {PRODUCT_NAME}.
+                  Video consults — whether started from the iOS app or a signed-in browser —
+                  are carried over LiveKit; calls are transported for the session and are not
+                  recorded by {PRODUCT_NAME}.
                 </li>
               </ul>
             </section>
