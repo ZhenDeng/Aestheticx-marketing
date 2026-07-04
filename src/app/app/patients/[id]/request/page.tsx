@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
@@ -11,6 +11,10 @@ import {
   categoryDisplayName, productsInCategory, brandsInCategory, productsInBrand,
   searchProducts, productLabel, treatmentAreasFor, quantityCaption, unitSuffix, type CatalogProduct,
 } from "@/lib/demo/catalog";
+import {
+  loadRecentlyUsed, recordRecentlyUsedProduct, resolveRecentlyUsed,
+  composeOtherDosage, splitCustomAreas,
+} from "@/lib/demo/requestBuilder";
 
 const CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf"];
 
@@ -18,6 +22,67 @@ type Line = { key: string; item: MedicationItem };
 
 function itemFromProduct(p: CatalogProduct): MedicationItem {
   return { name: p.name, dosage: "", category: p.category, brand: p.brand, unit: p.unit, areas: [] };
+}
+
+// iOS "Other / compounded medication": MedicationItem(name: "", dosage: "", category: .other)
+// — Swift init defaults unit to .freeText.
+function emptyOtherItem(): MedicationItem {
+  return { name: "", dosage: "", category: "other", unit: "freeText", areas: [] };
+}
+
+// Free-text editor for the "other" category — port of iOS LineItemEditorView's
+// isOther branch: name / dosage / route of administration / treatment area, no timing.
+// Route folds into dosage as "dose · route"; areas come from the comma-split area text.
+function OtherLineEditor({ line, onChange, onRemove }: {
+  line: Line;
+  onChange: (item: MedicationItem) => void;
+  onRemove: () => void;
+}) {
+  const { item } = line;
+  const [dose, setDose] = useState(item.dosage);
+  const [route, setRoute] = useState("");
+  const [areaText, setAreaText] = useState(item.areas.join(", "));
+
+  function update(next: { dose?: string; route?: string; areaText?: string }) {
+    const d = next.dose ?? dose;
+    const r = next.route ?? route;
+    const a = next.areaText ?? areaText;
+    if (next.dose !== undefined) setDose(next.dose);
+    if (next.route !== undefined) setRoute(next.route);
+    if (next.areaText !== undefined) setAreaText(next.areaText);
+    onChange({ ...item, dosage: composeOtherDosage(d, r), areas: splitCustomAreas(a) });
+  }
+
+  return (
+    <div className="rounded-inner border border-line p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-ink">Other / compounded medication</p>
+        <button type="button" onClick={onRemove} className="text-sm text-ink-soft hover:text-ink">Remove</button>
+      </div>
+      <label className="mt-3 block">
+        <span className="micro">Medication name</span>
+        <input value={item.name} onChange={(e) => onChange({ ...item, name: e.target.value })}
+          className="mt-1 w-full rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+      </label>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <label className="block">
+          <span className="micro">Dosage</span>
+          <input value={dose} onChange={(e) => update({ dose: e.target.value })}
+            className="mt-1 w-40 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+        </label>
+        <label className="block">
+          <span className="micro">Route of administration</span>
+          <input value={route} onChange={(e) => update({ route: e.target.value })}
+            placeholder="e.g. topical" className="mt-1 w-48 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+        </label>
+      </div>
+      <label className="mt-3 block">
+        <span className="micro">Treatment area</span>
+        <input value={areaText} onChange={(e) => update({ areaText: e.target.value })}
+          placeholder="Type a custom area" className="mt-1 w-full rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+      </label>
+    </div>
+  );
 }
 
 function LineEditor({ line, onChange, onRemove }: {
@@ -93,6 +158,9 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [doctorId, setDoctorId] = useState<string>("");
+  // iOS ProductPickerView loads recently-used onAppear (device-local store).
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  useEffect(() => { setRecentIds(loadRecentlyUsed()); }, []);
 
   const doctors = useMemo(() => {
     const seen = new Set<string>();
@@ -121,9 +189,16 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const chosenDoctor = doctorId || defaultDoctor;
   const brands = brandsInCategory(category);
   const results = query.trim() ? searchProducts(query) : [];
+  const recent = resolveRecentlyUsed(recentIds);
 
   function addProduct(p: CatalogProduct) {
+    // iOS records at pick time (ProductPickerView.pick), not on submit.
+    setRecentIds(recordRecentlyUsedProduct(p.id));
     setLines((ls) => [...ls, { key: crypto.randomUUID(), item: itemFromProduct(p) }]);
+  }
+  function addOther() {
+    // iOS's "Other / compounded medication" bypasses the recently-used store.
+    setLines((ls) => [...ls, { key: crypto.randomUUID(), item: emptyOtherItem() }]);
   }
   function updateLine(key: string, item: MedicationItem) {
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, item } : l)));
@@ -132,7 +207,11 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     setLines((ls) => ls.filter((l) => l.key !== key));
   }
 
-  const canSubmit = lines.length > 0 && lines.every((l) => l.item.dosage.trim()) && !!chosenDoctor;
+  // iOS drops nameless items at submit and blocks on missing dosage; the web keeps
+  // it stricter-but-simpler: every line must have a name and a dosage.
+  const canSubmit = lines.length > 0
+    && lines.every((l) => l.item.name.trim() && l.item.dosage.trim())
+    && !!chosenDoctor;
 
   function submit() {
     if (!canSubmit) return;
@@ -162,6 +241,19 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
         </ul>
       ) : (
         <>
+          {recent.length > 0 && (
+            <div className="mt-3">
+              <span className="micro">Recently used</span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {recent.map((p) => (
+                  <button key={p.id} type="button" onClick={() => addProduct(p)}
+                    className="rounded-btn border border-line bg-card px-2.5 py-1 text-xs text-ink hover:border-tint">
+                    {productLabel(p)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-1.5">
             {CATEGORIES.map((c) => (
               <button key={c} type="button" onClick={() => { setCategory(c); setBrand(null); }}
@@ -193,12 +285,18 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
               </>
             )}
           </div>
+          <button type="button" onClick={addOther}
+            className="mt-3 w-full rounded-inner border border-dashed border-line bg-card px-3 py-2 text-left text-sm text-ink-soft hover:border-tint hover:text-ink">
+            Other / compounded medication
+          </button>
         </>
       )}
 
       <h2 className="mt-8 font-display text-xl text-ink">Request items</h2>
       <div className="mt-3 flex flex-col gap-3">
-        {lines.map((l) => (
+        {lines.map((l) => l.item.category === "other" ? (
+          <OtherLineEditor key={l.key} line={l} onChange={(item) => updateLine(l.key, item)} onRemove={() => removeLine(l.key)} />
+        ) : (
           <LineEditor key={l.key} line={l} onChange={(item) => updateLine(l.key, item)} onRemove={() => removeLine(l.key)} />
         ))}
         {lines.length === 0 && <p className="text-sm text-ink-soft">No products added yet.</p>}
