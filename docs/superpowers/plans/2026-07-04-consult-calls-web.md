@@ -21,5 +21,12 @@ Branch: `feat/consult-calls-web`
       pending card): overlay rings → simulated in-call with timer → End call closes; no
       console errors. Live LiveKit/signal path is code-reviewed but needs manual live-mode
       verification (two signed-in parties) — noted in the PR.
-- [ ] 6. Engineer review; fix findings
-- [ ] 7. Docs/memory sync + PR
+- [x] 6. Engineer review; fix findings (no CRITICAL/HIGH; MEDIUMs fixed in e05a4d4: audio
+      elements attach hidden, openRequests hoisted; decline's best-effort signal delete kept
+      as documented)
+- [x] 7. Rider: doctor-defaults-to-most-recently-called (design:
+      `2026-07-04-doctor-default-most-recent-design.md`) — `defaultDoctorID` + snapshot-once
+      wiring in BookConsult (74ed796); focused review found one MEDIUM (live re-default could
+      flip the picker mid-session) fixed in 56f6f62 by resolving the default once at
+      doctors-list load
+- [x] 8. Docs/memory sync + PR
