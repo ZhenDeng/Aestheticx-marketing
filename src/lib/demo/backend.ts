@@ -162,6 +162,43 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
   }
 }
 
+// --- Doctor patient-list split (port of DoctorPatientList + PatientListView.split) ---
+
+// Splits the doctor's visible patients into the ones they own (owner == doctor(doctorID))
+// and the rest, preserving input order (port of DoctorPatientList.partition).
+export function partitionPatients(patients: Patient[], doctorID: string): { own: Patient[]; others: Patient[] } {
+  const own: Patient[] = [];
+  const others: Patient[] = [];
+  for (const p of patients) {
+    if (p.owner.kind === "doctor" && p.owner.id === doctorID) own.push(p);
+    else others.push(p);
+  }
+  return { own, others };
+}
+
+// Under a doctor account the list is split into the doctor's own patients and everything
+// else (grouped on a subpage). Other roles keep one combined list (PatientListView.split).
+export function splitPatients(patients: Patient[], identity: Identity): { own: Patient[]; others: Patient[] } {
+  if (identity.role !== "doctor") return { own: patients, others: [] };
+  return partitionPatients(patients, identity.user.id);
+}
+
+// Groups the "other" patients by a display label (clinic or nurse name), returning groups
+// sorted by key with each bucket's input order preserved (port of DoctorPatientList.grouped;
+// numeric-aware sort matches Swift's localizedStandardCompare).
+export function groupPatientsByOwner(
+  others: Patient[], label: (owner: PatientOwner) => string,
+): { key: string; patients: Patient[] }[] {
+  const buckets = new Map<string, Patient[]>();
+  for (const p of others) {
+    const key = label(p.owner);
+    buckets.set(key, [...(buckets.get(key) ?? []), p]);
+  }
+  return [...buckets.keys()]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .map((key) => ({ key, patients: buckets.get(key) ?? [] }));
+}
+
 export function visiblePatients(state: DemoState, identity: Identity): Patient[] {
   return Object.values(state.patients)
     .filter((p) => patientPermissions(identity, p).canView)
@@ -1129,6 +1166,30 @@ export function updatePatient(state: DemoState, patient: Patient, identity: Iden
   if (!patientPermissions(identity, existing).canEditDetails) throw new BackendError("notPermitted");
   const merged: Patient = { ...patient, owner: existing.owner, prescribingDoctorIDs: existing.prescribingDoctorIDs };
   return { ...state, patients: { ...state.patients, [patient.id]: merged } };
+}
+
+// Which avatar representation is being set: the live Storage object key, the demo-only
+// inline preview bytes, or both (only provided keys are applied).
+export interface PatientAvatarEdit {
+  avatarFileId?: string;
+  avatarDataUrl?: string;
+}
+
+// Sets the patient photo (spec: patient-records — PatientAvatarPicker). Gated on
+// canEditDetails, exactly like updatePatient — iOS routes the picked photo through
+// InMemoryBackend.updatePatient, which enforces the same permission.
+export function setPatientAvatar(
+  state: DemoState, patientID: string, avatar: PatientAvatarEdit, identity: Identity,
+): DemoState {
+  const existing = state.patients[patientID];
+  if (!existing) throw new BackendError("notFound");
+  if (!patientPermissions(identity, existing).canEditDetails) throw new BackendError("notPermitted");
+  const next: Patient = {
+    ...existing,
+    ...(avatar.avatarFileId !== undefined ? { avatarFileId: avatar.avatarFileId } : {}),
+    ...(avatar.avatarDataUrl !== undefined ? { avatarDataUrl: avatar.avatarDataUrl } : {}),
+  };
+  return { ...state, patients: { ...state.patients, [patientID]: next } };
 }
 
 export function deletePatient(state: DemoState, id: string, identity: Identity): DemoState {

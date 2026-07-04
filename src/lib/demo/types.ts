@@ -71,6 +71,12 @@ export interface Patient {
   currentMedications: string;
   owner: PatientOwner;
   prescribingDoctorIDs: string[];
+  // Patient photo (spec: patient-records — monogram until one is uploaded). Mirrors iOS
+  // Patient.avatarFileID / the patient doc's `avatarFileId`: a Storage object key under
+  // patients/{id}/** minted fresh per upload (iOS mints a new fileID per pick too).
+  avatarFileId?: string;
+  // Demo only: inline preview bytes (no Storage in demo) — never encoded to Firestore.
+  avatarDataUrl?: string;
   alert?: string;
   preferredName?: string;
 }

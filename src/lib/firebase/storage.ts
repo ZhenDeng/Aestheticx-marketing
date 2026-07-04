@@ -40,3 +40,15 @@ export async function uploadUserAvatar(uid: string, blob: Blob, mimeType: string
   await uploadBytes(ref(storage(), path), blob, { contentType: mimeType });
   return path;
 }
+
+// The patient's photo (spec: patient-records). Lives under patients/{id}/** — the
+// catch-all patient path allows image uploads (<25MB) by a patientVisible user; the
+// app additionally gates the picker on canEditDetails, like iOS. A fresh object key
+// is minted per upload (iOS mints a new fileID per pick), so the recorded
+// patients/{id}.avatarFileId change re-resolves everywhere without cache tricks.
+export async function uploadPatientAvatar(patientID: string, blob: Blob, mimeType: string): Promise<string> {
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const path = `patients/${patientID}/avatar/${crypto.randomUUID()}.${ext}`;
+  await uploadBytes(ref(storage(), path), blob, { contentType: mimeType });
+  return path;
+}

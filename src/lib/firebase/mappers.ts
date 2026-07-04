@@ -80,6 +80,7 @@ export function mapPatient(id: string, data: Doc): Patient {
     currentMedications: str(data.currentMedications),
     owner: mapOwner(data),
     prescribingDoctorIDs: strArray(data.prescribingDoctorIds),
+    avatarFileId: typeof data.avatarFileId === "string" && data.avatarFileId ? data.avatarFileId : undefined,
     alert: typeof data.alert === "string" ? data.alert : undefined,
     preferredName: typeof data.preferredName === "string" ? data.preferredName : undefined,
   };
@@ -304,6 +305,9 @@ function patientCore(p: Patient): Doc {
     givenName: p.givenName, lastName: p.lastName, dateOfBirth: formatDob(p.dateOfBirth),
     gender: p.gender, address: p.address, phone: p.phone, email: p.email,
     allergies: p.allergies, currentMedications: p.currentMedications,
+    // iOS LiveBackend.encode always carries the avatar key; the demo-only
+    // avatarDataUrl preview bytes never reach Firestore.
+    avatarFileId: p.avatarFileId ?? null,
     alert: p.alert ?? null, preferredName: p.preferredName ?? null,
   };
 }

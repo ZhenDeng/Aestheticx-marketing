@@ -4,8 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { canCreatePatient } from "@/lib/demo/backend";
-import { displayName, hasAlert } from "@/lib/demo/types";
+import { canCreatePatient, splitPatients } from "@/lib/demo/backend";
+import { PatientRow } from "@/components/app/PatientRow";
 
 export default function PatientsPage() {
   const { identity } = useDemoAuth();
@@ -16,6 +16,9 @@ export default function PatientsPage() {
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   const results = store.searchPatients(query, identity);
+  // Under a doctor account the list splits into the doctor's own patients and
+  // everything else, grouped on a subpage (iOS PatientListView.split).
+  const { own, others } = splitPatients(results, identity);
 
   return (
     <div>
@@ -34,26 +37,31 @@ export default function PatientsPage() {
         className="mt-5 w-full rounded-field border border-line bg-card px-4 py-2.5 text-ink outline-none focus:border-tint"
       />
 
-      <ul className="mt-5 divide-y divide-line overflow-hidden rounded-card border border-line">
-        {results.map((p) => (
-          <li key={p.id}>
-            <Link href={`/app/patients/${p.id}`} className="flex items-center justify-between gap-4 bg-card px-5 py-4 transition-colors hover:bg-line-soft">
-              <span className="min-w-0">
-                <span className="block font-medium text-ink">{displayName(p)}</span>
-                <span className="block truncate text-sm text-ink-soft">
-                  {p.dateOfBirth.day}/{p.dateOfBirth.month}/{p.dateOfBirth.year} · {p.phone}
-                </span>
-              </span>
-              {hasAlert(p) && (
-                <span className="micro flex-none rounded-full px-2 py-0.5" style={{ background: "var(--color-rose-soft)", color: "var(--color-rose)" }}>
-                  Alert
-                </span>
-              )}
-            </Link>
-          </li>
-        ))}
-        {results.length === 0 && <li className="bg-card px-5 py-6 text-center text-sm text-ink-soft">No patients match.</li>}
-      </ul>
+      {own.length === 0 && others.length > 0 ? (
+        // iOS parity: with only other-owned patients visible, say so instead of an empty card.
+        <p className="mt-5 text-sm text-ink-soft">
+          {query ? "No matches in your own patients." : "You have no patients of your own yet."}
+        </p>
+      ) : (
+        <ul className="mt-5 divide-y divide-line overflow-hidden rounded-card border border-line">
+          {own.map((p) => <li key={p.id}><PatientRow patient={p} /></li>)}
+          {own.length === 0 && <li className="bg-card px-5 py-6 text-center text-sm text-ink-soft">No patients match.</li>}
+        </ul>
+      )}
+
+      {others.length > 0 && (
+        // Entry point to the doctor's "Other patients" subpage (clinic/nurse-owned).
+        <Link href="/app/patients/other" className="mt-4 flex items-center gap-4 rounded-card border border-line bg-card px-5 py-4 transition-colors hover:border-tint/50">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-ink">Other patients</span>
+            <span className="block text-sm text-ink-soft">Grouped by clinic &amp; nurse</span>
+          </span>
+          <span className="micro flex-none rounded-full px-2.5 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
+            {others.length}
+          </span>
+          <span aria-hidden className="flex-none text-ink-soft">›</span>
+        </Link>
+      )}
     </div>
   );
 }

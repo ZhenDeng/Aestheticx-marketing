@@ -9,6 +9,7 @@ import { patientPermissions, notePreview, canSendAftercare, imageAttachments } f
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
+import { PatientAvatarPicker } from "@/components/app/PatientAvatar";
 import { useConsultCall } from "@/components/app/ConsultCall";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
@@ -98,10 +99,16 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
     <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
       <div>
         <Link href="/app/patients" className="text-sm text-ink-soft hover:text-ink">← All patients</Link>
-        <h1 className="mt-3 font-display text-3xl text-ink">{displayName(patient)}</h1>
-        <p className="mt-1 text-ink-soft">
-          {patient.dateOfBirth.day}/{patient.dateOfBirth.month}/{patient.dateOfBirth.year} · {patient.gender} · {patient.phone}
-        </p>
+        <div className="mt-3 flex items-center gap-4">
+          {/* iOS: 72pt avatar on the file header; tap-to-upload when details are editable. */}
+          <PatientAvatarPicker patient={patient} identity={me} canEdit={perms.canEditDetails} size={72} />
+          <div className="min-w-0">
+            <h1 className="font-display text-3xl text-ink">{displayName(patient)}</h1>
+            <p className="mt-1 text-ink-soft">
+              {patient.dateOfBirth.day}/{patient.dateOfBirth.month}/{patient.dateOfBirth.year} · {patient.gender} · {patient.phone}
+            </p>
+          </div>
+        </div>
 
         {hasAlert(patient) && (
           <div className="mt-4 rounded-inner border-l-4 px-4 py-3" style={{ borderColor: "var(--color-rose)", background: "var(--color-rose-soft)" }}>

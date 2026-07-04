@@ -74,6 +74,7 @@ interface StoreValue {
   linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
+  setPatientAvatar: (patientID: string, avatar: backend.PatientAvatarEdit, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
   mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
   formsForPatient: (patientID: string) => ReturnType<typeof backend.formsForPatient>;
@@ -497,6 +498,15 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       },
       updatePatient: (patient, identity) =>
         applyAndMirror((s) => backend.updatePatient(s, patient, identity), (m) => m.mirrorUpdatePatient(patient)),
+      // Patient photo: optimistic local set, then a single-field patients/{id} update.
+      // A demo-only dataUrl set has nothing to persist (never written to Firestore).
+      setPatientAvatar: (patientID, avatar, identity) =>
+        applyAndMirror(
+          (s) => backend.setPatientAvatar(s, patientID, avatar, identity),
+          (m) => avatar.avatarFileId !== undefined
+            ? m.mirrorSetPatientAvatar(patientID, avatar.avatarFileId)
+            : Promise.resolve(),
+        ),
       deletePatient: (id, identity) =>
         applyAndMirror((s) => backend.deletePatient(s, id, identity), (m) => m.mirrorDeletePatient(id)),
       mergePatients: (keepId, removeId, identity) =>

@@ -92,6 +92,12 @@ export async function mirrorUpdatePatient(p: Patient): Promise<void> {
 export async function mirrorDeletePatient(id: string): Promise<void> {
   await deleteDoc(doc(firestore(), "patients", id));
 }
+// Avatar set: a single-field patient doc update (rules allow it — only
+// prescribingDoctorIds/ownerType/ownerId are locked), mirroring how iOS records
+// the freshly stored fileID on the patient via updatePatient.
+export async function mirrorSetPatientAvatar(patientID: string, avatarFileId: string): Promise<void> {
+  await updateDoc(doc(firestore(), "patients", patientID), { avatarFileId });
+}
 // Deferred backend: the live merge runs server-side in the `mergePatients` callable, which
 // must re-point the removed file's relational docs onto the kept file — including
 // `appointments` (set patientId = keepId and refresh the denormalised patientName to the
