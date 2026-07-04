@@ -3,11 +3,12 @@
 
 const FALLBACK = "/app/dashboard";
 
-// True only for same-origin in-app paths: "/app..." with a single leading slash.
-// "//host", "http(s)://", and backslash tricks all fail the prefix test, so a
-// crafted ?next= can never redirect off-site (open-redirect guard).
+// True only for same-origin in-app paths. The "/app" prefix requirement alone is the
+// open-redirect guard: "//host", "http(s)://", and control-char tricks all fail it
+// (allow-list, not block-list). Backslashes are rejected because some browsers treat
+// "\" as "/" when resolving URLs.
 function isInAppPath(path: string): boolean {
-  return (path === "/app" || path.startsWith("/app/")) && !path.startsWith("//") && !path.includes("\\");
+  return (path === "/app" || path.startsWith("/app/")) && !path.includes("\\");
 }
 
 /** The post-login destination: the requested in-app path, or the dashboard. */
