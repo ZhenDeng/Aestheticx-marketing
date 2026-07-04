@@ -91,6 +91,11 @@ export interface Permissions {
   canWriteTreatmentNote: boolean;
   canSendForms: boolean;
   canViewBusinessStats: boolean;
+  // Separate from canWriteGeneralNote: a prescriber-only doctor (patient not under their
+  // name) loses general-note visibility entirely, but super admin still inspects
+  // everything despite never writing (spec: clinical-notes "Note-kind visibility for
+  // prescriber-only doctors").
+  canViewGeneralNotes: boolean;
 }
 
 function perms(p: Partial<Permissions>): Permissions {
@@ -103,6 +108,7 @@ function perms(p: Partial<Permissions>): Permissions {
     canWriteTreatmentNote: false,
     canSendForms: false,
     canViewBusinessStats: false,
+    canViewGeneralNotes: false,
     ...p,
   };
 }
@@ -113,7 +119,7 @@ function contextClinicID(identity: Identity): string | null {
 
 export function patientPermissions(identity: Identity, patient: Patient): Permissions {
   if (identity.role === "superAdmin") {
-    return perms({ canView: true, canViewBusinessStats: true });
+    return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true });
   }
   const userID = identity.user.id;
   const isPrescriber = identity.role === "doctor" && patient.prescribingDoctorIDs.includes(userID);
@@ -121,31 +127,33 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
   switch (patient.owner.kind) {
     case "doctor":
       if (identity.role === "doctor" && identity.context.kind === "independent" && userID === patient.owner.id) {
-        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true });
+        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true });
       }
       return perms({});
     case "nurse":
       if (identity.role === "nurse" && identity.context.kind === "independent" && userID === patient.owner.id) {
-        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true });
+        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true });
       }
       if (isPrescriber) {
-        return perms({ canView: true, canWriteGeneralNote: true, canWriteTreatmentNote: true });
+        // Prescribing doctors see the file and write treatment notes under it — the
+        // patient isn't under their name, so general notes stay off-limits.
+        return perms({ canView: true, canWriteTreatmentNote: true });
       }
       return perms({});
     case "clinic":
       if (contextClinicID(identity) === patient.owner.id) {
         switch (identity.role) {
           case "clinicAdmin":
-            return perms({ canView: true, canEditDetails: true, canDelete: true, canMerge: true, canWriteGeneralNote: true, canSendForms: true, canViewBusinessStats: true });
+            return perms({ canView: true, canEditDetails: true, canDelete: true, canMerge: true, canWriteGeneralNote: true, canSendForms: true, canViewBusinessStats: true, canViewGeneralNotes: true });
           case "doctor":
           case "nurse":
-            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true });
+            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true });
           default:
-            return perms({ canView: true, canViewBusinessStats: true });
+            return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true });
         }
       }
       if (isPrescriber) {
-        return perms({ canView: true, canWriteGeneralNote: true, canWriteTreatmentNote: true });
+        return perms({ canView: true, canWriteTreatmentNote: true });
       }
       return perms({});
   }
@@ -321,6 +329,18 @@ function canUseAuthorisation(a: Authorisation, identity: Identity): boolean {
 
 export function notesForPatient(state: DemoState, patientID: string): Note[] {
   return [...(state.notesByPatient[patientID] ?? [])].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+// The note stream as one identity sees it (port of InMemoryBackend.notes(forPatient:as:)):
+// without canViewGeneralNotes only treatment notes remain — general notes AND aftercare
+// records are hidden from a prescriber-only doctor.
+export function visibleNotesForPatient(state: DemoState, patientID: string, identity: Identity): Note[] {
+  const patient = state.patients[patientID];
+  if (!patient) return [];
+  const permissions = patientPermissions(identity, patient);
+  if (!permissions.canView) return [];
+  const notes = notesForPatient(state, patientID);
+  return permissions.canViewGeneralNotes ? notes : notes.filter((n) => n.kind === "treatment");
 }
 
 // List-row text: the title if present, else the body's first line + "…".

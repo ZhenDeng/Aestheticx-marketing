@@ -19,6 +19,7 @@ interface StoreValue {
   rehydrate: () => void;
   searchPatients: (query: string, identity: Identity) => ReturnType<typeof backend.searchPatients>;
   notesForPatient: (patientID: string) => ReturnType<typeof backend.notesForPatient>;
+  visibleNotesForPatient: (patientID: string, identity: Identity) => ReturnType<typeof backend.visibleNotesForPatient>;
   activeAuthorisations: (patientID: string) => ReturnType<typeof backend.activeAuthorisations>;
   pendingRequestsForDoctor: (doctorID: string) => ReturnType<typeof backend.pendingRequestsForDoctor>;
   openRequestsForPatient: (patientID: string, nurseID: string) => ReturnType<typeof backend.openRequestsForPatient>;
@@ -164,6 +165,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       rehydrate: () => setRefreshTick((t) => t + 1),
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
+      visibleNotesForPatient: (pid, id) => backend.visibleNotesForPatient(state, pid, id),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
       billingSummary: (id) => billing.billingSummary(Object.values(state.authorisations), id),
       invoicesFor: (id) => invoicing.invoicesFor(state.invoices, id),

@@ -59,7 +59,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
     return <p className="text-ink-soft">This patient is not in your view.</p>;
   }
   const perms = patientPermissions(identity, patient);
-  const notes = store.notesForPatient(id);
+  // As this viewer sees it: a prescriber-only doctor gets treatment notes only.
+  const notes = store.visibleNotesForPatient(id, identity);
   const openRequests = identity.role === "nurse" ? store.openRequestsForPatient(id, identity.user.id) : [];
   const active = store.activeAuthorisations(id);
   const forms = store.formsForPatient(id);

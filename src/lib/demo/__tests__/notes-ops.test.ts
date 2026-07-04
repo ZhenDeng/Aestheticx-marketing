@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyState, recordAftercareSend, canSendAftercare, usableAuthorisations, notePreview,
-  notesForPatient, saveGeneralNote, saveTreatmentNote, isImageAttachment, imageAttachments,
+  notesForPatient, visibleNotesForPatient, patientPermissions,
+  saveGeneralNote, saveTreatmentNote, isImageAttachment, imageAttachments,
   BackendError,
 } from "@/lib/demo/backend";
 import type { DemoState, Identity, Note, NoteAttachment, Patient } from "@/lib/demo/types";
@@ -138,5 +139,81 @@ describe("usableAuthorisations", () => {
   it("returns an array (no usable authorisations in an empty state)", () => {
     const state = stateWith(nursePatient("p1", "u-sarah"));
     expect(usableAuthorisations(state, "p1", nurse, Date.now())).toEqual([]);
+  });
+});
+
+// Spec (clinical-notes — note-kind visibility for prescriber-only doctors): a doctor who
+// can view a file ONLY via prescribingDoctorIDs loses general-note visibility entirely
+// (and never writes general notes — the patient isn't under their name); every other
+// viewing identity keeps it, including the read-only super admin.
+describe("note-kind visibility for prescriber-only doctors", () => {
+  const drVoss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
+  const superAdmin: Identity = { user: { id: "u-root", name: "Platform Admin" }, role: "superAdmin", context: { kind: "independent" } };
+  const clinicNurse: Identity = {
+    user: { id: "u-mei", name: "Mei Tan" }, role: "nurse",
+    context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+  };
+  const clinicAdmin: Identity = {
+    user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin",
+    context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+  };
+
+  const baseNote: Omit<Note, "id" | "kind" | "createdAt"> = {
+    patientID: "p1", title: "", body: "b", authorID: "u-sarah", authorBadge: "RN",
+    consumedAuthorisationIDs: [], medications: [],
+  };
+  // One note of each kind, oldest first — the stream must come back newest first.
+  const allKinds: Note[] = [
+    { ...baseNote, id: "n-gen", kind: "general", createdAt: 1 },
+    { ...baseNote, id: "n-trt", kind: "treatment", createdAt: 2 },
+    { ...baseNote, id: "n-aft", kind: "aftercareRecord", createdAt: 3 },
+  ];
+  function stateWithNotes(patient: Patient): DemoState {
+    return { ...stateWith(patient), notesByPatient: { [patient.id]: allKinds } };
+  }
+
+  it("denies a prescriber-only doctor general-note visibility AND general-note write", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), prescribingDoctorIDs: ["u-voss"] };
+    const perms = patientPermissions(drVoss, p);
+    expect(perms.canView).toBe(true);
+    expect(perms.canWriteTreatmentNote).toBe(true);
+    expect(perms.canViewGeneralNotes).toBe(false);
+    expect(perms.canWriteGeneralNote).toBe(false); // patient isn't under their name
+  });
+
+  it("denies the same on another clinic's patient reached only via prescribing", () => {
+    const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-other" }, prescribingDoctorIDs: ["u-voss"] };
+    const perms = patientPermissions(drVoss, p);
+    expect(perms.canViewGeneralNotes).toBe(false);
+    expect(perms.canWriteGeneralNote).toBe(false);
+    expect(perms.canWriteTreatmentNote).toBe(true);
+  });
+
+  it("shows a prescriber-only doctor treatment notes only (general + aftercare hidden)", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), prescribingDoctorIDs: ["u-voss"] };
+    expect(visibleNotesForPatient(stateWithNotes(p), "p1", drVoss).map((n) => n.id)).toEqual(["n-trt"]);
+  });
+
+  it("shows the owner every kind, newest first", () => {
+    const p = nursePatient("p1", "u-sarah");
+    expect(visibleNotesForPatient(stateWithNotes(p), "p1", nurse).map((n) => n.id)).toEqual(["n-aft", "n-trt", "n-gen"]);
+  });
+
+  it("shows clinic members every kind", () => {
+    const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
+    const state = stateWithNotes(p);
+    expect(visibleNotesForPatient(state, "p1", clinicNurse)).toHaveLength(3);
+    expect(visibleNotesForPatient(state, "p1", clinicAdmin)).toHaveLength(3);
+  });
+
+  it("shows the super admin every kind (inspects everything, edits nothing)", () => {
+    const p = nursePatient("p1", "u-sarah");
+    expect(visibleNotesForPatient(stateWithNotes(p), "p1", superAdmin)).toHaveLength(3);
+  });
+
+  it("returns nothing for a viewer without file access, or a missing patient", () => {
+    const p = nursePatient("p1", "u-sarah"); // drVoss isn't a prescriber here
+    expect(visibleNotesForPatient(stateWithNotes(p), "p1", drVoss)).toEqual([]);
+    expect(visibleNotesForPatient(emptyState(), "nope", nurse)).toEqual([]);
   });
 });
