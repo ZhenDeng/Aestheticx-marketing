@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { partyLabel, monthLabel } from "@/lib/demo/billing";
+import { isoDay } from "@/lib/demo/backend";
 import { formatAUD, computeInvoice, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS } from "@/lib/demo/invoicing";
 import { DEMO_ACCOUNTS, LUMIERE } from "@/lib/demo/accounts";
 
@@ -21,7 +22,7 @@ export default function BillingPage() {
   const isDoctor = me.role === "doctor";
   const summary = store.billingSummary(me);
   const invoices = store.invoicesFor(me);
-  const heading = isDoctor ? "Authorisations you can bill" : "Billable to you";
+  const heading = isDoctor ? "Authorisation requests you've approved" : "Approvals billed to you";
   const partyNoun = isDoctor ? "Counterparty" : "Prescribing doctor";
 
   function openGenerate(monthKey: string, counterpartyID: string) {
@@ -35,7 +36,7 @@ export default function BillingPage() {
       <p className="mt-1 text-ink-soft">{heading}</p>
 
       <div className="mt-5 rounded-card border border-line bg-card p-5 shadow-card">
-        <span className="micro">Total billable authorisations</span>
+        <span className="micro">Total approved requests</span>
         <p className="mt-1 font-display text-4xl text-ink">{summary.totalCount}</p>
       </div>
 
@@ -86,6 +87,9 @@ export default function BillingPage() {
         </div>
       )}
 
+      <CustomTimeframeCard />
+      <ClinicStatsSection />
+
       <h2 className="mt-10 font-display text-xl text-ink">Invoices</h2>
       {invoices.length === 0 ? (
         <p className="mt-2 text-sm text-ink-soft">No invoices yet.</p>
@@ -102,6 +106,109 @@ export default function BillingPage() {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// UTC day-string → inclusive range bounds, matching the ledger's inclusive [from, to].
+function dayStartUTC(iso: string): number { return Date.parse(`${iso}T00:00:00.000Z`); }
+function dayEndUTC(iso: string): number { return Date.parse(`${iso}T23:59:59.999Z`); }
+function monthsBefore(millis: number, months: number): number {
+  const d = new Date(millis);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - months, d.getUTCDate());
+}
+
+// Ad-hoc timeframe count for any billing identity (port of BillingView's
+// "Custom timeframe" card: from/to pickers + Compute; iOS defaults to 3 months back).
+function CustomTimeframeCard() {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  const me = identity!;
+  const [from, setFrom] = useState(() => isoDay(monthsBefore(store.now, 3)));
+  const [to, setTo] = useState(() => isoDay(store.now));
+  const [count, setCount] = useState<number | null>(null);
+
+  function compute() {
+    const fromMillis = dayStartUTC(from);
+    const toMillis = dayEndUTC(to);
+    if (Number.isNaN(fromMillis) || Number.isNaN(toMillis)) return;
+    setCount(store.customTimeframeCount(me, fromMillis, toMillis));
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="font-display text-xl text-ink">Custom timeframe</h2>
+      <div className="mt-3 rounded-card border border-line bg-card p-5 shadow-card">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="micro">From</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+              className="mt-1 block rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+          </label>
+          <label className="block">
+            <span className="micro">To</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+              className="mt-1 block rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+          </label>
+          <button type="button" onClick={compute}
+            className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+            Compute
+          </button>
+        </div>
+        {count !== null && (
+          <p className="mt-3 text-sm text-ink"><span className="font-medium">{count}</span> authorisation{count === 1 ? "" : "s"} in range</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Clinic-admin business statistics (port of ClinicStatsView): recomputes live as the
+// range changes; hidden from everyone else — the domain fn returns null for them.
+function ClinicStatsSection() {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  const me = identity!;
+  const [from, setFrom] = useState(() => isoDay(monthsBefore(store.now, 1)));
+  const [to, setTo] = useState(() => isoDay(store.now));
+  const fromMillis = dayStartUTC(from);
+  const toMillis = dayEndUTC(to);
+  const rangeValid = !Number.isNaN(fromMillis) && !Number.isNaN(toMillis);
+  const stats = store.clinicBusinessStats(me, rangeValid ? fromMillis : 0, rangeValid ? toMillis : 0);
+  if (!stats) return null;
+
+  return (
+    <section className="mt-10">
+      <h2 className="font-display text-xl text-ink">Clinic statistics</h2>
+      <div className="mt-3 rounded-card border border-line bg-card p-5 shadow-card">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="micro">From</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+              className="mt-1 block rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+          </label>
+          <label className="block">
+            <span className="micro">To</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+              className="mt-1 block rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+          </label>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <StatTile value={stats.authorisationsApproved} label="Authorisations" />
+          <StatTile value={stats.patientsServed} label="Patients served" />
+          <StatTile value={stats.repeatsUsed} label="Repeats used" />
+        </div>
+        <p className="mt-3 text-sm text-ink-soft">Service is measured by actual authorisation and repeat usage.</p>
+      </div>
+    </section>
+  );
+}
+
+function StatTile({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="rounded-inner border border-line bg-card px-4 py-4 text-center">
+      <p className="font-display text-3xl text-ink">{value}</p>
+      <p className="micro mt-1">{label}</p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Authorisation, ClinicRef, Identity } from "./types";
+import type { Authorisation, ClinicRef, Identity, RepeatUsage } from "./types";
 import type { DemoAccount } from "./accounts";
 
 // UTC "YYYY-MM", matching the backend domain.monthKey.
@@ -23,11 +23,29 @@ function isVisible(r: BillableRow, identity: Identity): boolean {
   return r.counterpartyType === "nurse" && r.counterpartyID === identity.user.id;
 }
 
-// Counts un-invoiced authorisations (line items). Doctors group by the counterparty
-// they bill; everyone else groups by the doctor billing them.
+/**
+ * One ledger row per approved REQUEST — the billingEvents grain (decided 2026-07-04:
+ * iOS is correct). approveRequest writes one authorisations doc per medication item
+ * but exactly one billingEvents doc per request; all of a request's items share
+ * requestID, counterparty, and createdAt (same transaction), so deduping on requestID
+ * reconstructs the backend's billingEvents collection without hydrating it. The ledger
+ * is append-only: buildInvoiceTx flags authorisation LINE ITEMS invoiced (per-script
+ * pricing stays per item — see invoicing.ts) but never removes a ledger event.
+ */
+function ledgerEvents(authorisations: Authorisation[]): Authorisation[] {
+  const seen = new Set<string>();
+  return authorisations.filter((a) => {
+    if (seen.has(a.requestID)) return false;
+    seen.add(a.requestID);
+    return true;
+  });
+}
+
+// Counts approved requests (billingEvents grain, append-only — see ledgerEvents).
+// Doctors group by the counterparty they bill; everyone else groups by the doctor
+// billing them.
 export function billingSummary(authorisations: Authorisation[], identity: Identity): BillingSummary {
-  const rows: BillableRow[] = authorisations
-    .filter((a) => !a.invoiced)
+  const rows: BillableRow[] = ledgerEvents(authorisations)
     .map((a) => ({
       doctorID: a.doctorID,
       counterpartyType: a.clinicID ? "clinic" : "nurse",
@@ -54,6 +72,55 @@ export function billingSummary(authorisations: Authorisation[], identity: Identi
       return { monthKey: mk, count: byParty.reduce((sum, p) => sum + p.count, 0), byParty };
     });
   return { totalCount: visible.length, months };
+}
+
+// Ad-hoc timeframe count for the "Custom timeframe" card, port of
+// BillingLedger.count(forDoctor:/forCounterparty:from:to:) as BillingView uses it:
+// inclusive bounds, doctor scoped by doctorID, everyone else by their counterparty
+// (clinic context -> the clinic; independent nurse -> themselves). Counts approved
+// REQUESTS on the append-only billingEvents grain — see ledgerEvents.
+export function customTimeframeCount(
+  authorisations: Authorisation[],
+  identity: Identity,
+  fromMillis: number,
+  toMillis: number,
+): number {
+  return ledgerEvents(authorisations).filter((a) => {
+    if (a.createdAt < fromMillis || a.createdAt > toMillis) return false;
+    if (identity.role === "doctor") return a.doctorID === identity.user.id;
+    if (identity.context.kind === "clinic") return a.clinicID === identity.context.clinic.id;
+    return a.clinicID === null && a.nurseID === identity.user.id;
+  }).length;
+}
+
+export interface ClinicStats {
+  authorisationsApproved: number;
+  patientsServed: number;
+  repeatsUsed: number;
+}
+
+// Clinic-admin business statistics, port of ClinicStatistics.compute plus the
+// ClinicStatsView gate (role == clinicAdmin with a clinic context); everyone else —
+// employee nurses included — gets null. "Patients served" is the distinct patients
+// among the clinic's in-range repeat usages, per the billing-reports spec; approvals
+// reuse the ledger count for the clinic counterparty. Bounds inclusive.
+export function clinicBusinessStats(
+  authorisations: Authorisation[],
+  usages: RepeatUsage[],
+  identity: Identity,
+  fromMillis: number,
+  toMillis: number,
+): ClinicStats | null {
+  if (identity.role !== "clinicAdmin" || identity.context.kind !== "clinic") return null;
+  const clinicID = identity.context.clinic.id;
+  const inRange = usages.filter(
+    (u) => u.clinicID === clinicID && u.date >= fromMillis && u.date <= toMillis,
+  );
+  return {
+    authorisationsApproved: customTimeframeCount(authorisations, identity, fromMillis, toMillis),
+    patientsServed: new Set(inRange.map((u) => u.patientID)).size,
+    repeatsUsed: inRange.length,
+  };
 }
 
 export function partyLabel(type: BillingParty["type"], id: string, accounts: DemoAccount[], clinic: ClinicRef): string {

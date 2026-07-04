@@ -1,5 +1,5 @@
 // Port of SessionState.demoAccounts + the Lumière clinic ref.
-import type { ClinicRef, Identity, UserRef } from "./types";
+import type { ClinicRef, Identity, PatientOwner, UserRef } from "./types";
 
 export const LUMIERE: ClinicRef = { id: "clinic-lumiere", name: "Lumière Clinic" };
 
@@ -35,3 +35,13 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     identities: [{ user: ava, role: "clinicAdmin", context: { kind: "clinic", clinic: LUMIERE } }],
   },
 ];
+
+// Display name for a patient owner — clinic or nurse name where known, else the raw id
+// (port of SessionState.ownerLabel, which resolves through the same demo accounts even
+// in live mode). Shared by the doctor's "Other patients" grouping so owners label
+// identically everywhere.
+export function ownerLabel(owner: PatientOwner): string {
+  if (owner.kind === "clinic") return owner.id === LUMIERE.id ? LUMIERE.name : owner.id;
+  const user = DEMO_ACCOUNTS.flatMap((a) => a.identities).find((i) => i.user.id === owner.id);
+  return user?.user.name ?? owner.id;
+}

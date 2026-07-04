@@ -8,15 +8,17 @@ import { useDemoStore } from "@/lib/demo/store";
 import { identityBadge } from "@/lib/demo/types";
 import { tintStyle } from "@/lib/demo/tint";
 
+// iOS parity: Billing is reached from Profile (ProfileView's "Approvals & invoices" /
+// "Authorised scripts" row), not a top-level tab — /app/billing still routes.
 const NAV = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/patients", label: "Patients" },
   { href: "/app/authorisations", label: "Authorisations" },
-  { href: "/app/billing", label: "Billing" },
   { href: "/app/calendar", label: "Calendar" },
   { href: "/app/availability", label: "Availability" },
   { href: "/app/templates", label: "Templates" },
   { href: "/app/bookings", label: "Bookings" },
+  { href: "/app/profile", label: "Profile" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

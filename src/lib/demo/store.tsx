@@ -19,6 +19,7 @@ interface StoreValue {
   rehydrate: () => void;
   searchPatients: (query: string, identity: Identity) => ReturnType<typeof backend.searchPatients>;
   notesForPatient: (patientID: string) => ReturnType<typeof backend.notesForPatient>;
+  visibleNotesForPatient: (patientID: string, identity: Identity) => ReturnType<typeof backend.visibleNotesForPatient>;
   activeAuthorisations: (patientID: string) => ReturnType<typeof backend.activeAuthorisations>;
   pendingRequestsForDoctor: (doctorID: string) => ReturnType<typeof backend.pendingRequestsForDoctor>;
   openRequestsForPatient: (patientID: string, nurseID: string) => ReturnType<typeof backend.openRequestsForPatient>;
@@ -73,10 +74,13 @@ interface StoreValue {
   linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
+  setPatientAvatar: (patientID: string, avatar: backend.PatientAvatarEdit, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
   mergePatients: (keepId: string, removeId: string, identity: Identity) => void;
   formsForPatient: (patientID: string) => ReturnType<typeof backend.formsForPatient>;
   billingSummary: (identity: Identity) => ReturnType<typeof billing.billingSummary>;
+  customTimeframeCount: (identity: Identity, fromMillis: number, toMillis: number) => number;
+  clinicBusinessStats: (identity: Identity, fromMillis: number, toMillis: number) => ReturnType<typeof billing.clinicBusinessStats>;
   invoicesFor: (identity: Identity) => ReturnType<typeof invoicing.invoicesFor>;
   scriptPrice: (doctorID: string, counterpartyID: string) => number;
   billableAuthorisations: (doctorID: string) => ReturnType<typeof backend.billableAuthorisations>;
@@ -84,6 +88,8 @@ interface StoreValue {
   generateInvoice: (input: import("./backend").GenerateInvoiceInput, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
+  profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
+  updateProfile: (edits: import("./types").UserProfileEdit, identity: Identity) => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -164,8 +170,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       rehydrate: () => setRefreshTick((t) => t + 1),
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
+      visibleNotesForPatient: (pid, id) => backend.visibleNotesForPatient(state, pid, id),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
       billingSummary: (id) => billing.billingSummary(Object.values(state.authorisations), id),
+      customTimeframeCount: (id, fromMillis, toMillis) => billing.customTimeframeCount(Object.values(state.authorisations), id, fromMillis, toMillis),
+      clinicBusinessStats: (id, fromMillis, toMillis) => billing.clinicBusinessStats(Object.values(state.authorisations), state.usages, id, fromMillis, toMillis),
       invoicesFor: (id) => invoicing.invoicesFor(state.invoices, id),
       scriptPrice: (did, cid) => state.scriptPricing[backend.scriptPriceKey(did, cid)] ?? invoicing.DEFAULT_SCRIPT_PRICE_CENTS,
       billableAuthorisations: (did) => backend.billableAuthorisations(state, did),
@@ -493,6 +502,15 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       },
       updatePatient: (patient, identity) =>
         applyAndMirror((s) => backend.updatePatient(s, patient, identity), (m) => m.mirrorUpdatePatient(patient)),
+      // Patient photo: optimistic local set, then a single-field patients/{id} update.
+      // A demo-only dataUrl set has nothing to persist (never written to Firestore).
+      setPatientAvatar: (patientID, avatar, identity) =>
+        applyAndMirror(
+          (s) => backend.setPatientAvatar(s, patientID, avatar, identity),
+          (m) => avatar.avatarFileId !== undefined
+            ? m.mirrorSetPatientAvatar(patientID, avatar.avatarFileId)
+            : Promise.resolve(),
+        ),
       deletePatient: (id, identity) =>
         applyAndMirror((s) => backend.deletePatient(s, id, identity), (m) => m.mirrorDeletePatient(id)),
       mergePatients: (keepId, removeId, identity) =>
@@ -506,6 +524,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       },
       deleteForm: (patientID, formId, identity) =>
         applyAndMirror((s) => backend.deleteForm(s, patientID, formId, identity), (m) => m.mirrorDeleteForm(patientID, formId)),
+      profileForUser: (userID) => backend.profileForUser(state, userID),
+      // Own-profile edit: optimistic local merge, then a rules-checked users/{uid} merge
+      // write (mirrorUpdateProfile strips the demo-only avatarDataUrl + immutable abn).
+      updateProfile: (edits, identity) =>
+        applyAndMirror(
+          (s) => backend.updateProfile(s, identity.user.id, edits),
+          (m) => m.mirrorUpdateProfile(identity.user.id, edits),
+        ),
     }),
     [state, now, status, lastSyncError, applyAndMirror, live],
   );

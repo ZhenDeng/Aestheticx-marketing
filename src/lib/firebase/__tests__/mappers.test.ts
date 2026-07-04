@@ -45,6 +45,13 @@ describe("encodePatientEdits", () => {
     expect(doc.givenName).toBe("Amara");
     expect(doc.preferredName).toBe("Mara");
   });
+  it("carries avatarFileId (iOS LiveBackend.encode wire parity) but never the demo dataUrl", () => {
+    const doc = encodePatientEdits({ ...patient, avatarFileId: "patients/p1/avatar/a.jpg", avatarDataUrl: "data:x" });
+    expect(doc.avatarFileId).toBe("patients/p1/avatar/a.jpg");
+    expect("avatarDataUrl" in doc).toBe(false);
+    // Unset avatar stays a null field, matching iOS's always-present key.
+    expect(encodePatientEdits(patient).avatarFileId).toBeNull();
+  });
 });
 
 describe("parseDob / formatDob", () => {
@@ -75,6 +82,12 @@ describe("mapPatient", () => {
   it("defaults missing owner type to nurse", () => {
     const p = mapPatient("p2", { ownerId: "u-sarah" });
     expect(p.owner).toEqual({ kind: "nurse", id: "u-sarah" });
+  });
+  it("maps avatarFileId, absent or null -> undefined", () => {
+    expect(mapPatient("p3", { ownerId: "u-sarah", avatarFileId: "patients/p3/avatar/a.jpg" }).avatarFileId)
+      .toBe("patients/p3/avatar/a.jpg");
+    expect(mapPatient("p4", { ownerId: "u-sarah" }).avatarFileId).toBeUndefined();
+    expect(mapPatient("p5", { ownerId: "u-sarah", avatarFileId: null }).avatarFileId).toBeUndefined();
   });
 });
 

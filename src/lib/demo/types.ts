@@ -71,6 +71,12 @@ export interface Patient {
   currentMedications: string;
   owner: PatientOwner;
   prescribingDoctorIDs: string[];
+  // Patient photo (spec: patient-records — monogram until one is uploaded). Mirrors iOS
+  // Patient.avatarFileID / the patient doc's `avatarFileId`: a Storage object key under
+  // patients/{id}/** minted fresh per upload (iOS mints a new fileID per pick too).
+  avatarFileId?: string;
+  // Demo only: inline preview bytes (no Storage in demo) — never encoded to Firestore.
+  avatarDataUrl?: string;
   alert?: string;
   preferredName?: string;
 }
@@ -263,6 +269,23 @@ export interface DoctorStatus {
   alwaysAcceptAuth: boolean;
 }
 
+// The signed-in user's own profile fields on users/{uid}. Wire names match the
+// createUser Cloud Function's profile doc (abn, phone, ahpra); address is a
+// rules-writable extension. abn is client-immutable (firestore.rules), and
+// roles/clinics/mustChangePassword never live here — they change server-side only.
+export interface UserProfile {
+  ahpra: string;   // doctor/nurse registration; empty for admins
+  abn: string;     // display-only on the client (rules-immutable)
+  phone: string;
+  address: string;
+  avatarFileId?: string;  // live: Storage object under users/{uid}/** (storage.rules avatar path)
+  avatarDataUrl?: string; // demo only: inline preview bytes (never written to Firestore)
+}
+
+// The client-writable subset — mirrors the users/{uid} update rule, which rejects
+// any write touching roles/clinics/abn/mustChangePassword.
+export type UserProfileEdit = Partial<Pick<UserProfile, "ahpra" | "phone" | "address" | "avatarFileId" | "avatarDataUrl">>;
+
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -311,6 +334,8 @@ export interface DemoState {
   externalBusyByOwner: Record<string, ExternalBusyCalendar>;
   // users/{uid}.lastCalledDoctorId — set whenever the user starts a consult call.
   lastCalledDoctorByUser: Record<string, string>;
+  // users/{uid} profile fields (ahpra/abn/phone/address + avatar) keyed by user id.
+  profileByUser: Record<string, UserProfile>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

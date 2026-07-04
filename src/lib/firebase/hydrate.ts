@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { firestore } from "./client";
 import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy } from "./mappers";
-import type { DemoState } from "@/lib/demo/types";
+import type { DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
 export interface Row { id: string; data: Record<string, unknown> }
@@ -24,6 +24,8 @@ export interface HydrationRows {
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
   lastCalledDoctorId?: string | null;
+  /** users/{uid} profile fields (null when the doc is missing). */
+  profile?: UserProfile | null;
   slotPublications?: Row[];
   treatmentAvailability?: Row[];
   externalBusy?: Row[];
@@ -86,7 +88,10 @@ export function assembleState(rows: HydrationRows): DemoState {
   const externalBusyByOwner: DemoState["externalBusyByOwner"] = {};
   for (const r of rows.externalBusy ?? []) externalBusyByOwner[r.id] = mapExternalBusy(r.id, r.data);
 
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser };
+  const profileByUser: DemoState["profileByUser"] = {};
+  if (rows.profile) profileByUser[rows.currentUserID] = rows.profile;
+
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -124,9 +129,10 @@ async function readUserProfile(uid: string): Promise<{
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
   lastCalledDoctorId: string | null;
+  profile: UserProfile | null;
 }> {
   const snap = await getDoc(doc(firestore(), "users", uid));
-  if (!snap.exists()) return { followUpSettings: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null };
+  if (!snap.exists()) return { followUpSettings: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null, profile: null };
   const d = snap.data();
   const hasFU = d.followUpEnabled !== undefined || d.followUpIntervalDays !== undefined;
   const raw = d.followUpIntervalDays;
@@ -138,7 +144,15 @@ async function readUserProfile(uid: string): Promise<{
   // callable's own schema); the client model is a plain boolean, hence the coercion here.
   const doctorStatus = { online: d.onlineStatus === "online", alwaysAcceptAuth: d.alwaysAcceptAuth === true };
   const lastCalledDoctorId = typeof d.lastCalledDoctorId === "string" && d.lastCalledDoctorId ? d.lastCalledDoctorId : null;
-  return { followUpSettings, bookingToken, doctorStatus, lastCalledDoctorId };
+  // Profile fields written by the createUser Function (abn/phone/ahpra) plus the
+  // client-writable address/avatarFileId. ahpra is nullable on the wire (createUser
+  // writes `ahpra: data.ahpra ?? null` for admins) — coerce non-strings to "".
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  const profile: UserProfile = {
+    ahpra: str(d.ahpra), abn: str(d.abn), phone: str(d.phone), address: str(d.address),
+    ...(typeof d.avatarFileId === "string" && d.avatarFileId ? { avatarFileId: d.avatarFileId } : {}),
+  };
+  return { followUpSettings, bookingToken, doctorStatus, lastCalledDoctorId, profile };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
@@ -172,6 +186,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       bookingToken: profile.bookingToken,
       doctorStatus: profile.doctorStatus,
       lastCalledDoctorId: profile.lastCalledDoctorId,
+      profile: profile.profile,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       treatmentAvailability: await readAvailability([uid]),
       externalBusy: await readExternalBusy([uid]),
@@ -251,6 +266,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     bookingToken: profile.bookingToken,
     doctorStatus: profile.doctorStatus,
     lastCalledDoctorId: profile.lastCalledDoctorId,
+    profile: profile.profile,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
     externalBusy: await readExternalBusy([uid, ...clinicIds]),
