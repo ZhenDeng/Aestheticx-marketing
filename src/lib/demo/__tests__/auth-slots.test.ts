@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   emptyState, slotsForWindow, publishAvailability, availabilityWindowsForDoctor,
   doctorsWithAvailability, isSlotTaken, openSlotsForDoctorOnDay, withdrawAvailability,
-  bookAuthSlot, BackendError, setDoctorStatus,
+  bookAuthSlot, requestAdHocAuth, BackendError, setDoctorStatus,
 } from "@/lib/demo/backend";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
@@ -99,6 +99,15 @@ describe("bookAuthSlot", () => {
   it("rejects a double-book of the same slot", () => {
     const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah }).state;
     expect(() => bookAuthSlot(s, { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p2", patientName: "B", identity: sarah })).toThrow(BackendError);
+  });
+  it("rejects a slot overlapping an unaligned ad-hoc authorisation appointment (parity with deployed bookAuthSlot)", () => {
+    // An ad-hoc request isn't on the slot grid: 545–555 straddles the 540 and 550 slots.
+    let s = setDoctorStatus(withWindow(), "u-voss", { online: true });
+    s = requestAdHocAuth(s, { doctorID: "u-voss", dateISO: DAY, atMinute: 545, patientID: "p1", patientName: "A", identity: sarah }).state;
+    expect(() => bookAuthSlot(s, { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p2", patientName: "B", identity: sarah })).toThrow("slotTaken");
+    expect(() => bookAuthSlot(s, { doctorID: "u-voss", dateISO: DAY, startMinute: 550, patientID: "p2", patientName: "B", identity: sarah })).toThrow("slotTaken");
+    // The next slot only touches (555 < 560): bookable.
+    expect(bookAuthSlot(s, { doctorID: "u-voss", dateISO: DAY, startMinute: 560, patientID: "p2", patientName: "B", identity: sarah }).appt.startMinute).toBe(560);
   });
 });
 
