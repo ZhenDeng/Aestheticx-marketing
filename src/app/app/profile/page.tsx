@@ -377,9 +377,15 @@ function LiveAdminConsole() {
 
 function AccountRow({ account }: { account: AccountRecord }) {
   const store = useDemoStore();
+  const { identity } = useDemoAuth();
   const [reset, setReset] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [resetError, setResetError] = useState<string | null>(null);
+  const [del, setDel] = useState<"idle" | "confirming" | "deleting" | "error">("idle");
+  const [delError, setDelError] = useState<string | null>(null);
   const display = account.name || account.email || account.id;
+  // Own row gets no delete action: the Function rejects self-deletion (the in-app
+  // Delete account flow below is the self-serve path), so don't render a dead button.
+  const isSelf = identity?.user.id === account.id;
 
   // Await-then-setState without an unmount guard matches this file's event-handler
   // convention (see DeleteAccount.performDelete); React treats a post-unmount set as a no-op.
@@ -392,6 +398,18 @@ function AccountRow({ account }: { account: AccountRecord }) {
     } catch (e) {
       setResetError(e instanceof Error ? e.message : String(e));
       setReset("error");
+    }
+  }
+
+  async function performDelete() {
+    setDel("deleting");
+    setDelError(null);
+    try {
+      await store.deleteUserAccount(account.id);
+      // No local state to settle: the store rehydrates and this row drops out.
+    } catch (e) {
+      setDelError(e instanceof Error ? e.message : String(e));
+      setDel("error");
     }
   }
 
@@ -411,18 +429,51 @@ function AccountRow({ account }: { account: AccountRecord }) {
           Awaiting first login
         </span>
       )}
-      {account.email && (
-        <button
-          onClick={() => void sendReset()}
-          disabled={reset === "sending" || reset === "sent"}
-          className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
-          title={resetError ?? "Email this account a password-reset link"}
-        >
-          {reset === "idle" && "Reset password"}
-          {reset === "sending" && "Sending…"}
-          {reset === "sent" && "Reset sent"}
-          {reset === "error" && "Failed — retry"}
-        </button>
+      {del === "confirming" || del === "deleting" ? (
+        <span className="flex flex-none items-center gap-2">
+          <span className="micro" style={{ color: "var(--color-rose)" }}>Delete login? Records kept.</span>
+          <button
+            onClick={() => void performDelete()}
+            disabled={del === "deleting"}
+            className="micro flex-none rounded-btn px-2.5 py-1 text-card disabled:opacity-60"
+            style={{ background: "var(--color-rose)" }}
+          >
+            {del === "deleting" ? "Deleting…" : "Confirm"}
+          </button>
+          <button
+            onClick={() => setDel("idle")}
+            disabled={del === "deleting"}
+            className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </span>
+      ) : (
+        <>
+          {account.email && (
+            <button
+              onClick={() => void sendReset()}
+              disabled={reset === "sending" || reset === "sent"}
+              className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
+              title={resetError ?? "Email this account a password-reset link"}
+            >
+              {reset === "idle" && "Reset password"}
+              {reset === "sending" && "Sending…"}
+              {reset === "sent" && "Reset sent"}
+              {reset === "error" && "Failed — retry"}
+            </button>
+          )}
+          {!isSelf && (
+            <button
+              onClick={() => setDel("confirming")}
+              className="micro flex-none rounded-btn border px-2.5 py-1 hover:opacity-80"
+              style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}
+              title={delError ?? "Delete this account's login — clinical records are retained"}
+            >
+              {del === "error" ? "Delete failed — retry" : "Delete"}
+            </button>
+          )}
+        </>
       )}
     </li>
   );

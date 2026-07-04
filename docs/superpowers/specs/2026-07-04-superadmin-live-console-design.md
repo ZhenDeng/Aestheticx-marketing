@@ -20,6 +20,12 @@ Gap analysis (2026-07-04) shows the deployed backend already supports the whole 
   and queues a welcome email. **Roles are assigned at creation** — this is the deployed
   "assign roles" mechanism.
 - `resetUserPassword` callable (superAdmin-only): emails a Firebase reset link.
+- `deleteUserAccount` callable (superAdmin-only; **added this increment** — AestheticX PR #50,
+  deployed to australia-southeast1 2026-07-04): deletes the target's Auth record + `users/{uid}`
+  profile doc incl. private subcollections (recursiveDelete). Clinical records are retained
+  (data-retention policy — removes access, not history, like the self-serve in-app deletion).
+  Rejects self-deletion (pure `deleteUserRejection`); idempotent on retry (tolerates
+  `auth/user-not-found` so a partial failure converges).
 
 **Out of scope (deployed-backend gaps, documented not papered over):**
 
@@ -71,8 +77,12 @@ Gap analysis (2026-07-04) shows the deployed backend already supports the whole 
 ### UI (`AdminConsole` in `profile/page.tsx`)
 
 - **Live:** rows from `store.accounts()` — monogram, name, email, role chips, an
-  "Awaiting first login" chip while `mustChangePassword`, and a per-row "Reset password"
-  action (sends the reset email; row-level busy/sent/error states). "Create user" is enabled
+  "Awaiting first login" chip while `mustChangePassword`, a per-row "Reset password"
+  action (sends the reset email; row-level busy/sent/error states), and a per-row
+  two-step "Delete" action (confirm inline: "Delete login? Records kept." → the
+  `deleteUserAccount` callable → rehydrate drops the row). The signed-in admin's own
+  row renders no Delete (the Function rejects self-deletion; the page's existing
+  in-app Delete account flow is the self-serve path). "Create user" is enabled
   and expands an inline card form (the page's existing inline-section pattern — no modal):
   Name, Email, Phone, ABN, Business name, AHPRA, Temporary password, and Doctor/Nurse role
   checkboxes. Submit pre-validates via `userAdmin.validateNewUser` (inline field marks),

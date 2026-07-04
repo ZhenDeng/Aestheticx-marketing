@@ -96,6 +96,7 @@ interface StoreValue {
   accounts: () => ReturnType<typeof backend.accountsInventory>;
   createUser: (input: import("./userAdmin").NewUserInput) => Promise<void>;
   resetUserPassword: (email: string) => Promise<void>;
+  deleteUserAccount: (uid: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -544,6 +545,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) throw new backend.BackendError("Password reset is live-only in the demo.");
         const m = await import("@/lib/firebase/mirror");
         await m.mirrorResetUserPassword(email);
+      },
+      deleteUserAccount: async (uid) => {
+        if (!live) throw new backend.BackendError("Account deletion is live-only in the demo.");
+        // Server-authoritative like createUser: the Function removes the Auth record +
+        // profile doc; rehydrate drops the row from Firestore truth.
+        const m = await import("@/lib/firebase/mirror");
+        await m.mirrorDeleteUserAccount(uid);
+        setRefreshTick((t) => t + 1);
       },
       // Own-profile edit: optimistic local merge, then a rules-checked users/{uid} merge
       // write (mirrorUpdateProfile strips the demo-only avatarDataUrl + immutable abn).

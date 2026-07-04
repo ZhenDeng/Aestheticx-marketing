@@ -302,3 +302,10 @@ export async function mirrorCreateUser(input: import("@/lib/demo/userAdmin").New
 export async function mirrorResetUserPassword(email: string): Promise<void> {
   await httpsCallable(functions(), "resetUserPassword")({ email });
 }
+
+// Deletes the target's LOGIN (Auth record + users/{uid} profile doc); clinical
+// records are retained server-side. Self-deletion is rejected by the Function —
+// the in-app Delete account flow is the self-serve path.
+export async function mirrorDeleteUserAccount(uid: string): Promise<void> {
+  await httpsCallable(functions(), "deleteUserAccount")({ uid });
+}

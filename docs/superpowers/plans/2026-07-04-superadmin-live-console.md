@@ -34,6 +34,17 @@ Branch: `feat/superadmin-live-console`
       with role chips + reset buttons; empty submit marked 7 fields with no network call;
       checking Doctor made AHPRA required. No prod user created.
 
+### 5. Account deletion (added on request, same day)
+- [x] 5.1 Backend: pure `deleteUserRejection` (TDD, 3 tests) + superAdmin-gated
+      `deleteUserAccount` callable (Auth delete idempotent on `auth/user-not-found` +
+      `recursiveDelete(users/{uid})`; clinical records retained) — AestheticX PR #50,
+      **deployed** to australia-southeast1; backend suite 166/166 green.
+- [x] 5.2 Web: `mirrorDeleteUserAccount` + live-only `store.deleteUserAccount` (rehydrate
+      after) + two-step row Delete (hidden on own row).
+- [x] 5.3 E2E QA against production: created throwaway `ax.qa.throwaway.20260704@example.com`
+      via the console form (row appeared with "Awaiting first login"), deleted it via the new
+      action (row dropped out; Admin-SDK verified Auth record `user-not-found` + 0 users docs).
+
 ## Review dispositions (2026-07-04)
 
 - **Fixed:** temp-password input masked (`type="password"`, `autocomplete="new-password"`);
