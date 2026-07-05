@@ -2,7 +2,7 @@
 
 import {
   signInWithEmailAndPassword, signOut as fbSignOut, onIdTokenChanged,
-  updatePassword, deleteUser,
+  updatePassword,
   type User,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -84,12 +84,6 @@ export async function completeFirstLogin(newPassword: string): Promise<void> {
   }
 }
 
-// Permanently deletes the signed-in user's Firebase Authentication account — the login
-// only, never clinical data (retention is a server-side policy). Mirrors iOS
-// FirebaseAuthClient.deleteAccount (Identity Toolkit accounts:delete). May reject with
-// code "auth/requires-recent-login"; callers surface that gracefully.
-export async function deleteAccount(): Promise<void> {
-  const user = firebaseAuth().currentUser;
-  if (!user) throw new Error("Not signed in");
-  await deleteUser(user);
-}
+// Self-serve deletion (iOS FirebaseAuthClient.deleteAccount) is deliberately NOT ported:
+// on the web, account removal is an administrative act (super-admin console →
+// deleteUserAccount callable). iOS keeps its flow only because the App Store mandates it.

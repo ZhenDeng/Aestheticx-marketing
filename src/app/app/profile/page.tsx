@@ -136,7 +136,6 @@ export default function ProfilePage() {
         <button onClick={signOut} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint/50">
           Sign out
         </button>
-        {mode === "live" && <DeleteAccount onDeleted={signOut} />}
       </div>
     </div>
   );
@@ -387,8 +386,8 @@ function AccountRow({ account }: { account: AccountRecord }) {
   // Delete account flow below is the self-serve path), so don't render a dead button.
   const isSelf = identity?.user.id === account.id;
 
-  // Await-then-setState without an unmount guard matches this file's event-handler
-  // convention (see DeleteAccount.performDelete); React treats a post-unmount set as a no-op.
+  // Await-then-setState without an unmount guard is this file's event-handler
+  // convention; React treats a post-unmount set as a no-op.
   async function sendReset() {
     setReset("sending");
     setResetError(null);
@@ -572,58 +571,6 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   );
 }
 
-// Live-only account deletion (App Store-required on iOS; kept for parity). Deletes the
-// Firebase login only — clinical records are retained under the data-retention policy.
-function DeleteAccount({ onDeleted }: { onDeleted: () => void }) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function performDelete() {
-    setDeleting(true);
-    setError(null);
-    try {
-      const { deleteAccount } = await import("@/lib/firebase/auth");
-      await deleteAccount();
-      onDeleted(); // clears local session state; AuthGuard bounces to /login
-    } catch (e) {
-      const code = (e as { code?: string }).code;
-      setDeleting(false);
-      setConfirming(false);
-      setError(code === "auth/requires-recent-login"
-        ? "For security, please sign out, sign back in, and try deleting your account again."
-        : "Your account could not be deleted. Please check your connection and try again.");
-    }
-  }
-
-  return (
-    <div className="flex w-full max-w-md flex-col items-center gap-3">
-      {!confirming ? (
-        <button onClick={() => setConfirming(true)} className="text-sm font-medium" style={{ color: "var(--color-rose)" }}>
-          Delete account
-        </button>
-      ) : (
-        <div className="w-full rounded-card border px-5 py-4 text-center" style={{ borderColor: "var(--color-rose)" }}>
-          <p className="text-sm font-medium text-ink">Delete account?</p>
-          <p className="mt-2 text-sm text-ink-soft">
-            This permanently removes your AestheticX login — you won&apos;t be able to sign in again.
-            Patient and clinical records are retained and handled under our privacy and
-            data-retention policy.
-          </p>
-          <div className="mt-4 flex justify-center gap-3">
-            <button onClick={() => setConfirming(false)} disabled={deleting}
-              className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">
-              Cancel
-            </button>
-            <button onClick={() => void performDelete()} disabled={deleting}
-              className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-60"
-              style={{ background: "var(--color-rose)" }}>
-              {deleting ? "Deleting…" : "Delete account"}
-            </button>
-          </div>
-        </div>
-      )}
-      {error && <p className="text-center text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
-    </div>
-  );
-}
+// Self-serve account deletion was removed deliberately (2026-07-05): account removal is
+// an administrative act via the super-admin console's deleteUserAccount callable. iOS
+// keeps its in-app flow because the App Store mandates it; the web has no such rule.
