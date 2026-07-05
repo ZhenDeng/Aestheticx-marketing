@@ -1014,6 +1014,9 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
 
 // Detail panel for the selected appointment: an actionable patient row (link to file /
 // create-from-lead) plus the status quick-actions.
+// Rendered as a centred modal (DirectionDialog pattern) rather than inline below the
+// timeline — on a busy day the inline block sat off-screen. Scrim click, Escape, and
+// the Close button all dismiss; actions still dismiss through the existing onDone.
 function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identity; onDone: () => void }) {
   const store = useDemoStore();
   const [creating, setCreating] = useState(false);
@@ -1023,8 +1026,28 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
   const contactLine = [contact.dobLabel && `DOB ${contact.dobLabel}`, contact.phone, contact.email]
     .filter(Boolean).join(" · ");
 
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDone(); };
+    window.addEventListener("keydown", onKey);
+    // Move focus into the dialog on open and lock background scroll while it's up; both
+    // restore on unmount (the subtree remounts per appointment via the call-site key).
+    closeRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onDone]);
+
   return (
-    <div className="mt-4 rounded-inner border border-line bg-card px-4 py-3">
+    <div role="dialog" aria-modal="true" aria-label="Appointment details"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "color-mix(in srgb, var(--color-ink) 45%, transparent)" }}
+      onClick={onDone}>
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-card border border-line bg-card px-5 py-4 shadow-card"
+        onClick={(e) => e.stopPropagation()}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-medium text-ink">
           {appt.patientID ? (
@@ -1034,7 +1057,13 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
           ) : "Blocked time"}
           {" · "}{timeLabel(appt.startMinute)}–{timeLabel(appt.endMinute)}
         </span>
-        <span className="micro" style={{ color: apptColor(appt) }}>{STATUS_LABEL[appt.status]}</span>
+        <span className="flex flex-none items-center gap-2.5">
+          <span className="micro" style={{ color: apptColor(appt) }}>{STATUS_LABEL[appt.status]}</span>
+          <button ref={closeRef} type="button" onClick={onDone}
+            className="rounded-btn border border-line px-3 py-1 text-sm text-ink-soft hover:border-tint">
+            Close
+          </button>
+        </span>
       </div>
       {contactLine && <p className="micro mt-0.5">{contactLine}</p>}
       {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
@@ -1052,6 +1081,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       ) : (
         <AppointmentActions key={`${appt.startMinute}-${appt.endMinute}-${appt.status}`} appt={appt} me={me} onDone={onDone} />
       )}
+      </div>
     </div>
   );
 }
