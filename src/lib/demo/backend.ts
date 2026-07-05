@@ -915,6 +915,39 @@ export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): stri
   return a.patientName ?? blockPlaceholder;
 }
 
+// Client contact details for a calendar item (spec: pending bookings on the calendar show
+// DOB/phone/email). Per-field: the structured lead wins, the linked patient record fills
+// gaps; absent fields are omitted (a blocked time yields {}). DOB renders d/m/yyyy, the
+// patient-file convention.
+export interface AppointmentContact {
+  dobLabel?: string;
+  phone?: string;
+  email?: string;
+}
+
+function isoToAuDate(iso: string): string | undefined {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return undefined;
+  return `${parseInt(m[3], 10)}/${parseInt(m[2], 10)}/${parseInt(m[1], 10)}`;
+}
+
+export function appointmentContact(a: Appointment, patient: Patient | undefined): AppointmentContact {
+  const leadDob = a.lead?.dob ? isoToAuDate(a.lead.dob) : undefined;
+  const patientDob = patient ? `${patient.dateOfBirth.day}/${patient.dateOfBirth.month}/${patient.dateOfBirth.year}` : undefined;
+  const pick = (leadValue: string | undefined, patientValue: string | undefined) => {
+    const v = leadValue?.trim() || patientValue?.trim();
+    return v ? v : undefined;
+  };
+  const contact: AppointmentContact = {};
+  const dob = leadDob ?? patientDob;
+  if (dob) contact.dobLabel = dob;
+  const phone = pick(a.lead?.phone, patient?.phone);
+  if (phone) contact.phone = phone;
+  const email = pick(a.lead?.email, patient?.email);
+  if (email) contact.email = email;
+  return contact;
+}
+
 // Link a lead appointment to a newly-created patient: stamp the id + calendar name, clear the lead.
 export function linkAppointmentPatient(
   state: DemoState, apptId: string, patientId: string, identity: Identity,
