@@ -1026,10 +1026,19 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
   const contactLine = [contact.dobLabel && `DOB ${contact.dobLabel}`, contact.phone, contact.email]
     .filter(Boolean).join(" · ");
 
+  const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDone(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Move focus into the dialog on open and lock background scroll while it's up; both
+    // restore on unmount (the subtree remounts per appointment via the call-site key).
+    closeRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [onDone]);
 
   return (
@@ -1050,7 +1059,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
         </span>
         <span className="flex flex-none items-center gap-2.5">
           <span className="micro" style={{ color: apptColor(appt) }}>{STATUS_LABEL[appt.status]}</span>
-          <button type="button" onClick={onDone}
+          <button ref={closeRef} type="button" onClick={onDone}
             className="rounded-btn border border-line px-3 py-1 text-sm text-ink-soft hover:border-tint">
             Close
           </button>
