@@ -63,6 +63,9 @@ interface StoreValue {
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
   // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
   listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]>;
+  // The full prescribing-doctor directory for the auth-request picker (live: listDoctors
+  // callable; demo: the DEMO_ACCOUNTS doctors).
+  listDoctors: () => Promise<{ doctorId: string; doctorName: string }[]>;
   listDoctorOpenSlots: (doctorID: string, dateISO: string) => Promise<number[]>;
   publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
   withdrawAvailability: (windowID: string, identity: Identity) => void;
@@ -401,6 +404,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) return backend.doctorsWithAvailability(state);
         const m = await import("@/lib/firebase/mirror");
         return m.mirrorListAvailableDoctors();
+      },
+      listDoctors: async () => {
+        if (!live) { const { demoDoctorRefs } = await import("./accounts"); return demoDoctorRefs(); }
+        const m = await import("@/lib/firebase/mirror");
+        return m.mirrorListDoctors();
       },
       listDoctorOpenSlots: async (doctorID, dateISO) => {
         if (!live) return backend.openSlotsForDoctorOnDay(state, doctorID, dateISO);

@@ -195,6 +195,15 @@ export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; 
   const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]) : [];
   return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName, hasSlots: d.hasSlots, online: d.online, alwaysAcceptAuth: d.alwaysAcceptAuth }));
 }
+// Full prescribing-doctor directory (any signed-in caller) — the auth-request picker.
+export async function mirrorListDoctors(): Promise<{ doctorId: string; doctorName: string }[]> {
+  const res = await httpsCallable(functions(), "listDoctors")({});
+  const raw = (res.data as { doctors?: unknown }).doctors;
+  const doctors = Array.isArray(raw) ? (raw as { doctorId?: unknown; doctorName?: unknown }[]) : [];
+  return doctors
+    .filter((d) => typeof d.doctorId === "string" && d.doctorId)
+    .map((d) => ({ doctorId: d.doctorId as string, doctorName: typeof d.doctorName === "string" && d.doctorName ? d.doctorName : "Doctor" }));
+}
 export async function mirrorListDoctorOpenSlots(doctorID: string, dateISO: string): Promise<number[]> {
   const res = await httpsCallable(functions(), "listDoctorOpenSlots")({ doctorId: doctorID, dateISO });
   const raw = (res.data as { slots?: unknown }).slots;
