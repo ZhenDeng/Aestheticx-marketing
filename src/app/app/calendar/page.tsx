@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentTitle, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentTitle, appointmentContact, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
+import { PendingBookings } from "@/components/app/PendingBookings";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
@@ -83,6 +84,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
 
   return (
     <div>
+      <PendingBookings me={me} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl text-ink">Calendar</h1>
@@ -1016,6 +1018,10 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
   const store = useDemoStore();
   const [creating, setCreating] = useState(false);
   const lead = isLeadAppointment(appt);
+  // Client contact (spec: DOB/phone/email on the calendar) — lead fields, patient-record fallback.
+  const contact = appointmentContact(appt, appt.patientID ? store.state.patients[appt.patientID] : undefined);
+  const contactLine = [contact.dobLabel && `DOB ${contact.dobLabel}`, contact.phone, contact.email]
+    .filter(Boolean).join(" · ");
 
   return (
     <div className="mt-4 rounded-inner border border-line bg-card px-4 py-3">
@@ -1030,6 +1036,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
         </span>
         <span className="micro" style={{ color: apptColor(appt) }}>{STATUS_LABEL[appt.status]}</span>
       </div>
+      {contactLine && <p className="micro mt-0.5">{contactLine}</p>}
       {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
 
       {lead && !creating && canCreatePatient(me) && (
