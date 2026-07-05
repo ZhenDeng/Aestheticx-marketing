@@ -66,4 +66,19 @@ describe("mostRecentlyRequestedDoctor", () => {
   it("returns null with no usable history", () => {
     expect(mostRecentlyRequestedDoctor(new Map(), ["d-ava"])).toBeNull();
   });
+
+  it("breaks an exact-timestamp tie deterministically (count, then lower id)", () => {
+    // Same lastAt for both; d-ben has more requests → wins regardless of Map order.
+    const tie = new Map([
+      ["d-ava", { count: 1, lastAt: 500 }],
+      ["d-ben", { count: 3, lastAt: 500 }],
+    ]);
+    expect(mostRecentlyRequestedDoctor(tie, ["d-ava", "d-ben"])).toBe("d-ben");
+    // Same lastAt AND count → lower id wins, independent of insertion order.
+    const tie2 = new Map([
+      ["d-ben", { count: 2, lastAt: 500 }],
+      ["d-ava", { count: 2, lastAt: 500 }],
+    ]);
+    expect(mostRecentlyRequestedDoctor(tie2, ["d-ava", "d-ben"])).toBe("d-ava");
+  });
 });

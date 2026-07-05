@@ -47,17 +47,27 @@ export function rankDoctors<T extends DoctorRef>(doctors: T[], stats: Map<string
   });
 }
 
-/** The last-requested doctor still present in the list (the remembered default), else null. */
+/**
+ * The last-requested doctor still present in the list (the remembered default), else null.
+ * Deterministic on an exact-timestamp tie: higher request count wins, then the lower
+ * doctorID lexicographically — so the default never flickers with Map-iteration order.
+ */
 export function mostRecentlyRequestedDoctor(
   stats: Map<string, DoctorStat>,
   availableIDs: string[],
 ): string | null {
   const available = new Set(availableIDs);
   let bestID: string | null = null;
-  let bestAt = -1;
+  let best: DoctorStat | null = null;
   for (const [doctorID, stat] of stats) {
-    if (available.has(doctorID) && stat.lastAt > bestAt) {
-      bestAt = stat.lastAt;
+    if (!available.has(doctorID)) continue;
+    if (
+      best === null
+      || stat.lastAt > best.lastAt
+      || (stat.lastAt === best.lastAt && stat.count > best.count)
+      || (stat.lastAt === best.lastAt && stat.count === best.count && bestID !== null && doctorID < bestID)
+    ) {
+      best = stat;
       bestID = doctorID;
     }
   }
