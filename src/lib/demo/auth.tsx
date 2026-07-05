@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Identity } from "./types";
 import { DEMO_ACCOUNTS } from "./accounts";
+import { pickInitialIdentity, saveSelectedIdentity } from "./identityPrefs";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 
 type Mode = "demo" | "live";
@@ -62,7 +63,9 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         ]);
         if (cancelled) return;
         setAvailableIdentities(ids);
-        setIdentity((cur) => cur ?? ids[0] ?? null);
+        // Restore the user's last-practised identity across reloads (device-local), else
+        // the default (first). window is present — this runs only in the browser callback.
+        setIdentity((cur) => cur ?? pickInitialIdentity(window.localStorage, user.uid, ids));
         setMustChangePassword(mustChange);
         setResolved(true);
       });
@@ -82,7 +85,11 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         const { signInWithPassword } = await import("@/lib/firebase/auth");
         await signInWithPassword(email, password, remember); // watchUser populates identities
       },
-      selectIdentity: setIdentity,
+      // Persist every explicit switch so a reload keeps it (see pickInitialIdentity).
+      selectIdentity: (id) => {
+        if (typeof window !== "undefined") saveSelectedIdentity(window.localStorage, id);
+        setIdentity(id);
+      },
       signOut: () => {
         setIdentity(null);
         setAvailableIdentities([]);
