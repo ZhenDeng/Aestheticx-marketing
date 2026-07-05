@@ -268,9 +268,17 @@ function ProfileFieldsEditor({ me, profile, showsAhpra, store }: {
         <span className="micro">Phone</span>
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={FIELD_PLACEHOLDER.phone} className={input} />
       </label>
-      <label className={row}>
+      {/* Address gets its own full-width block (label above, wrapping textarea) so long
+          addresses stay fully visible — the shared right-aligned w-56 input truncates them. */}
+      <label className="block border-b border-line py-2.5 last:border-b-0">
         <span className="micro">Address</span>
-        <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={FIELD_PLACEHOLDER.address} className={input} />
+        <textarea
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder={FIELD_PLACEHOLDER.address}
+          rows={2}
+          className="mt-1.5 w-full resize-none rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+        />
       </label>
       {dirty && (
         <div className="flex justify-end py-2.5">

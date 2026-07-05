@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { safeNextPath } from "@/lib/demo/authRedirect";
+import { rememberedEmail, saveLoginPrefs } from "@/lib/demo/loginPrefs";
 import { identityBadge } from "@/lib/demo/types";
 
 // The post-login destination: the guarded page that sent us here (?next=), or the
@@ -21,8 +22,14 @@ export function LoginForm() {
 function LiveLogin() {
   const { signInLive, identity } = useDemoAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  // Prefill the remembered email (device-local; never the password). SSR-guarded lazy
+  // initializer, the loadRecentlyUsed pattern — React skips input `value` in hydration
+  // diffing, so the prerendered empty field hydrating to the stored email is safe.
+  const [email, setEmail] = useState(() =>
+    typeof window === "undefined" ? "" : rememberedEmail(window.localStorage) ?? "",
+  );
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +47,8 @@ function LiveLogin() {
     setBusy(true);
     setError(null);
     try {
-      await signInLive(email, password);
+      saveLoginPrefs(window.localStorage, { email, remember });
+      await signInLive(email, password, remember);
       // Redirect handled by the effect above once the identity resolves.
     } catch {
       setError("Sign-in failed. Check your email and password.");
@@ -62,6 +70,15 @@ function LiveLogin() {
         <span className="micro">Password</span>
         <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
           className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint" />
+      </label>
+      <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
+        <input
+          type="checkbox"
+          checked={remember}
+          onChange={(e) => setRemember(e.target.checked)}
+          className="accent-[var(--color-tint)]"
+        />
+        Remember me on this device
       </label>
       {error && <p className="mt-3 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
       <button type="submit" disabled={busy}

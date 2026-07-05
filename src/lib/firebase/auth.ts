@@ -2,7 +2,7 @@
 
 import {
   signInWithEmailAndPassword, signOut as fbSignOut, onIdTokenChanged,
-  updatePassword,
+  updatePassword, setPersistence, browserLocalPersistence, browserSessionPersistence,
   type User,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -11,8 +11,13 @@ import { firebaseAuth, firestore, functions } from "./client";
 import { identitiesFromClaims, type DemoClaims } from "./identity";
 import type { Identity } from "@/lib/demo/types";
 
-export async function signInWithPassword(email: string, password: string): Promise<void> {
-  await signInWithEmailAndPassword(firebaseAuth(), email, password);
+// remember=true (the historical default) keeps the session across browser restarts;
+// false scopes it to the tab session. Persistence must be set BEFORE the credential
+// sign-in or Firebase applies it only from the next sign-in onwards.
+export async function signInWithPassword(email: string, password: string, remember = true): Promise<void> {
+  const auth = firebaseAuth();
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  await signInWithEmailAndPassword(auth, email, password);
 }
 
 export async function signOutUser(): Promise<void> {
