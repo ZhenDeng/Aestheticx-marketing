@@ -1,11 +1,12 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
+import { doctorRequestStats, rankDoctors, mostRecentlyRequestedDoctor } from "@/lib/demo/doctorRanking";
 import type { MedicationItem, ProductCategory } from "@/lib/demo/types";
 import {
   categoryDisplayName, productsInCategory, brandsInCategory, productsInBrand,
@@ -150,7 +151,7 @@ function LineEditor({ line, onChange, onRemove }: {
 
 export default function RequestBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { identity, accounts } = useDemoAuth();
+  const { identity } = useDemoAuth();
   const store = useDemoStore();
   const router = useRouter();
   const [category, setCategory] = useState<ProductCategory>("neurotoxin");
@@ -163,14 +164,29 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   // initializer is safe and avoids an effect + extra render.
   const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentlyUsed());
 
-  const doctors = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { id: string; name: string }[] = [];
-    for (const acc of accounts) for (const idn of acc.identities) {
-      if (idn.role === "doctor" && !seen.has(idn.user.id)) { seen.add(idn.user.id); out.push({ id: idn.user.id, name: idn.user.name }); }
-    }
-    return out;
-  }, [accounts]);
+  // The full doctor directory (live: listDoctors callable; demo: DEMO_ACCOUNTS), fetched
+  // once. Falls back to the demo cast if the live call fails so the picker never empties.
+  const [allDoctors, setAllDoctors] = useState<{ doctorId: string; doctorName: string }[]>([]);
+  const [doctorsLoaded, setDoctorsLoaded] = useState(false);
+  useEffect(() => {
+    if (doctorsLoaded) return; // fetch once; `store` recreates on every state change
+    let cancelled = false;
+    store.listDoctors()
+      .then((ds) => { if (!cancelled) { setAllDoctors(ds); setDoctorsLoaded(true); } })
+      .catch(async () => { const { demoDoctorRefs } = await import("@/lib/demo/accounts"); if (!cancelled) { setAllDoctors(demoDoctorRefs()); setDoctorsLoaded(true); } });
+    return () => { cancelled = true; };
+  }, [store, doctorsLoaded]);
+
+  // Rank by the nurse's own request history: most-requested first, then most-recent, then
+  // name. Default to the doctor they last requested. Recompute when either input changes.
+  const stats = useMemo(
+    () => doctorRequestStats(Object.values(store.state.requests), identity?.user.id ?? ""),
+    [store.state.requests, identity?.user.id],
+  );
+  const doctors = useMemo(
+    () => rankDoctors(allDoctors, stats).map((d) => ({ id: d.doctorId, name: d.doctorName })),
+    [allDoctors, stats],
+  );
 
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
@@ -181,12 +197,20 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   if (identity.role !== "nurse") {
     return <p className="text-ink-soft">Only a nurse can raise an authorisation request.</p>;
   }
+  if (!doctorsLoaded) {
+    return <p className="text-ink-soft">Loading doctors…</p>;
+  }
   if (doctors.length === 0) {
     return <p className="text-ink-soft">No prescribing doctors are available to send this request to.</p>;
   }
   const me = identity;
 
-  const defaultDoctor = patient.prescribingDoctorIDs.find((d) => doctors.some((x) => x.id === d)) ?? doctors[0]?.id ?? "";
+  // Default to the last-requested doctor, else the patient's prescribing doctor, else the
+  // top-ranked (most-requested) doctor. A live in-session pick overrides via doctorId.
+  const lastRequested = mostRecentlyRequestedDoctor(stats, doctors.map((d) => d.id));
+  const defaultDoctor = lastRequested
+    ?? patient.prescribingDoctorIDs.find((d) => doctors.some((x) => x.id === d))
+    ?? doctors[0]?.id ?? "";
   const chosenDoctor = doctorId || defaultDoctor;
   const brands = brandsInCategory(category);
   const results = query.trim() ? searchProducts(query) : [];
