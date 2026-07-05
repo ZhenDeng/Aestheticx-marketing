@@ -23,7 +23,7 @@ interface AuthValue {
   /** Demo mode: choose a preset identity directly. */
   signIn: (identity: Identity) => void;
   /** Live mode: email/password sign-in; resolves identities then auto-selects if only one. */
-  signInLive: (email: string, password: string) => Promise<void>;
+  signInLive: (email: string, password: string, remember?: boolean) => Promise<void>;
   /** Live mode: pick among multiple resolved identities. */
   selectIdentity: (identity: Identity) => void;
   signOut: () => void;
@@ -78,9 +78,9 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
       availableIdentities,
       accounts: DEMO_ACCOUNTS,
       signIn: setIdentity,
-      signInLive: async (email, password) => {
+      signInLive: async (email, password, remember = true) => {
         const { signInWithPassword } = await import("@/lib/firebase/auth");
-        await signInWithPassword(email, password); // watchUser populates identities
+        await signInWithPassword(email, password, remember); // watchUser populates identities
       },
       selectIdentity: setIdentity,
       signOut: () => {
