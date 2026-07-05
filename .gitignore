@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# macOS Finder "keep both" duplicates, e.g. "foo 2.ts", "bar 10.md"
+* [0-9].*
+* [0-9][0-9].*
+
 # debug
 npm-debug.log*
 yarn-debug.log*
