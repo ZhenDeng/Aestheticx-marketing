@@ -65,6 +65,10 @@ export default function ProfilePage() {
   const identities = availableIdentities.length
     ? availableIdentities
     : DEMO_ACCOUNTS.find((a) => a.identities.some((i) => i.user.id === me.user.id))?.identities ?? [me];
+  // AHPRA belongs to the ACCOUNT (a practitioner registration), not the active identity —
+  // a super admin who also holds a clinician role sees it without switching identities.
+  // Accounts with no clinical role (pure admins) still hide it.
+  const holdsClinicalRole = identities.some((i) => i.role === "doctor" || i.role === "nurse");
 
   return (
     <div className="max-w-3xl">
@@ -76,7 +80,7 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <ProfileFields me={me} profile={profile} showsAhpra={isClinician} />
+      <ProfileFields me={me} profile={profile} showsAhpra={isClinician || holdsClinicalRole} />
 
       {!isSuperAdmin && (
         <>
