@@ -56,6 +56,10 @@ Definitions:
 4. **`TreatmentNoteForm`**: `canSave` no longer requires a ticked authorisation; the
    authorisation list becomes an *optional* section shown only when usable authorisations
    exist (the "Request one from a doctor first" blocker copy is removed).
+5. **`AftercareForm`** prefills the last treatment note's medications; it now sources them
+   from `visibleNotesForPatient` (was unfiltered `notesForPatient`) so a viewer who can't see
+   treatment notes under rule 2 doesn't get them prefilled — closing an indirect leak the
+   narrower treatment-note visibility would otherwise open.
 
 ## Consequence worth explicit sign-off — clinic doctors
 
@@ -101,10 +105,11 @@ Backend logic is pure and already well covered ([notes-ops.test.ts],
 
 ## Tasks
 
-- [ ] Add `canViewTreatmentNotes` to `Permissions` + `perms()` default.
-- [ ] Rewrite `patientPermissions` grants per the table (all four owner branches).
-- [ ] Update `visibleNotesForPatient` to the treatment/general filter above.
-- [ ] Relax `saveTreatmentNote` — remove the nurse `nothingTicked` gate; keep ticked-auth validation/consumption.
-- [ ] Update `TreatmentNoteForm` — optional authorisation section + `canSave` no longer needs a tick.
-- [ ] Update/extend `notes-ops.test.ts` + `backend.test.ts` for the new model (tests first).
-- [ ] Verify: `npm test`, `npm run build`, live QA of the note flow.
+- [x] Add `canViewTreatmentNotes` to `Permissions` + `perms()` default.
+- [x] Rewrite `patientPermissions` grants per the table (all four owner branches).
+- [x] Update `visibleNotesForPatient` to the treatment/general filter above.
+- [x] Relax `saveTreatmentNote` — remove the nurse `nothingTicked` gate; keep ticked-auth validation/consumption.
+- [x] Update `TreatmentNoteForm` — optional authorisation section + `canSave` no longer needs a tick.
+- [x] Route `AftercareForm` medication prefill through `visibleNotesForPatient` (leak fix).
+- [x] Update/extend `notes-ops.test.ts` for the new model (tests first).
+- [x] Verify: `npm test`, `npm run build`, live QA of the note flow (rules 1–3 confirmed).
