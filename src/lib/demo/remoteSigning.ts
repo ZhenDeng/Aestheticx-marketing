@@ -4,10 +4,12 @@ import { FORM_TEMPLATE_KINDS, type FormTemplateKind } from "./forms";
 // Matches the backend createFormLink default (FORMS_BASE_URL).
 export const FORM_LINK_BASE_URL = "https://aestheticx-91e6b.web.app";
 
-// The deployed public sign.html only renders consent-style questions, so the
-// Aesthetic History intake is not offered for remote signing.
+// Every form template can be sent for remote signing, including the Aesthetic History
+// intake (owner feedback #3). LIVE DEPENDENCY: the deployed public sign.html must render the
+// aesthetic-history intake for a remote link to display in production — until then, remote
+// aesthetic-history links only render in the demo. Tracked separately from this web repo.
 export function remoteSigningTemplateKinds(): FormTemplateKind[] {
-  return FORM_TEMPLATE_KINDS.filter((k) => k !== "aestheticHistory");
+  return [...FORM_TEMPLATE_KINDS];
 }
 
 export function formSigningUrl(token: string): string {
