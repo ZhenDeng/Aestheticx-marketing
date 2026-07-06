@@ -86,7 +86,7 @@ export default function RemoteConsentPage({ params }: { params: Promise<{ id: st
         <span className="micro">Form</span>
         <select value={kind} onChange={(e) => { setKind(e.target.value as FormTemplateKind); reset(); }}
           className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink">
-          {remoteSigningTemplateKinds(isLive).map((k) => <option key={k} value={k}>{templateDisplayName(k)}</option>)}
+          {remoteSigningTemplateKinds().map((k) => <option key={k} value={k}>{templateDisplayName(k)}</option>)}
         </select>
       </label>
 
