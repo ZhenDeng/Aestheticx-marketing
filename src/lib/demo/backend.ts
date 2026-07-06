@@ -105,11 +105,14 @@ export interface Permissions {
   canWriteTreatmentNote: boolean;
   canSendForms: boolean;
   canViewBusinessStats: boolean;
-  // Separate from canWriteGeneralNote: a prescriber-only doctor (patient not under their
-  // name) loses general-note visibility entirely, but super admin still inspects
-  // everything despite never writing (spec: clinical-notes "Note-kind visibility for
-  // prescriber-only doctors").
+  // Separate from canWriteGeneralNote: a non-owner doctor sees general/aftercare notes only
+  // when they authored them (spec: 2026-07-06 treatment/general note access rules, rule 3);
+  // this flag means "view ALL general/aftercare notes on the file". Super admin keeps it
+  // despite never writing.
   canViewGeneralNotes: boolean;
+  // Treatment notes are visible to the record nurse, prescribing doctor, clinic admin and
+  // super admin only (spec: 2026-07-06 rule 2) — narrower than plain canView.
+  canViewTreatmentNotes: boolean;
 }
 
 function perms(p: Partial<Permissions>): Permissions {
@@ -123,6 +126,7 @@ function perms(p: Partial<Permissions>): Permissions {
     canSendForms: false,
     canViewBusinessStats: false,
     canViewGeneralNotes: false,
+    canViewTreatmentNotes: false,
     ...p,
   };
 }
@@ -131,9 +135,20 @@ function contextClinicID(identity: Identity): string | null {
   return identity.context.kind === "clinic" ? identity.context.clinic.id : null;
 }
 
+// Grants for a prescribing doctor viewing a patient NOT under their own name (spec:
+// 2026-07-06 treatment/general note access rules): they read + write treatment notes (rule
+// 1/2) and may write general notes (rule 3), but see general/aftercare notes only when they
+// authored them — canViewGeneralNotes stays false and the note filter falls back to authorID.
+const PRESCRIBING_DOCTOR = perms({
+  canView: true,
+  canWriteTreatmentNote: true,
+  canViewTreatmentNotes: true,
+  canWriteGeneralNote: true,
+});
+
 export function patientPermissions(identity: Identity, patient: Patient): Permissions {
   if (identity.role === "superAdmin") {
-    return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true });
+    return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
   }
   const userID = identity.user.id;
   const isPrescriber = identity.role === "doctor" && patient.prescribingDoctorIDs.includes(userID);
@@ -141,34 +156,36 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
   switch (patient.owner.kind) {
     case "doctor":
       if (identity.role === "doctor" && identity.context.kind === "independent" && userID === patient.owner.id) {
-        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true });
+        // The doctor is the prescribing doctor of their own private patient — full access.
+        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
       }
+      if (isPrescriber) return PRESCRIBING_DOCTOR;
       return perms({});
     case "nurse":
       if (identity.role === "nurse" && identity.context.kind === "independent" && userID === patient.owner.id) {
-        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true });
+        return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
       }
-      if (isPrescriber) {
-        // Prescribing doctors see the file and write treatment notes under it — the
-        // patient isn't under their name, so general notes stay off-limits.
-        return perms({ canView: true, canWriteTreatmentNote: true });
-      }
+      if (isPrescriber) return PRESCRIBING_DOCTOR;
       return perms({});
     case "clinic":
       if (contextClinicID(identity) === patient.owner.id) {
         switch (identity.role) {
           case "clinicAdmin":
-            return perms({ canView: true, canEditDetails: true, canDelete: true, canMerge: true, canWriteGeneralNote: true, canSendForms: true, canViewBusinessStats: true, canViewGeneralNotes: true });
-          case "doctor":
+            // Views every note (incl. treatment, rule 2) but writes general notes only.
+            return perms({ canView: true, canEditDetails: true, canDelete: true, canMerge: true, canWriteGeneralNote: true, canSendForms: true, canViewBusinessStats: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
           case "nurse":
-            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true });
+            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
+          case "doctor":
+            // A clinic doctor is a doctor like any other: treatment + full-general access
+            // only via the prescribing relationship (rules 2/3). Non-prescribers keep the
+            // file, editing and forms, but see only general notes they authored themselves.
+            if (isPrescriber) return perms({ ...PRESCRIBING_DOCTOR, canEditDetails: true, canSendForms: true });
+            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canSendForms: true });
           default:
-            return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true });
+            return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
         }
       }
-      if (isPrescriber) {
-        return perms({ canView: true, canWriteTreatmentNote: true });
-      }
+      if (isPrescriber) return PRESCRIBING_DOCTOR;
       return perms({});
   }
 }
@@ -382,16 +399,20 @@ export function notesForPatient(state: DemoState, patientID: string): Note[] {
   return [...(state.notesByPatient[patientID] ?? [])].sort((a, b) => b.createdAt - a.createdAt);
 }
 
-// The note stream as one identity sees it (port of InMemoryBackend.notes(forPatient:as:)):
-// without canViewGeneralNotes only treatment notes remain — general notes AND aftercare
-// records are hidden from a prescriber-only doctor.
+// The note stream as one identity sees it (spec: 2026-07-06 treatment/general note access
+// rules): treatment notes need canViewTreatmentNotes (rule 2); general/aftercare notes need
+// canViewGeneralNotes, else fall back to own-authored only (rule 3).
 export function visibleNotesForPatient(state: DemoState, patientID: string, identity: Identity): Note[] {
   const patient = state.patients[patientID];
   if (!patient) return [];
   const permissions = patientPermissions(identity, patient);
   if (!permissions.canView) return [];
-  const notes = notesForPatient(state, patientID);
-  return permissions.canViewGeneralNotes ? notes : notes.filter((n) => n.kind === "treatment");
+  const me = identity.user.id;
+  return notesForPatient(state, patientID).filter((n) =>
+    n.kind === "treatment"
+      ? permissions.canViewTreatmentNotes
+      : permissions.canViewGeneralNotes || n.authorID === me,
+  );
 }
 
 // List-row text: the title if present, else the body's first line + "…".
@@ -1092,10 +1113,10 @@ export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInpu
   const authorisations = { ...state.authorisations };
   const usages = [...state.usages];
 
-  const isDoctorDirect = input.identity.role === "doctor" && input.tickedIDs.length === 0;
-  if (!isDoctorDirect) {
-    if (input.tickedIDs.length === 0) throw new BackendError("nothingTicked");
-    // Validate all before mutating any (all-or-nothing).
+  // Rule 1 (spec: 2026-07-06): a treatment note needs no authorisation — nurse and prescribing
+  // doctor alike may save without ticking one. When authorisations ARE ticked they are still
+  // validated (all-or-nothing) and consumed.
+  if (input.tickedIDs.length > 0) {
     for (const id of input.tickedIDs) {
       const a = state.authorisations[id];
       if (!a) throw new BackendError("notFound");
