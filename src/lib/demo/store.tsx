@@ -26,6 +26,7 @@ interface StoreValue {
   submitRequest: (input: { patientID: string; doctorID: string; items: MedicationItem[]; identity: Identity }) => void;
   approveRequest: (requestID: string, identity: Identity) => void;
   requireEdit: (requestID: string, identity: Identity) => void;
+  resubmitRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity }) => void;
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
@@ -223,6 +224,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror((s) => backend.approveRequest(s, requestID, id, now).state, (m) => m.mirrorApproveRequest(requestID)),
       requireEdit: (requestID, id) =>
         applyAndMirror((s) => backend.requireEdit(s, requestID, id), (m) => m.mirrorRequireEdit(requestID)),
+      resubmitRequest: (input) =>
+        applyAndMirror(
+          (s) => backend.resubmitRequest(s, input),
+          (m) => m.mirrorResubmitRequest(input.requestID, input.items),
+        ),
       saveGeneralNote: (input) => {
         // Mint the note id eagerly so the local copy and the mirrored doc agree (Strict
         // Mode re-runs the updater — see createPatient / submitRequest).

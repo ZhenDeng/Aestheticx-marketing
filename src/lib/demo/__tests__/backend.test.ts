@@ -13,6 +13,7 @@ import {
   submitRequest,
   approveRequest,
   requireEdit,
+  resubmitRequest,
   activeAuthorisations,
   saveTreatmentNote,
   REPEATS_PER_AUTHORISATION,
@@ -210,6 +211,48 @@ describe("requireEdit", () => {
     );
     const next = requireEdit(submitted.state, submitted.request.id, voss);
     expect(next.requests[submitted.request.id].status).toBe("needsEdit");
+  });
+});
+
+describe("resubmitRequest", () => {
+  const botox: MedicationItem = { name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] };
+
+  function returned() {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    return { id: submitted.request.id, state: requireEdit(submitted.state, submitted.request.id, voss) };
+  }
+
+  it("replaces the items and returns the request to pending", () => {
+    const { id, state } = returned();
+    const next = resubmitRequest(state, { requestID: id, items: [botox], identity: sarahIndependent });
+    expect(next.requests[id].status).toBe("pending");
+    expect(next.requests[id].items).toEqual([botox]);
+    // The addressed doctor is untouched — the rules only permit items + status to change.
+    expect(next.requests[id].doctorID).toBe("u-voss");
+  });
+
+  it("refuses a resubmit from a different nurse", () => {
+    const { id, state } = returned();
+    const other: Identity = { ...sarahIndependent, user: { id: "u-other", name: "Nurse Other" } };
+    expect(() => resubmitRequest(state, { requestID: id, items: [botox], identity: other })).toThrow();
+  });
+
+  it("refuses to resubmit a request that is still pending (not returned)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    expect(() =>
+      resubmitRequest(submitted.state, { requestID: submitted.request.id, items: [botox], identity: sarahIndependent }),
+    ).toThrow();
+  });
+
+  it("throws notFound for an unknown request", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    expect(() => resubmitRequest(state, { requestID: "nope", items: [botox], identity: sarahIndependent })).toThrow();
   });
 });
 
