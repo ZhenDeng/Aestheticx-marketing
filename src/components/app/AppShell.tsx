@@ -47,14 +47,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 px-5 sm:px-8">
+        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-5 sm:px-8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`-mb-px border-b-2 px-3 py-2.5 text-sm transition-colors ${
+                className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition-colors ${
                   active ? "border-tint text-ink" : "border-transparent text-ink-soft hover:text-ink"
                 }`}
                 style={active ? { borderColor: "var(--color-tint)" } : undefined}
