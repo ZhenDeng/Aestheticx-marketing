@@ -295,11 +295,22 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               <ul className="mt-2 flex flex-col gap-2">
                 {openRequests.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-sm text-ink-soft">{r.items.map((i) => i.name).join(", ")}</span>
-                    <button onClick={() => consult.start(r.id, fullName(patient))} disabled={consult.active}
-                      className="flex-none rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
-                      Start consult
-                    </button>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-sm text-ink-soft">{r.items.map((i) => i.name).join(", ")}</span>
+                      {r.status === "needsEdit" && <span className="micro" style={{ color: "var(--color-danger)" }}>Needs edit</span>}
+                    </span>
+                    <span className="flex flex-none items-center gap-2">
+                      {r.status === "needsEdit" && (
+                        <Link href={`/app/patients/${id}/request?edit=${r.id}`}
+                          className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                          Edit &amp; resubmit
+                        </Link>
+                      )}
+                      <button onClick={() => consult.start(r.id, fullName(patient))} disabled={consult.active}
+                        className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
+                        Start consult
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>

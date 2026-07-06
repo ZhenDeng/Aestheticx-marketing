@@ -390,6 +390,35 @@ export function requireEdit(state: DemoState, requestID: string, identity: Ident
   return { ...state, requests: { ...state.requests, [requestID]: { ...request, status: "needsEdit" } } };
 }
 
+export interface ResubmitRequestInput {
+  requestID: string;
+  items: MedicationItem[];
+  identity: Identity;
+}
+
+// The nurse edits a doctor-returned request and sends it back for review (port of iOS
+// InMemoryBackend.resubmitRequest). Only the raising nurse may resubmit, only while the
+// request is in needsEdit, and only the items change — the addressed doctor is fixed
+// (Firestore rules allow the client update to touch items + status only).
+export function resubmitRequest(state: DemoState, input: ResubmitRequestInput): DemoState {
+  const request = state.requests[input.requestID];
+  if (!request) throw new BackendError("notFound");
+  if (
+    input.identity.role !== "nurse" ||
+    request.nurse.id !== input.identity.user.id ||
+    request.status !== "needsEdit"
+  ) {
+    throw new BackendError("notPermitted");
+  }
+  return {
+    ...state,
+    requests: {
+      ...state.requests,
+      [input.requestID]: { ...request, items: input.items, status: "pending" },
+    },
+  };
+}
+
 // --- Notes ---
 
 function canUseAuthorisation(a: Authorisation, identity: Identity): boolean {

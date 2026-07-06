@@ -122,6 +122,12 @@ export default function AuthorisationsPage() {
               <span className="block text-sm text-ink-soft">{request.items.map((i) => i.name).join(", ")}</span>
             </span>
             <span className="flex items-center gap-3">
+              {request.status === "needsEdit" && (
+                <Link href={`/app/patients/${patient.id}/request?edit=${request.id}`}
+                  className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                  Edit &amp; resubmit
+                </Link>
+              )}
               <button onClick={() => consult.start(request.id, `${patient.givenName} ${patient.lastName}`)} disabled={consult.active}
                 className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
                 Start consult

@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
@@ -154,6 +154,13 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const router = useRouter();
+  // Edit mode: ?edit={requestId} reuses this builder to amend a doctor-returned
+  // (needsEdit) request. Only the items change on resubmit — the addressed doctor is
+  // fixed (Firestore rules permit items + status only), so its picker is locked.
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const editRequest = editId ? store.state.requests[editId] : undefined;
+  const [prefilled, setPrefilled] = useState(false);
   const [category, setCategory] = useState<ProductCategory>("neurotoxin");
   const [brand, setBrand] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -177,6 +184,15 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     return () => { cancelled = true; };
   }, [store, doctorsLoaded]);
 
+  // Prefill the builder from the returned request, once it has hydrated. Guarded by
+  // `prefilled` so it never clobbers the nurse's in-progress edits on later re-renders.
+  useEffect(() => {
+    if (!editId || prefilled || !editRequest) return;
+    setLines(editRequest.items.map((item) => ({ key: crypto.randomUUID(), item })));
+    setDoctorId(editRequest.doctorID);
+    setPrefilled(true);
+  }, [editId, editRequest, prefilled]);
+
   // Rank by the nurse's own request history: most-requested first, then most-recent, then
   // name. Default to the doctor they last requested. Recompute when either input changes.
   const stats = useMemo(
@@ -197,6 +213,16 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   if (identity.role !== "nurse") {
     return <p className="text-ink-soft">Only a nurse can raise an authorisation request.</p>;
   }
+  // Once loaded, a resubmit target must exist, belong to this nurse, and still be returned.
+  if (editId && (!editRequest || editRequest.nurse.id !== identity.user.id || editRequest.status !== "needsEdit")) {
+    return (
+      <div className="max-w-3xl">
+        <Link href={`/app/patients/${id}`} className="text-sm text-ink-soft hover:text-ink">← Back to patient</Link>
+        <p className="mt-4 text-ink-soft">This request can no longer be edited.</p>
+      </div>
+    );
+  }
+  const editing = !!editId;
   if (!doctorsLoaded) {
     return <p className="text-ink-soft">Loading doctors…</p>;
   }
@@ -240,14 +266,19 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
   function submit() {
     if (!canSubmit) return;
-    store.submitRequest({ patientID: id, doctorID: chosenDoctor, items: lines.map((l) => l.item), identity: me });
+    if (editing && editRequest) {
+      store.resubmitRequest({ requestID: editRequest.id, items: lines.map((l) => l.item), identity: me });
+    } else {
+      store.submitRequest({ patientID: id, doctorID: chosenDoctor, items: lines.map((l) => l.item), identity: me });
+    }
     router.push(`/app/patients/${id}`);
   }
 
   return (
     <div className="max-w-3xl">
       <Link href={`/app/patients/${id}`} className="text-sm text-ink-soft hover:text-ink">← Back to patient</Link>
-      <h1 className="mt-3 font-display text-3xl text-ink">Raise authorisation request</h1>
+      <h1 className="mt-3 font-display text-3xl text-ink">{editing ? "Edit authorisation request" : "Raise authorisation request"}</h1>
+      {editing && <p className="mt-1 text-sm text-ink-soft">The doctor asked for a change. Update the items and resubmit for review.</p>}
 
       <h2 className="mt-6 font-display text-xl text-ink">Add products</h2>
       <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all products…"
@@ -329,16 +360,17 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
       <label className="mt-6 block max-w-xs">
         <span className="micro">Prescribing doctor</span>
-        <select value={chosenDoctor} onChange={(e) => setDoctorId(e.target.value)}
-          className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-ink">
+        <select value={chosenDoctor} onChange={(e) => setDoctorId(e.target.value)} disabled={editing}
+          className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-ink disabled:opacity-60">
           {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
+        {editing && <span className="mt-1 block text-xs text-ink-faint">The addressed doctor can’t change on a resubmit.</span>}
       </label>
 
       <div className="mt-6 flex gap-3">
         <button type="button" onClick={submit} disabled={!canSubmit}
           className="rounded-btn px-5 py-2.5 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
-          Submit request
+          {editing ? "Resubmit request" : "Submit request"}
         </button>
         <Link href={`/app/patients/${id}`} className="rounded-btn border border-line px-5 py-2.5 text-sm text-ink-soft">Cancel</Link>
       </div>

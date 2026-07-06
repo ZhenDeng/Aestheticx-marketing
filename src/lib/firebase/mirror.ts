@@ -3,8 +3,8 @@
 import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
-import { encodeAuthRequest, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate, encodeFollowUpTask } from "./mappers";
-import type { AuthorisationRequest, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
+import { encodeAuthRequest, encodeMedication, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate, encodeFollowUpTask } from "./mappers";
+import type { AuthorisationRequest, MedicationItem, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -35,6 +35,15 @@ export async function mirrorApproveRequest(requestId: string): Promise<void> {
 
 export async function mirrorRequireEdit(requestId: string): Promise<void> {
   await httpsCallable(functions(), "requireEdit")({ requestId });
+}
+
+// The nurse's edit-and-resubmit is a direct client update (not a Function): the rules allow
+// the raising nurse to change items + flip status needsEdit → pending, and nothing else.
+export async function mirrorResubmitRequest(requestId: string, items: MedicationItem[]): Promise<void> {
+  await updateDoc(doc(firestore(), "authRequests", requestId), {
+    items: items.map(encodeMedication),
+    status: "pending",
+  });
 }
 
 // consumeRepeats both decrements repeats AND writes the treatment note in one
