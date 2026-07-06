@@ -59,7 +59,14 @@ export function TreatmentNoteForm({
     <div className="mt-3 rounded-inner border border-line bg-card p-4">
       <p className="micro">Treatment note</p>
 
-      {usable.length > 0 && (
+      {usable.length === 0 ? (
+        // Rule 1: recording is allowed without one, but remind the writer of the state so an
+        // absent authorisation is a conscious choice, not an oversight.
+        <p className="mt-3 rounded-inner border border-line px-3 py-2 text-sm text-ink-soft">
+          No authorisation on file for this patient yet — you can still record this treatment
+          note without one.
+        </p>
+      ) : (
         <div className="mt-3">
           <p className="micro">Optionally consume authorisations</p>
           <ul className="mt-2 flex flex-col gap-2">
