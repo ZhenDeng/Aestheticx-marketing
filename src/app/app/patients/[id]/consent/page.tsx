@@ -12,6 +12,16 @@ import {
 import type { FormAnswer } from "@/lib/demo/types";
 import { SignaturePad, type SignatureHandle } from "@/components/app/SignaturePad";
 
+// A readable one-liner from an unknown throwable — prefers a Firebase error `code`
+// (e.g. "storage/unauthorized", "appCheck/…") which pinpoints a live Storage/App Check
+// rejection, else falls back to the message.
+function errorText(e: unknown): string {
+  const code = (e as { code?: unknown })?.code;
+  if (typeof code === "string" && code) return code;
+  if (e instanceof Error && e.message) return e.message;
+  return "unexpected error";
+}
+
 export default function ConsentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { identity } = useDemoAuth();
@@ -53,16 +63,26 @@ export default function ConsentPage({ params }: { params: Promise<{ id: string }
       let signatureFileId: string | undefined;
       let signatureDataUrl: string | undefined;
       if (live) {
-        const { uploadSignature } = await import("@/lib/firebase/storage");
-        const formId = crypto.randomUUID();
-        signatureFileId = await uploadSignature(id, formId, png.blob);
+        // Attribute a failed signature upload (live-only Cloud Storage write) distinctly from
+        // a failed record, so the surfaced error names the failing layer instead of a generic
+        // "could not save" that hides Storage/App Check rejections.
+        try {
+          const { uploadSignature } = await import("@/lib/firebase/storage");
+          signatureFileId = await uploadSignature(id, crypto.randomUUID(), png.blob);
+        } catch (e) {
+          console.error("[consent] signature upload failed:", e);
+          setError(`Could not upload the signature: ${errorText(e)}`);
+          setBusy(false);
+          return;
+        }
       } else {
         signatureDataUrl = png.dataUrl;
       }
       store.recordForm({ patientID: id, template: kind, channel: "onDevice", answers: answerList, signatureFileId, signatureDataUrl }, me);
       router.push(`/app/patients/${id}`);
-    } catch {
-      setError("Could not save the form. Please try again.");
+    } catch (e) {
+      console.error("[consent] could not record the form:", e);
+      setError(`Could not save the form: ${errorText(e)}`);
       setBusy(false);
     }
   }
