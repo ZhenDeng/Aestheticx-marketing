@@ -346,8 +346,13 @@ export interface DemoState {
   externalBusyByOwner: Record<string, ExternalBusyCalendar>;
   // users/{uid}.lastCalledDoctorId — set whenever the user starts a consult call.
   lastCalledDoctorByUser: Record<string, string>;
-  // users/{uid} profile fields (ahpra/abn/phone/address + avatar) keyed by user id.
+  // users/{uid} profile fields (ahpra/abn/phone/address + avatar) keyed by user id. `address`
+  // here is the per-user default/fallback; per-identity overrides live in addressByIdentity.
   profileByUser: Record<string, UserProfile>;
+  // Per-identity address overrides (owner feedback #2), keyed by
+  // `${user.id}:${identityKey(identity)}` — the same user practising under a different
+  // role/context can hold a different address. Falls back to profileByUser[uid].address.
+  addressByIdentity: Record<string, string>;
   // Super-admin account inventory (live: every users/{uid} doc; demo: the demo cast).
   accountsByID: Record<string, AccountRecord>;
 }

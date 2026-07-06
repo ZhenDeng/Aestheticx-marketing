@@ -93,6 +93,10 @@ interface StoreValue {
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
   updateProfile: (edits: import("./types").UserProfileEdit, identity: Identity) => void;
+  // Per-identity address (owner feedback #2). Demo-local: no live mirror yet — the resolver
+  // falls back to the per-user address in live mode, and overrides are session-only there.
+  addressForIdentity: (identity: Identity) => string;
+  setAddressForIdentity: (identity: Identity, address: string) => void;
   // Super-admin console. accounts() lists the hydrated inventory (demo: the demo cast;
   // live: every users/{uid} doc). createUser/resetUserPassword are live-only — the
   // deployed callables are the only way to touch Auth records, so demo rejects.
@@ -540,6 +544,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       deleteForm: (patientID, formId, identity) =>
         applyAndMirror((s) => backend.deleteForm(s, patientID, formId, identity), (m) => m.mirrorDeleteForm(patientID, formId)),
       profileForUser: (userID) => backend.profileForUser(state, userID),
+      addressForIdentity: (identity) => backend.addressForIdentity(state, identity),
+      setAddressForIdentity: (identity, address) =>
+        setState((s) => backend.setAddressForIdentity(s, identity, address)),
       accounts: () => backend.accountsInventory(state),
       createUser: async (input) => {
         if (!live) throw new backend.BackendError("User creation is live-only in the demo.");
