@@ -90,10 +90,10 @@ UI changes are small tweaks to existing components (no new screens), so no separ
 
 ## Tasks
 
-- [ ] #2 — `addressByIdentity` state + `addressForIdentity`/`setAddressForIdentity` + store wiring (tests first).
-- [ ] #2 — profile UI: address per-identity; phone/AHPRA stay per-user.
-- [ ] #3 — `remoteSigningTemplateKinds()` includes `aestheticHistory` (+ test update).
-- [ ] #4 — reformat `conditions-screen` prompt + `whitespace-pre-line` render.
-- [ ] #5 — calendar default view `week`.
-- [ ] #6 — `formAnswersComplete` helper (tests first) + button gating.
-- [ ] Verify: `npm test`, `npm run build`, live QA of all six.
+- [x] #2 — `addressByIdentity` state + `addressForIdentity`/`setAddressForIdentity` + store wiring (tests first).
+- [x] #2 — profile UI: address per-identity; phone/AHPRA stay per-user (`hydrate.ts` seeds empty for live).
+- [x] #3 — `remoteSigningTemplateKinds()` includes `aestheticHistory` (+ test update).
+- [x] #4 — reformat `conditions-screen` prompt + `whitespace-pre-line` render.
+- [x] #5 — calendar default view `week`.
+- [x] #6 — `formAnswersComplete` helper (tests first) + button gating.
+- [x] Verify: `npm test` (535) + `npm run build` green; live QA of all six confirmed.
