@@ -160,7 +160,7 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
   const editRequest = editId ? store.state.requests[editId] : undefined;
-  const [prefilled, setPrefilled] = useState(false);
+  const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
   const [category, setCategory] = useState<ProductCategory>("neurotoxin");
   const [brand, setBrand] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -184,14 +184,15 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     return () => { cancelled = true; };
   }, [store, doctorsLoaded]);
 
-  // Prefill the builder from the returned request, once it has hydrated. Guarded by
-  // `prefilled` so it never clobbers the nurse's in-progress edits on later re-renders.
-  useEffect(() => {
-    if (!editId || prefilled || !editRequest) return;
-    setLines(editRequest.items.map((item) => ({ key: crypto.randomUUID(), item })));
+  // Prefill the builder from the returned request the first time it hydrates. Derived in
+  // render (not an effect) so the locked doctor never flashes a wrong value before commit;
+  // `prefilledFor` guards against re-seeding on later store re-renders, which would clobber
+  // the nurse's in-progress edits. Deterministic keys keep the render pure.
+  if (editRequest && prefilledFor !== editRequest.id) {
+    setPrefilledFor(editRequest.id);
+    setLines(editRequest.items.map((item, i) => ({ key: `edit-${editRequest.id}-${i}`, item })));
     setDoctorId(editRequest.doctorID);
-    setPrefilled(true);
-  }, [editId, editRequest, prefilled]);
+  }
 
   // Rank by the nurse's own request history: most-requested first, then most-recent, then
   // name. Default to the doctor they last requested. Recompute when either input changes.
