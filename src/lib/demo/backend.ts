@@ -40,6 +40,7 @@ import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
+import { identityKey } from "./identityPrefs";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -67,6 +68,7 @@ export function emptyState(): DemoState {
     externalBusyByOwner: {},
     lastCalledDoctorByUser: {},
     profileByUser: {},
+    addressByIdentity: {},
     accountsByID: {},
   };
 }
@@ -869,6 +871,21 @@ export function updateProfile(state: DemoState, userID: string, edits: UserProfi
     ...(edits.avatarDataUrl !== undefined ? { avatarDataUrl: edits.avatarDataUrl } : {}),
   };
   return { ...state, profileByUser: { ...state.profileByUser, [userID]: next } };
+}
+
+// Per-identity address (owner feedback #2). Key: `${uid}:${identityKey}` so the same user
+// under a different role/context can hold a different address. Falls back to the per-user
+// default in profileByUser (e.g. the value seeded at createUser) until an override is set.
+function addressIdentityKey(identity: Identity): string {
+  return `${identity.user.id}:${identityKey(identity)}`;
+}
+
+export function addressForIdentity(state: DemoState, identity: Identity): string {
+  return state.addressByIdentity[addressIdentityKey(identity)] ?? profileForUser(state, identity.user.id).address;
+}
+
+export function setAddressForIdentity(state: DemoState, identity: Identity, address: string): DemoState {
+  return { ...state, addressByIdentity: { ...state.addressByIdentity, [addressIdentityKey(identity)]: address } };
 }
 
 export type DoctorStatusResult = ReturnType<typeof doctorStatusForUser>;

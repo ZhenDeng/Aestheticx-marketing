@@ -9,6 +9,7 @@ import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 import { identityBadge, type AccountRecord, type Identity, type Role, type UserProfile } from "@/lib/demo/types";
 import { validateNewUser } from "@/lib/demo/userAdmin";
+import { identityKey } from "@/lib/demo/identityPrefs";
 import { tintStyle } from "@/lib/demo/tint";
 
 // Port of iOS ProfileView (spec: auth-accounts): own details + the identity switch.
@@ -232,24 +233,34 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
 // rules-immutable (set by the createUser Function), so it renders display-only.
 function ProfileFields({ me, profile, showsAhpra }: { me: Identity; profile: UserProfile; showsAhpra: boolean }) {
   const store = useDemoStore();
-  // Remount the drafts whenever the stored profile changes (e.g. live hydrate landing).
-  return <ProfileFieldsEditor key={`${profile.ahpra}|${profile.phone}|${profile.address}`} me={me} profile={profile} showsAhpra={showsAhpra} store={store} />;
+  // Address is per-identity (owner feedback #2); AHPRA/phone are account-wide.
+  const identityAddress = store.addressForIdentity(me);
+  // Remount the drafts whenever the stored fields OR the active identity change — switching
+  // "Practise as" keeps the same user id, so the identity key must be part of the key.
+  return (
+    <ProfileFieldsEditor
+      key={`${identityKey(me)}|${profile.ahpra}|${profile.phone}|${identityAddress}`}
+      me={me} profile={profile} identityAddress={identityAddress} showsAhpra={showsAhpra} store={store}
+    />
+  );
 }
 
-function ProfileFieldsEditor({ me, profile, showsAhpra, store }: {
-  me: Identity; profile: UserProfile; showsAhpra: boolean; store: ReturnType<typeof useDemoStore>;
+function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, store }: {
+  me: Identity; profile: UserProfile; identityAddress: string; showsAhpra: boolean; store: ReturnType<typeof useDemoStore>;
 }) {
   const [ahpra, setAhpra] = useState(profile.ahpra);
   const [phone, setPhone] = useState(profile.phone);
-  const [address, setAddress] = useState(profile.address);
-  const dirty = ahpra !== profile.ahpra || phone !== profile.phone || address !== profile.address;
+  const [address, setAddress] = useState(identityAddress);
+  const dirty = ahpra !== profile.ahpra || phone !== profile.phone || address !== identityAddress;
 
   function save() {
-    store.updateProfile({
-      ...(ahpra !== profile.ahpra ? { ahpra } : {}),
-      ...(phone !== profile.phone ? { phone } : {}),
-      ...(address !== profile.address ? { address } : {}),
-    }, me);
+    if (ahpra !== profile.ahpra || phone !== profile.phone) {
+      store.updateProfile({
+        ...(ahpra !== profile.ahpra ? { ahpra } : {}),
+        ...(phone !== profile.phone ? { phone } : {}),
+      }, me);
+    }
+    if (address !== identityAddress) store.setAddressForIdentity(me, address);
   }
 
   const row = "flex items-center justify-between gap-4 border-b border-line py-2.5 last:border-b-0";
@@ -276,6 +287,7 @@ function ProfileFieldsEditor({ me, profile, showsAhpra, store }: {
           addresses stay fully visible — the shared right-aligned w-56 input truncates them. */}
       <label className="block border-b border-line py-2.5 last:border-b-0">
         <span className="micro">Address</span>
+        <span className="ml-2 text-xs text-ink-soft">· {contextLine(me)}</span>
         <textarea
           value={address}
           onChange={(e) => setAddress(e.target.value)}

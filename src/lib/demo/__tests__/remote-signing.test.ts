@@ -4,12 +4,17 @@ import {
 } from "@/lib/demo/remoteSigning";
 
 describe("remoteSigningTemplateKinds", () => {
-  it("excludes the aesthetic history intake", () => {
-    expect(remoteSigningTemplateKinds()).not.toContain("aestheticHistory");
+  it("offers the aesthetic history intake in the demo (owner feedback #3)", () => {
+    expect(remoteSigningTemplateKinds(false)).toContain("aestheticHistory");
+    expect(remoteSigningTemplateKinds(false)).toHaveLength(7);
   });
-  it("keeps the six consent templates", () => {
-    expect(remoteSigningTemplateKinds()).toHaveLength(6);
-    expect(remoteSigningTemplateKinds()).toContain("antiwrinkleConsent");
+  it("excludes the aesthetic history intake in live mode (sign.html can't render it yet)", () => {
+    expect(remoteSigningTemplateKinds(true)).not.toContain("aestheticHistory");
+    expect(remoteSigningTemplateKinds(true)).toHaveLength(6);
+  });
+  it("keeps the consent templates in both modes", () => {
+    expect(remoteSigningTemplateKinds(false)).toContain("antiwrinkleConsent");
+    expect(remoteSigningTemplateKinds(true)).toContain("antiwrinkleConsent");
   });
 });
 

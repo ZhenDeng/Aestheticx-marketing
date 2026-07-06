@@ -27,6 +27,24 @@ export function templateFullText(t: { intro: string; clauses: string[] }): strin
   return [t.intro, ...t.clauses];
 }
 
+// Owner feedback #6: the consent form may only be recorded once every question has an
+// explicit answer — a "Yes" that asks for detail must include it, and free-text answers must
+// be non-empty. An untouched question has no entry in `answers` (so it can't silently record
+// as "No"). Typed structurally on the answer to avoid a forms↔types import cycle.
+export function formAnswersComplete(
+  template: { questions: FormQuestion[] },
+  answers: Record<string, { answer: boolean; detail?: string }>,
+): boolean {
+  return template.questions.every((q) => {
+    const a = answers[q.id];
+    if (q.kind.type === "text") return !!a && (a.detail ?? "").trim().length > 0;
+    // yesNo: an explicit Yes/No must have been chosen; a "Yes" with a detail prompt needs it.
+    if (!a) return false;
+    if (a.answer && q.kind.detailPrompt !== null) return (a.detail ?? "").trim().length > 0;
+    return true;
+  });
+}
+
 export function templateDisplayName(kind: FormTemplateKind): string {
   switch (kind) {
     case "aestheticHistory": return "Aesthetic History";
@@ -82,7 +100,17 @@ const AESTHETIC_HISTORY: FormTemplate = (() => {
     { id: "cosmetic-reaction", prompt: "Have you had any allergic reaction to a cosmetic procedure or treatment?", kind: { type: "yesNo", detailPrompt: "Which treatment, and what happened?" } },
     { id: "recent-surgery", prompt: "Have you had any recent surgery or cosmetic procedures (within 6 months)?", kind: { type: "yesNo", detailPrompt: "What and when?" } },
     { id: "pregnant", prompt: "Are you currently pregnant, breastfeeding, or trying to conceive?", kind: { type: "yesNo", detailPrompt: null } },
-    { id: "conditions-screen", prompt: "Do you have any of the following: allergy or hypersensitivity to injectable components (e.g. botulinum toxin, hyaluronic acid, lidocaine, bee stings) or consumables (e.g. latex); a neurological condition (e.g. myasthenia gravis, ALS, Lambert-Eaton); a blood-clotting disorder (e.g. haemophilia) or diabetes; an immunocompromised condition (e.g. chemotherapy, autoimmune disease); a history of cold sores (herpes simplex); a history of keloid or hypertrophic scarring; cardiovascular disease (e.g. hypertension); or a mental health condition?", kind: { type: "yesNo", detailPrompt: "Please indicate which" } },
+    { id: "conditions-screen", prompt: [
+      "Do you have any of the following?",
+      "• allergy or hypersensitivity to injectable components (e.g. botulinum toxin, hyaluronic acid, lidocaine, bee stings) or consumables (e.g. latex)",
+      "• a neurological condition (e.g. myasthenia gravis, ALS, Lambert-Eaton)",
+      "• a blood-clotting disorder (e.g. haemophilia) or diabetes",
+      "• an immunocompromised condition (e.g. chemotherapy, autoimmune disease)",
+      "• a history of cold sores (herpes simplex)",
+      "• a history of keloid or hypertrophic scarring",
+      "• cardiovascular disease (e.g. hypertension)",
+      "• a mental health condition",
+    ].join("\n"), kind: { type: "yesNo", detailPrompt: "Please indicate which" } },
     { id: "photo-clinical", prompt: "I consent to my photograph being taken for the purpose of clinical review.", kind: { type: "yesNo", detailPrompt: null } },
     { id: "photo-marketing", prompt: "I consent to the use of my photographs and/or video for education, training, advertising, and social media.", kind: { type: "yesNo", detailPrompt: null } },
   ];

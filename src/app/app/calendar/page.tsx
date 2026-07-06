@@ -54,7 +54,7 @@ function timeValue(minute: number): string {
 export default function CalendarPage() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
-  const [view, setView] = useState<View>("day");
+  const [view, setView] = useState<View>("week");
   const [showNew, setShowNew] = useState(false);
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;

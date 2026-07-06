@@ -6,7 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
 import {
-  FORM_TEMPLATE_KINDS, templateDisplayName, templateFullText, formTemplate, OFF_LABEL_CLAUSE,
+  FORM_TEMPLATE_KINDS, templateDisplayName, templateFullText, formTemplate, formAnswersComplete, OFF_LABEL_CLAUSE,
   type FormTemplateKind,
 } from "@/lib/demo/forms";
 import type { FormAnswer } from "@/lib/demo/types";
@@ -32,6 +32,8 @@ export default function ConsentPage({ params }: { params: Promise<{ id: string }
   }
   const template = formTemplate(kind);
   const me = identity;
+  // Owner feedback #6: gate on every question answered (+ required "Yes" details) AND a signature.
+  const answersComplete = formAnswersComplete(template, answers);
 
   function setAnswer(qid: string, patch: Partial<FormAnswer>) {
     setAnswers((a) => {
@@ -82,7 +84,7 @@ export default function ConsentPage({ params }: { params: Promise<{ id: string }
           const a = answers[q.id];
           return (
             <div key={q.id} className="rounded-inner border border-line p-3">
-              <p className="text-sm text-ink">{q.prompt}</p>
+              <p className="whitespace-pre-line text-sm text-ink">{q.prompt}</p>
               {q.kind.type === "yesNo" ? (
                 <>
                   <div className="mt-2 flex gap-2">
@@ -122,8 +124,11 @@ export default function ConsentPage({ params }: { params: Promise<{ id: string }
       <div className="mt-3"><SignaturePad onChange={setHasSig} handleRef={sigRef} /></div>
 
       {error && <p className="mt-3 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
-      <div className="mt-6 flex gap-3">
-        <button type="submit" disabled={!hasSig || busy}
+      {!answersComplete && (
+        <p className="mt-4 text-sm text-ink-soft">Answer every question (and any requested detail) to record this consent.</p>
+      )}
+      <div className="mt-3 flex gap-3">
+        <button type="submit" disabled={!hasSig || !answersComplete || busy}
           className="rounded-btn px-5 py-2.5 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
           {busy ? "Saving…" : "Record signed consent"}
         </button>

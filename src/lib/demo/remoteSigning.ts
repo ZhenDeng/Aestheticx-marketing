@@ -4,10 +4,13 @@ import { FORM_TEMPLATE_KINDS, type FormTemplateKind } from "./forms";
 // Matches the backend createFormLink default (FORMS_BASE_URL).
 export const FORM_LINK_BASE_URL = "https://aestheticx-91e6b.web.app";
 
-// The deployed public sign.html only renders consent-style questions, so the
-// Aesthetic History intake is not offered for remote signing.
-export function remoteSigningTemplateKinds(): FormTemplateKind[] {
-  return FORM_TEMPLATE_KINDS.filter((k) => k !== "aestheticHistory");
+// Templates offered for remote signing. The Aesthetic History intake is offered in the DEMO
+// (owner feedback #3) but stays excluded in LIVE mode: the deployed public sign.html cannot
+// yet render that intake, so minting a live patient-facing link to it would be a broken
+// consent flow. Drop the isLive gate once sign.html supports the intake (tracked outside this
+// web repo).
+export function remoteSigningTemplateKinds(isLive: boolean): FormTemplateKind[] {
+  return isLive ? FORM_TEMPLATE_KINDS.filter((k) => k !== "aestheticHistory") : [...FORM_TEMPLATE_KINDS];
 }
 
 export function formSigningUrl(token: string): string {
