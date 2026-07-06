@@ -21,9 +21,10 @@ export function TreatmentNoteForm({
   const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
   const [appliedTemplate, setAppliedTemplate] = useState("");
 
-  const isDoctor = identity.role === "doctor";
-  // Doctors may save directly; nurses must tick at least one usable authorisation.
-  const canSave = isDoctor || ticked.size > 0;
+  // Rule 1 (spec: 2026-07-06 note access): a treatment note needs no authorisation — nurse and
+  // prescribing doctor alike may save without ticking one. Ticking stays available to consume
+  // authorisations when the writer wants to.
+  const canSave = true;
 
   function toggle(id: string) {
     setTicked((prev) => {
@@ -58,14 +59,16 @@ export function TreatmentNoteForm({
     <div className="mt-3 rounded-inner border border-line bg-card p-4">
       <p className="micro">Treatment note</p>
 
-      {(!isDoctor || usable.length > 0) && (
+      {usable.length === 0 ? (
+        // Rule 1: recording is allowed without one, but remind the writer of the state so an
+        // absent authorisation is a conscious choice, not an oversight.
+        <p className="mt-3 rounded-inner border border-line px-3 py-2 text-sm text-ink-soft">
+          No authorisation on file for this patient yet — you can still record this treatment
+          note without one.
+        </p>
+      ) : (
         <div className="mt-3">
-          <p className="micro">1 · Tick valid authorisations</p>
-          {usable.length === 0 && (
-            <p className="mt-1 text-sm" style={{ color: "var(--color-rose)" }}>
-              No usable authorisations. Request one from a doctor first.
-            </p>
-          )}
+          <p className="micro">Optionally consume authorisations</p>
           <ul className="mt-2 flex flex-col gap-2">
             {usable.map((a) => (
               <li key={a.id} className="rounded-inner border border-line px-3 py-2">
@@ -88,7 +91,7 @@ export function TreatmentNoteForm({
       )}
 
       <div className="mt-3">
-        <p className="micro">2 · Notes</p>
+        <p className="micro">Notes</p>
         {templates.length > 0 && (
           <select
             value={appliedTemplate}

@@ -142,11 +142,11 @@ describe("usableAuthorisations", () => {
   });
 });
 
-// Spec (clinical-notes — note-kind visibility for prescriber-only doctors): a doctor who
-// can view a file ONLY via prescribingDoctorIDs loses general-note visibility entirely
-// (and never writes general notes — the patient isn't under their name); every other
-// viewing identity keeps it, including the read-only super admin.
-describe("note-kind visibility for prescriber-only doctors", () => {
+// Spec (2026-07-06 treatment/general note access rules): treatment notes are visible to the
+// record nurse, prescribing doctor, clinic admin and super admin only; a non-owner doctor
+// (prescribing or otherwise) sees only general/aftercare notes they authored themselves, but
+// CAN now write general notes.
+describe("note-kind access rules", () => {
   const drVoss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
   const superAdmin: Identity = { user: { id: "u-root", name: "Platform Admin" }, role: "superAdmin", context: { kind: "independent" } };
   const clinicNurse: Identity = {
@@ -155,6 +155,10 @@ describe("note-kind visibility for prescriber-only doctors", () => {
   };
   const clinicAdmin: Identity = {
     user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin",
+    context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+  };
+  const clinicDoctor: Identity = {
+    user: { id: "u-nick", name: "Dr Nick Ho" }, role: "doctor",
     context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
   };
 
@@ -168,30 +172,68 @@ describe("note-kind visibility for prescriber-only doctors", () => {
     { ...baseNote, id: "n-trt", kind: "treatment", createdAt: 2 },
     { ...baseNote, id: "n-aft", kind: "aftercareRecord", createdAt: 3 },
   ];
-  function stateWithNotes(patient: Patient): DemoState {
-    return { ...stateWith(patient), notesByPatient: { [patient.id]: allKinds } };
+  function stateWithNotes(patient: Patient, notes: Note[] = allKinds): DemoState {
+    return { ...stateWith(patient), notesByPatient: { [patient.id]: notes } };
   }
 
-  it("denies a prescriber-only doctor general-note visibility AND general-note write", () => {
+  // Rule 3 — a prescribing doctor may write general notes, and view treatment notes, but
+  // sees general/aftercare notes ONLY if they authored them.
+  it("lets a prescribing doctor write general + treatment notes and view treatment notes", () => {
     const p: Patient = { ...nursePatient("p1", "u-sarah"), prescribingDoctorIDs: ["u-voss"] };
     const perms = patientPermissions(drVoss, p);
     expect(perms.canView).toBe(true);
     expect(perms.canWriteTreatmentNote).toBe(true);
-    expect(perms.canViewGeneralNotes).toBe(false);
-    expect(perms.canWriteGeneralNote).toBe(false); // patient isn't under their name
+    expect(perms.canViewTreatmentNotes).toBe(true);
+    expect(perms.canWriteGeneralNote).toBe(true);   // rule 3 — so "own general note" is possible
+    expect(perms.canViewGeneralNotes).toBe(false);  // but not everyone's general notes
   });
 
-  it("denies the same on another clinic's patient reached only via prescribing", () => {
+  it("keeps the same grants on a clinic patient reached via prescribing", () => {
     const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-other" }, prescribingDoctorIDs: ["u-voss"] };
     const perms = patientPermissions(drVoss, p);
+    expect(perms.canViewTreatmentNotes).toBe(true);
     expect(perms.canViewGeneralNotes).toBe(false);
-    expect(perms.canWriteGeneralNote).toBe(false);
+    expect(perms.canWriteGeneralNote).toBe(true);
     expect(perms.canWriteTreatmentNote).toBe(true);
   });
 
-  it("shows a prescriber-only doctor treatment notes only (general + aftercare hidden)", () => {
+  it("hides other people's general/aftercare notes from a prescribing doctor (treatment only)", () => {
     const p: Patient = { ...nursePatient("p1", "u-sarah"), prescribingDoctorIDs: ["u-voss"] };
+    // allKinds are authored by u-sarah, not the doctor.
     expect(visibleNotesForPatient(stateWithNotes(p), "p1", drVoss).map((n) => n.id)).toEqual(["n-trt"]);
+  });
+
+  it("shows a prescribing doctor their OWN general note alongside treatment notes", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), prescribingDoctorIDs: ["u-voss"] };
+    const notes: Note[] = [
+      ...allKinds,
+      { ...baseNote, id: "n-gen-mine", kind: "general", createdAt: 4, authorID: "u-voss" },
+    ];
+    // newest-first: own general (4), aftercare by sarah hidden, treatment (2) shown, sarah's general hidden.
+    expect(visibleNotesForPatient(stateWithNotes(p, notes), "p1", drVoss).map((n) => n.id))
+      .toEqual(["n-gen-mine", "n-trt"]);
+  });
+
+  // Rule 2 — a clinic doctor who is NOT a prescriber of this patient loses treatment-note
+  // access; they still see the file and their own general notes.
+  it("hides treatment notes from a non-prescribing clinic doctor", () => {
+    const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
+    const perms = patientPermissions(clinicDoctor, p);
+    expect(perms.canView).toBe(true);
+    expect(perms.canViewTreatmentNotes).toBe(false);
+    expect(perms.canWriteTreatmentNote).toBe(false);
+    expect(perms.canViewGeneralNotes).toBe(false);
+    expect(visibleNotesForPatient(stateWithNotes(p), "p1", clinicDoctor)).toEqual([]);
+  });
+
+  // Rule 2 — the record nurse, clinic admin and super admin all view treatment notes.
+  it("grants treatment-note visibility to record nurse, clinic admin and super admin", () => {
+    const clinicP: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
+    expect(patientPermissions(clinicNurse, clinicP).canViewTreatmentNotes).toBe(true);
+    expect(patientPermissions(clinicAdmin, clinicP).canViewTreatmentNotes).toBe(true);
+    expect(patientPermissions(superAdmin, clinicP).canViewTreatmentNotes).toBe(true);
+    // clinic admin views but never writes treatment notes.
+    expect(patientPermissions(clinicAdmin, clinicP).canWriteTreatmentNote).toBe(false);
   });
 
   it("shows the owner every kind, newest first", () => {
@@ -199,7 +241,7 @@ describe("note-kind visibility for prescriber-only doctors", () => {
     expect(visibleNotesForPatient(stateWithNotes(p), "p1", nurse).map((n) => n.id)).toEqual(["n-aft", "n-trt", "n-gen"]);
   });
 
-  it("shows clinic members every kind", () => {
+  it("shows clinic nurse + admin every kind", () => {
     const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
     const state = stateWithNotes(p);
     expect(visibleNotesForPatient(state, "p1", clinicNurse)).toHaveLength(3);
@@ -215,5 +257,32 @@ describe("note-kind visibility for prescriber-only doctors", () => {
     const p = nursePatient("p1", "u-sarah"); // drVoss isn't a prescriber here
     expect(visibleNotesForPatient(stateWithNotes(p), "p1", drVoss)).toEqual([]);
     expect(visibleNotesForPatient(emptyState(), "nope", nurse)).toEqual([]);
+  });
+});
+
+// Rule 1 — a treatment note can be written by a nurse without any authorisation ticked.
+describe("treatment note without an authorisation (rule 1)", () => {
+  it("lets a nurse save a treatment note with no ticked authorisations", () => {
+    const p = nursePatient("p1", "u-sarah");
+    const { note } = saveTreatmentNote(
+      stateWith(p),
+      { patientID: "p1", tickedIDs: [], title: "Antiwrinkle", body: "Forehead, 16U.", medications: [], identity: nurse },
+      1_000,
+    );
+    expect(note.kind).toBe("treatment");
+    expect(note.consumedAuthorisationIDs).toEqual([]);
+  });
+
+  it("still refuses a writer without treatment-note permission", () => {
+    const clinicAdmin: Identity = {
+      user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin",
+      context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+    };
+    const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
+    expect(() => saveTreatmentNote(
+      stateWith(p),
+      { patientID: "p1", tickedIDs: [], title: "", body: "x", medications: [], identity: clinicAdmin },
+      1_000,
+    )).toThrow(BackendError);
   });
 });

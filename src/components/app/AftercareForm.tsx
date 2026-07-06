@@ -13,10 +13,12 @@ export function AftercareForm({
   patientID, identity, onDone,
 }: { patientID: string; identity: Identity; onDone: () => void }) {
   const store = useDemoStore();
-  // Most-recent treatment note's medications (notesForPatient is newest-first, so the
-  // first treatment match is the latest). Computed fresh each time the panel opens —
-  // the parent remounts this component on toggle — and captured into send() at click.
-  const lastMeds = store.notesForPatient(patientID).find((n) => n.kind === "treatment")?.medications ?? [];
+  // Most-recent treatment note's medications (newest-first, so the first treatment match is
+  // the latest). Sourced from the VISIBLE stream so a viewer who can't see treatment notes
+  // (spec: 2026-07-06 rule 2 — e.g. a non-prescribing clinic doctor) doesn't get them
+  // prefilled here. Computed fresh each time the panel opens (the parent remounts on toggle)
+  // and captured into send() at click.
+  const lastMeds = store.visibleNotesForPatient(patientID, identity).find((n) => n.kind === "treatment")?.medications ?? [];
   const [selected, setSelected] = useState<AftercareCategory[]>([]);
   const [content, setContent] = useState(DEFAULT_CONTENT);
   const [includeMeds, setIncludeMeds] = useState(true);
