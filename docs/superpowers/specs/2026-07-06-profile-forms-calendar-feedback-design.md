@@ -39,8 +39,11 @@ are unaffected.
 `remoteSigningTemplateKinds()` deliberately filters out `aestheticHistory`
 ([remoteSigning.ts:10](../../../src/lib/demo/remoteSigning.ts)); the on-device consent page
 uses the full `FORM_TEMPLATE_KINDS` list, so the form is available there but not for remote
-signing. Feedback: it should be available to send as a link too. **Change:** return the full
-list (drop the exclusion). Update `remote-signing.test.ts` accordingly.
+signing. Feedback: it should be available to send as a link too. **Change:**
+`remoteSigningTemplateKinds(isLive)` offers it in the **demo**, but keeps it **excluded in
+live** — the deployed public `sign.html` can't render the intake yet, so a live link would be
+a broken patient-facing flow (raised in review). Drop the live gate once `sign.html` supports
+it. Update `remote-signing.test.ts` accordingly.
 
 ### 4 — Reformat the "conditions" screening question
 The `conditions-screen` prompt ([forms.ts:85](../../../src/lib/demo/forms.ts)) is one long
