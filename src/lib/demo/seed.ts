@@ -49,6 +49,7 @@ function makePatient(
     currentMedications: meds,
     owner,
     prescribingDoctorIDs: [],
+    openReviewerDoctorIDs: [],
     preferredName: preferred,
     alert,
   };

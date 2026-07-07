@@ -72,6 +72,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const canEdit = perms.canEditDetails;
   const canDelete = perms.canDelete;
   const canMerge = perms.canMerge;
+  // Aftercare is a note-write, so a read-only reviewer (open request, no write perms) must
+  // not see it even though their role could otherwise send it (spec 2026-07-07 reviewer-file-access).
+  const canAftercare = canSendAftercare(me) && (perms.canWriteTreatmentNote || perms.canWriteGeneralNote);
   // Other same-clinic patients that can be merged INTO this one (clinic admins only).
   const mergeCandidates = canMerge && patient.owner.kind === "clinic"
     ? store.searchPatients("", identity).filter((p) => p.id !== id && p.owner.kind === "clinic" && p.owner.id === patient.owner.id)
@@ -134,7 +137,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                 Treatment note
               </button>
             )}
-            {canSendAftercare(me) && (
+            {canAftercare && (
               <button onClick={() => { setShowAftercare((v) => !v); setShowTreatment(false); }}
                       className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
                 Send aftercare
@@ -146,7 +149,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         {showTreatment && perms.canWriteTreatmentNote && (
           <TreatmentNoteForm patientID={id} identity={me} onDone={() => setShowTreatment(false)} />
         )}
-        {showAftercare && canSendAftercare(me) && (
+        {showAftercare && canAftercare && (
           <AftercareForm patientID={id} identity={me} onDone={() => setShowAftercare(false)} />
         )}
 
