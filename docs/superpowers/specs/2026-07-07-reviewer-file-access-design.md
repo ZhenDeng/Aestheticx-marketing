@@ -1,7 +1,7 @@
 # Reviewer file access — doctor reads the full patient file while a request is open
 
 **Date:** 2026-07-07
-**Status:** in progress
+**Status:** shipped (read-only reviewer access). Revocation hardening deferred — see below.
 **Supersedes:** the "no patient-document access until approval" half of spec 6.12
 (2026-07-06 treatment-note-access). Demographics-in-the-request still stands; this
 *adds* read-only file access while a request is in flight.
@@ -66,3 +66,17 @@ request for that patient.** Client-read-only; maintained server-side.
 - After approval the doctor still reads P (now via `prescribingDoctorIds`); the reviewer flag
   is cleared.
 - Live: Firestore rules permit exactly the above reads and deny the writes (rules-tests green).
+
+## Deferred — revocation hardening (owner-approved fast-follow, 2026-07-07)
+
+Access auto-clears on **approval** (the trigger removes the doctor from `openReviewerDoctorIds`),
+but an authorisation request has **no withdraw action and no TTL** — a request that is never
+approved sits `pending` forever, so its read grant is standing/irrevocable. The addressing
+model (a nurse may send a request to any prescriber in the org directory) is pre-existing and
+unchanged; this feature only makes the *consequence* full-file instead of summary. The owner
+chose to ship the read-only feature now and harden revocation as a follow-up:
+
+- Add a nurse/clinic-admin **withdraw request** path (new terminal `withdrawn` status excluded
+  from `OPEN_STATUSES`) so a mis-addressed request can be closed and its access revoked.
+- Add a scheduled sweep (mirroring `expirySweep`) that ages out stale `pending`/`needsEdit`
+  requests past a TTL, bounding how long an ignored request can grant access.
