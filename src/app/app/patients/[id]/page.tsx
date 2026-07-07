@@ -221,7 +221,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                         Consumed {n.consumedAuthorisationIDs.length} repeat{n.consumedAuthorisationIDs.length === 1 ? "" : "s"}
                       </p>
                     )}
-                    {n.deliveryStatus === "failed" && store.status === "demo" && (
+                    {n.deliveryStatus === "failed" && store.status === "demo" && canAftercare && (
                       <button onClick={() => store.retryAftercare(id, n.id, me)}
                               className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
                         Retry delivery

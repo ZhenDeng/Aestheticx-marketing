@@ -1082,6 +1082,13 @@ export function canSendAftercare(identity: Identity): boolean {
   return identity.role === "nurse" || identity.role === "doctor";
 }
 
+// Aftercare + delivery-status are note writes: they need an actual note-write grant, not
+// just canView. A read-only reviewer (open request) has neither write flag, so this is
+// false for them (spec 2026-07-07 reviewer-file-access).
+export function canWriteAnyNote(perms: Permissions): boolean {
+  return perms.canWriteTreatmentNote || perms.canWriteGeneralNote;
+}
+
 export interface RecordAftercareSendInput {
   patientID: string;
   content: string;
@@ -1095,8 +1102,11 @@ export function recordAftercareSend(
 ): { state: DemoState; note: Note } {
   const patient = state.patients[input.patientID];
   if (!patient) throw new BackendError("notFound");
-  if (!patientPermissions(input.identity, patient).canView) throw new BackendError("notPermitted");
-  if (!canSendAftercare(input.identity)) throw new BackendError("notPermitted");
+  // Aftercare is a note-write: a read-only reviewer (open request, no write perms) may not
+  // send it even though their role could (spec 2026-07-07 reviewer-file-access).
+  if (!canSendAftercare(input.identity) || !canWriteAnyNote(patientPermissions(input.identity, patient))) {
+    throw new BackendError("notPermitted");
+  }
   const note: Note = {
     id: makeID("n"),
     patientID: input.patientID,
@@ -1120,10 +1130,11 @@ export function setNoteDeliveryStatus(
 ): DemoState {
   const patient = state.patients[patientID];
   if (!patient) throw new BackendError("notFound");
-  // Mirror recordAftercareSend's gate exactly — only a sender (nurse/doctor) who can view
-  // the patient may change an aftercare record's delivery status (not clinic admins).
-  if (!patientPermissions(identity, patient).canView) throw new BackendError("notPermitted");
-  if (!canSendAftercare(identity)) throw new BackendError("notPermitted");
+  // Mirror recordAftercareSend's gate exactly — only a sender (nurse/doctor) with note-write
+  // access may change an aftercare record's delivery status. A read-only reviewer cannot.
+  if (!canSendAftercare(identity) || !canWriteAnyNote(patientPermissions(identity, patient))) {
+    throw new BackendError("notPermitted");
+  }
   const list = state.notesByPatient[patientID] ?? [];
   const idx = list.findIndex((n) => n.id === noteID);
   if (idx < 0) throw new BackendError("notFound");
@@ -1384,15 +1395,27 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
     if (a.patientID === removeId) appointments[id] = { ...a, patientID: keepId, patientName: keepCalendarName };
   }
 
+  // Re-point requests so review-access + request history follow the merge (and no request
+  // is orphaned pointing at the deleted file — an orphan would break a later approval).
+  const requests = Object.fromEntries(
+    Object.entries(state.requests).map(([id, r]) =>
+      (r.patientID === removeId ? [id, { ...r, patientID: keepId }] : [id, r])),
+  );
+
   const mergedKeep: Patient = {
     ...keep,
     prescribingDoctorIDs: [...new Set([...keep.prescribingDoctorIDs, ...remove.prescribingDoctorIDs])],
-    openReviewerDoctorIDs: [...new Set([...(keep.openReviewerDoctorIDs ?? []), ...(remove.openReviewerDoctorIDs ?? [])])],
   };
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
-  return { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments };
+  // Recompute the kept file's reviewer set from the re-pointed request set (mirror of the
+  // backend trigger) rather than unioning the two stale arrays — this drops any reviewer
+  // whose request didn't actually move, keeping the invariant true.
+  return syncReviewerAccess(
+    { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests },
+    keepId,
+  );
 }
 
 // --- Signed forms ---

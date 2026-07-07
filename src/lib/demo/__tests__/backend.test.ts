@@ -14,6 +14,8 @@ import {
   approveRequest,
   requireEdit,
   resubmitRequest,
+  recordAftercareSend,
+  mergePatients,
   activeAuthorisations,
   saveTreatmentNote,
   REPEATS_PER_AUTHORISATION,
@@ -260,6 +262,46 @@ describe("openReviewerDoctorIDs maintenance", () => {
     );
     const returned = requireEdit(submitted.state, submitted.request.id, voss);
     expect(returned.patients["p1"].openReviewerDoctorIDs).toContain("u-voss");
+  });
+});
+
+describe("reviewer is read-only — write paths are blocked", () => {
+  it("recordAftercareSend throws for a reviewing doctor (no write grant)", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), openReviewerDoctorIDs: ["u-voss"] };
+    const state = stateWith(p);
+    expect(() =>
+      recordAftercareSend(state, { patientID: "p1", content: "x", medications: [], categories: [], identity: voss }, NOW),
+    ).toThrow();
+  });
+});
+
+describe("mergePatients — reviewer access follows the merge (invariant preserved)", () => {
+  const clinicAdmin: Identity = {
+    user: { id: "u-admin", name: "Admin" }, role: "clinicAdmin", context: { kind: "clinic", clinic: { id: "clinic-x", name: "X" } },
+  };
+  const nurseInClinic: Identity = { ...sarahIndependent, context: { kind: "clinic", clinic: { id: "clinic-x", name: "X" } } };
+  const clinicPatient = (id: string): Patient => ({ ...nursePatient(id, "u-sarah"), owner: { kind: "clinic", id: "clinic-x" } });
+
+  it("re-points the open request onto the kept file and recomputes its reviewer set", () => {
+    let state = stateWith(clinicPatient("keep"), clinicPatient("remove"));
+    const submitted = submitRequest(
+      state, { patientID: "remove", doctorID: "u-voss", items: [profhilo], identity: nurseInClinic }, NOW,
+    );
+    state = submitted.state;
+    expect(state.patients["remove"].openReviewerDoctorIDs).toContain("u-voss");
+
+    const merged = mergePatients(state, "keep", "remove", clinicAdmin);
+    expect(merged.patients["remove"]).toBeUndefined();
+    // The request moved to the kept file, so the reviewer follows it — and the invariant
+    // holds: every reviewer on the kept file has a matching open request there.
+    expect(merged.requests[submitted.request.id].patientID).toBe("keep");
+    expect(merged.patients["keep"].openReviewerDoctorIDs).toContain("u-voss");
+    const openHere = Object.values(merged.requests).filter(
+      (r) => r.patientID === "keep" && (r.status === "pending" || r.status === "needsEdit"),
+    );
+    for (const doc of merged.patients["keep"].openReviewerDoctorIDs ?? []) {
+      expect(openHere.some((r) => r.doctorID === doc)).toBe(true);
+    }
   });
 });
 
