@@ -9,6 +9,7 @@ import {
   emptyState,
   classifySearch,
   patientPermissions,
+  visibleNotesForPatient,
   searchPatients,
   submitRequest,
   approveRequest,
@@ -239,19 +240,37 @@ describe("requireEdit", () => {
 });
 
 describe("patientPermissions — reviewer (open request) read-only access", () => {
-  it("grants a doctor with an open request read-only full-file access", () => {
+  it("grants a doctor with an open request read-only access to the file except general notes", () => {
     const p: Patient = { ...nursePatient("p1", "u-sarah"), openReviewerDoctorIDs: ["u-voss"] };
     const perms = patientPermissions(voss, p);
-    // Read everything needed to decide.
+    // Read what's needed to decide the request: the file and treatment notes.
     expect(perms.canView).toBe(true);
     expect(perms.canViewTreatmentNotes).toBe(true);
-    expect(perms.canViewGeneralNotes).toBe(true);
-    // But strictly read-only until approval.
+    // General/aftercare notes stay hidden (feedback 2026-07-07 [1a]) — they may carry
+    // non-clinical remarks irrelevant to the authorisation decision.
+    expect(perms.canViewGeneralNotes).toBe(false);
+    // And strictly read-only until approval.
     expect(perms.canEditDetails).toBe(false);
     expect(perms.canDelete).toBe(false);
     expect(perms.canWriteTreatmentNote).toBe(false);
     expect(perms.canWriteGeneralNote).toBe(false);
     expect(perms.canSendForms).toBe(false);
+  });
+
+  it("hides another author's general notes from the reviewer but shows treatment notes", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), openReviewerDoctorIDs: ["u-voss"] };
+    const state: DemoState = {
+      ...stateWith(p),
+      notesByPatient: {
+        p1: [
+          { id: "n-gen", patientID: "p1", kind: "general", authorID: "u-sarah", authorBadge: "Nurse", title: "Admin", body: "billing note", createdAt: NOW, consumedAuthorisationIDs: [], medications: [] },
+          { id: "n-tx", patientID: "p1", kind: "treatment", authorID: "u-sarah", authorBadge: "Nurse", title: "Tx", body: "profhilo 2ml", createdAt: NOW, consumedAuthorisationIDs: [], medications: [] },
+        ],
+      },
+    };
+    const visible = visibleNotesForPatient(state, "p1", voss).map((n) => n.id);
+    expect(visible).toContain("n-tx");
+    expect(visible).not.toContain("n-gen");
   });
 
   it("does not grant access to a doctor who is not a reviewer of the patient", () => {

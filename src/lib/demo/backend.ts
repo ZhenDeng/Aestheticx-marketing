@@ -148,13 +148,15 @@ const PRESCRIBING_DOCTOR = perms({
   canWriteGeneralNote: true,
 });
 
-// A doctor with an open (pending/needsEdit) request gets READ-ONLY access to the whole file
-// while they review — every note kind, but no writes, edits, forms or deletes until they
-// approve (spec 2026-07-07 reviewer-file-access). Prescriber access is richer and wins.
+// A doctor with an open (pending/needsEdit) request gets READ-ONLY access to the file while
+// they review — demographics, allergies/meds, TREATMENT notes, history and forms, but no
+// writes, edits, forms or deletes until they approve (spec 2026-07-07 reviewer-file-access).
+// General/aftercare notes stay hidden (feedback 2026-07-07 [1a]): they may carry non-clinical
+// remarks irrelevant to the authorisation decision, so canViewGeneralNotes stays false and the
+// note filter falls back to own-authored only. Prescriber access is richer and wins.
 const REVIEWER = perms({
   canView: true,
   canViewTreatmentNotes: true,
-  canViewGeneralNotes: true,
 });
 
 export function patientPermissions(identity: Identity, patient: Patient): Permissions {
