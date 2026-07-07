@@ -16,9 +16,12 @@ approving. Previously the doctor gained patient-document access only on approval
 ## Policy (owner decisions)
 
 - **Scope:** live **and** demo. Live requires backend security-rule + Function changes.
-- **Depth:** **read-only** full file. The reviewer may *view* details, allergies/meds,
-  **all** note kinds (treatment + general + aftercare), history and forms, but may not edit
-  the patient, write notes, send forms, or delete anything until approval.
+- **Depth:** **read-only** file. The reviewer may *view* details, allergies/meds,
+  **treatment** notes, history and forms, but may not edit the patient, write notes, send
+  forms, or delete anything until approval. **General/aftercare notes are hidden** from the
+  reviewer (amended 2026-07-07 [1a] — see
+  [booking-and-access-feedback](2026-07-07-booking-and-access-feedback-design.md)); they may
+  carry non-clinical remarks irrelevant to the authorisation decision.
 - **States:** any **open** request addressed to the doctor — `pending` **or** `needsEdit`.
   Access ends when the request is `approved` (access then continues via `prescribingDoctorIds`)
   or if the request is deleted/abandoned.
@@ -36,7 +39,7 @@ request for that patient.** Client-read-only; maintained server-side.
    create / resubmit / approve / requireEdit / delete. Platform-agnostic (covers web + iOS).
 2. **Rules** — a `hasOpenReviewRequest(patient)` helper added to *read* clauses only:
    - patient read: `patientVisible(p) || hasOpenReviewRequest(p)`
-   - notes read: `(patientVisible(p) || hasOpenReviewRequest(p)) && (patientFullNoteAccess(p) || hasOpenReviewRequest(p) || kind == 'treatment')`
+   - notes read: `(patientVisible(p) || hasOpenReviewRequest(p)) && (patientFullNoteAccess(p) || kind == 'treatment')` — the reviewer reads **treatment** notes only; general/aftercare stay behind `patientFullNoteAccess` (amended 2026-07-07 [1a]; backend-repo rule change still pending)
    - forms read: `patientVisible(p) || hasOpenReviewRequest(p)`
    `patientVisible` itself is **unchanged** so note-create / request-create do not widen —
    the reviewer gets read only. `openReviewerDoctorIds` is added to the Function-only
@@ -47,7 +50,7 @@ request for that patient.** Client-read-only; maintained server-side.
 ### Web (this repo)
 
 4. **`patientPermissions`** grants a read-only `REVIEWER` permission set
-   (`canView`, `canViewTreatmentNotes`, `canViewGeneralNotes`) when
+   (`canView`, `canViewTreatmentNotes`; **not** `canViewGeneralNotes` — amended 2026-07-07 [1a]) when
    `identity.role === 'doctor' && patient.openReviewerDoctorIDs.includes(uid)` and the doctor
    is not already the owner/prescriber (prescriber access is richer and wins).
 5. **Demo backend** maintains the same invariant: `submitRequest`/`approveRequest` recompute
@@ -61,7 +64,8 @@ request for that patient.** Client-read-only; maintained server-side.
 ## Acceptance criteria
 
 - A doctor with a `pending` or `needsEdit` request for patient P can open P's file and read
-  all note kinds; the same doctor with no open request for P cannot (`canView` false).
+  treatment notes (general/aftercare notes stay hidden — amended 2026-07-07 [1a]); the same
+  doctor with no open request for P cannot open the file at all (`canView` false).
 - The reviewer's file view exposes **no** edit / delete / note-write / send-form controls.
 - After approval the doctor still reads P (now via `prescribingDoctorIds`); the reviewer flag
   is cleared.

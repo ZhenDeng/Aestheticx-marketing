@@ -997,8 +997,8 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
           </select>
         </label>
       </div>
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Appointment note (optional)"
-             className="mt-3 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+      <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Appointment note (optional)" rows={2}
+                className="mt-3 w-full resize-y rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
 
       <div className="mt-3 flex gap-2">
         <button onClick={save} disabled={!canSave}
@@ -1020,11 +1020,18 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
 function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identity; onDone: () => void }) {
   const store = useDemoStore();
   const [creating, setCreating] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const lead = isLeadAppointment(appt);
   // Client contact (spec: DOB/phone/email on the calendar) — lead fields, patient-record fallback.
   const contact = appointmentContact(appt, appt.patientID ? store.state.patients[appt.patientID] : undefined);
   const contactLine = [contact.dobLabel && `DOB ${contact.dobLabel}`, contact.phone, contact.email]
     .filter(Boolean).join(" · ");
+  // Return-patient detection (feedback 2026-07-07 item 3): existing files of THIS subject that
+  // match the lead on name + DOB, so a returning client is linked instead of duplicated.
+  const leadMatches = useMemo(
+    () => (appt.lead ? store.matchLeadToPatients(appt.lead, me) : []),
+    [appt.lead, me, store],
+  );
 
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -1069,8 +1076,37 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
 
       {lead && !creating && canCreatePatient(me) && (
-        <button onClick={() => setCreating(true)}
-          className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Create patient from lead</button>
+        <div className="mt-2 flex flex-col gap-2">
+          {leadMatches.length > 0 && (
+            <div className="rounded-inner border border-line px-3 py-2"
+              style={{ background: "color-mix(in srgb, var(--color-tint) 8%, transparent)" }}>
+              <p className="micro text-ink-soft">Possible existing patient{leadMatches.length > 1 ? "s" : ""} in your records:</p>
+              <ul className="mt-1 flex flex-col gap-1.5">
+                {leadMatches.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 text-sm text-ink">
+                      {p.givenName} {p.lastName}
+                      <span className="micro text-ink-soft"> · DOB {p.dateOfBirth.day}/{p.dateOfBirth.month}/{p.dateOfBirth.year}</span>
+                    </span>
+                    <button onClick={() => {
+                      // Eager-validated in the store, so a race (already linked) throws here, not mid-render.
+                      try { store.linkAppointmentPatient(appt.id, p.id, me); onDone(); }
+                      catch { setLinkError("Could not link — this booking may have just been actioned elsewhere."); }
+                    }}
+                      className="flex-none rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                      Use this file
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {linkError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{linkError}</p>}
+            </div>
+          )}
+          <button onClick={() => setCreating(true)}
+            className="self-start rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">
+            {leadMatches.length > 0 ? "Not them — create new patient" : "Create patient from lead"}
+          </button>
+        </div>
       )}
       {lead && creating ? (
         <div className="mt-3 border-t border-line pt-3">
