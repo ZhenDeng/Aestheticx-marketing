@@ -313,6 +313,13 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                         className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
                         Start consult
                       </button>
+                      {/* Withdraw revokes the reviewing doctor's read-only file access via the
+                          onAuthRequestWritten trigger (spec 2026-07-07 revocation hardening). */}
+                      <button onClick={() => store.withdrawRequest(r.id, identity)}
+                        className="rounded-btn border border-line px-3 py-1.5 text-sm hover:border-danger"
+                        style={{ color: "var(--color-danger)" }}>
+                        Withdraw
+                      </button>
                     </span>
                   </li>
                 ))}

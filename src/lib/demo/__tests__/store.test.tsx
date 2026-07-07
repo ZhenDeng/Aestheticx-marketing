@@ -27,4 +27,27 @@ describe("useDemoStore", () => {
 
     expect(result.current.pendingRequestsForDoctor("u-voss").length).toBe(pending.length - 1);
   });
+
+  it("withdraws an open request and revokes the reviewer grant", () => {
+    const { result } = renderHook(() => useDemoStore(), { wrapper });
+    const sarah = DEMO_ACCOUNTS[0].identities[0]; // the raising nurse
+
+    const pending = result.current.pendingRequestsForDoctor("u-voss");
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+    const target = pending[0];
+    expect(result.current.state.patients[target.patientID].openReviewerDoctorIDs).toContain("u-voss");
+
+    act(() => {
+      result.current.withdrawRequest(target.id, sarah);
+    });
+
+    expect(result.current.state.requests[target.id].status).toBe("withdrawn");
+    expect(result.current.pendingRequestsForDoctor("u-voss").length).toBe(pending.length - 1);
+    // Invariant: the doctor stays a reviewer only while a pending/needsEdit request remains.
+    const stillOpen = Object.values(result.current.state.requests).some(
+      (r) => r.patientID === target.patientID && r.doctorID === "u-voss"
+        && (r.status === "pending" || r.status === "needsEdit"),
+    );
+    expect((result.current.state.patients[target.patientID].openReviewerDoctorIDs ?? []).includes("u-voss")).toBe(stillOpen);
+  });
 });

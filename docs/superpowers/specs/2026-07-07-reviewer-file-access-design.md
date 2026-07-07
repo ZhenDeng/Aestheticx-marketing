@@ -67,16 +67,29 @@ request for that patient.** Client-read-only; maintained server-side.
   is cleared.
 - Live: Firestore rules permit exactly the above reads and deny the writes (rules-tests green).
 
-## Deferred — revocation hardening (owner-approved fast-follow, 2026-07-07)
+## Revocation hardening (owner-approved fast-follow, 2026-07-07) — IMPLEMENTED
 
 Access auto-clears on **approval** (the trigger removes the doctor from `openReviewerDoctorIds`),
-but an authorisation request has **no withdraw action and no TTL** — a request that is never
-approved sits `pending` forever, so its read grant is standing/irrevocable. The addressing
+but an authorisation request originally had **no withdraw action and no TTL** — a request that is
+never approved sat `pending` forever, so its read grant was standing/irrevocable. The addressing
 model (a nurse may send a request to any prescriber in the org directory) is pre-existing and
 unchanged; this feature only makes the *consequence* full-file instead of summary. The owner
-chose to ship the read-only feature now and harden revocation as a follow-up:
+chose to ship the read-only feature first and harden revocation as a follow-up. Shipped:
 
-- Add a nurse/clinic-admin **withdraw request** path (new terminal `withdrawn` status excluded
-  from `OPEN_STATUSES`) so a mis-addressed request can be closed and its access revoked.
-- Add a scheduled sweep (mirroring `expirySweep`) that ages out stale `pending`/`needsEdit`
-  requests past a TTL, bounding how long an ignored request can grant access.
+- **Withdraw path.** A nurse owner or clinic admin moves a `pending`/`needsEdit` request to a new
+  terminal `withdrawn` status. `withdrawn` is deliberately **excluded** from `OPEN_STATUSES`, so
+  `onAuthRequestWritten` recomputes access to false and drops the doctor. Enforced by a Firestore
+  rule (status-only transition, nurse-owner or same-clinic admin) and mirrored in the demo backend
+  (`withdrawRequest` → `syncReviewerAccess`); a "Withdraw" button sits on the nurse's
+  authorisations list and patient file.
+- **TTL sweep.** `reviewRequestTtlSweep` (scheduled, mirrors `expirySweep`) ages out `pending`/
+  `needsEdit` requests older than `REVIEW_REQUEST_TTL_DAYS` (30) on `createdAt` to `withdrawn`,
+  revoking access via the trigger. Backed by a `(status, createdAt)` composite index.
+- **Bypass closed (found in review).** `requireEdit` now requires the request be `pending` (like
+  `approveRequest`); without it a doctor could flip their own withdrawn/approved request back to
+  `needsEdit` and re-grant themselves access. `createdAt` is now **required** at create, so no
+  request can silently escape the sweep.
+
+Residual note: the sweep compares `createdAt` as an epoch-ms **number** (web + rules confirmed).
+Confirm the iOS client writes `createdAt` the same way (not a Firestore `Timestamp`), else
+iOS-created requests would slip the numeric TTL query — the manual withdraw path is unaffected.

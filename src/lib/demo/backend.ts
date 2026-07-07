@@ -412,7 +412,11 @@ export function approveRequest(
 export function requireEdit(state: DemoState, requestID: string, identity: Identity): DemoState {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
-  if (identity.role !== "doctor" || identity.user.id !== request.doctorID) {
+  // Only a pending request may be returned for edit. Guarding the status stops a doctor from
+  // flipping their own terminal (withdrawn/approved) request back to needsEdit — an open
+  // status that would re-grant reviewer file access and defeat withdraw + the TTL sweep
+  // (spec 2026-07-07 revocation hardening). Mirrors the live requireEdit Cloud Function.
+  if (identity.role !== "doctor" || identity.user.id !== request.doctorID || request.status !== "pending") {
     throw new BackendError("notPermitted");
   }
   return { ...state, requests: { ...state.requests, [requestID]: { ...request, status: "needsEdit" } } };
@@ -445,6 +449,27 @@ export function resubmitRequest(state: DemoState, input: ResubmitRequestInput): 
       [input.requestID]: { ...request, items: input.items, status: "pending" },
     },
   };
+}
+
+// The nurse who raised a request (or a clinic admin over the request's clinic) withdraws it
+// while it is still open (pending/needsEdit), moving it to the terminal `withdrawn` status
+// (spec 2026-07-07 revocation hardening). Because `withdrawn` leaves the open set,
+// syncReviewerAccess drops the addressed doctor from openReviewerDoctorIDs — revoking the
+// read-only file access a never-approved request would otherwise grant forever. Mirrors the
+// Firestore rule that permits exactly this transition (status only) for the same principals.
+export function withdrawRequest(state: DemoState, requestID: string, identity: Identity): DemoState {
+  const request = state.requests[requestID];
+  if (!request) throw new BackendError("notFound");
+  const isOwner = identity.role === "nurse" && request.nurse.id === identity.user.id;
+  const requestClinicID = request.context.kind === "clinic" ? request.context.clinic.id : null;
+  const isClinicAdmin =
+    identity.role === "clinicAdmin" && requestClinicID !== null && contextClinicID(identity) === requestClinicID;
+  const isOpen = request.status === "pending" || request.status === "needsEdit";
+  if ((!isOwner && !isClinicAdmin) || !isOpen) throw new BackendError("notPermitted");
+  return syncReviewerAccess(
+    { ...state, requests: { ...state.requests, [requestID]: { ...request, status: "withdrawn" } } },
+    request.patientID,
+  );
 }
 
 // --- Notes ---
