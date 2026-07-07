@@ -148,12 +148,24 @@ const PRESCRIBING_DOCTOR = perms({
   canWriteGeneralNote: true,
 });
 
+// A doctor with an open (pending/needsEdit) request gets READ-ONLY access to the whole file
+// while they review — every note kind, but no writes, edits, forms or deletes until they
+// approve (spec 2026-07-07 reviewer-file-access). Prescriber access is richer and wins.
+const REVIEWER = perms({
+  canView: true,
+  canViewTreatmentNotes: true,
+  canViewGeneralNotes: true,
+});
+
 export function patientPermissions(identity: Identity, patient: Patient): Permissions {
   if (identity.role === "superAdmin") {
     return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
   }
   const userID = identity.user.id;
   const isPrescriber = identity.role === "doctor" && patient.prescribingDoctorIDs.includes(userID);
+  const isReviewer = identity.role === "doctor" && (patient.openReviewerDoctorIDs ?? []).includes(userID);
+  // Fallback for a doctor who is neither owner nor prescriber: read-only if reviewing, else none.
+  const doctorFallback = isReviewer ? REVIEWER : perms({});
 
   switch (patient.owner.kind) {
     case "doctor":
@@ -162,13 +174,13 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
         return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
       }
       if (isPrescriber) return PRESCRIBING_DOCTOR;
-      return perms({});
+      return doctorFallback;
     case "nurse":
       if (identity.role === "nurse" && identity.context.kind === "independent" && userID === patient.owner.id) {
         return perms({ canView: true, canEditDetails: true, canDelete: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
       }
       if (isPrescriber) return PRESCRIBING_DOCTOR;
-      return perms({});
+      return doctorFallback;
     case "clinic":
       if (contextClinicID(identity) === patient.owner.id) {
         switch (identity.role) {
@@ -188,7 +200,7 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
         }
       }
       if (isPrescriber) return PRESCRIBING_DOCTOR;
-      return perms({});
+      return doctorFallback;
   }
 }
 
@@ -298,6 +310,20 @@ export interface SubmitRequestInput {
   identity: Identity;
 }
 
+// Recompute a patient's open-reviewer doctors from the current request set — the demo
+// mirror of the backend's onAuthRequestWritten trigger. A doctor is a reviewer iff they
+// hold a pending/needsEdit request for the patient (spec 2026-07-07 reviewer-file-access).
+function syncReviewerAccess(state: DemoState, patientID: string): DemoState {
+  const patient = state.patients[patientID];
+  if (!patient) return state;
+  const reviewers = [...new Set(
+    Object.values(state.requests)
+      .filter((r) => r.patientID === patientID && (r.status === "pending" || r.status === "needsEdit"))
+      .map((r) => r.doctorID),
+  )];
+  return { ...state, patients: { ...state.patients, [patientID]: { ...patient, openReviewerDoctorIDs: reviewers } } };
+}
+
 export function submitRequest(
   state: DemoState,
   input: SubmitRequestInput,
@@ -319,7 +345,8 @@ export function submitRequest(
     createdAt: now,
     patientSummary: patientSummary(patient),
   };
-  return { state: { ...state, requests: { ...state.requests, [request.id]: request } }, request };
+  const next = syncReviewerAccess({ ...state, requests: { ...state.requests, [request.id]: request } }, input.patientID);
+  return { state: next, request };
 }
 
 export function pendingRequestsForDoctor(state: DemoState, doctorID: string): AuthorisationRequest[] {
@@ -370,15 +397,16 @@ export function approveRequest(
     patients[patient.id] = { ...patient, prescribingDoctorIDs: [...patient.prescribingDoctorIDs, identity.user.id] };
   }
 
-  return {
-    state: {
+  const approvedState = syncReviewerAccess(
+    {
       ...state,
       patients,
       authorisations,
       requests: { ...state.requests, [requestID]: { ...request, status: "approved" } },
     },
-    granted,
-  };
+    request.patientID,
+  );
+  return { state: approvedState, granted };
 }
 
 export function requireEdit(state: DemoState, requestID: string, identity: Identity): DemoState {
@@ -1054,6 +1082,13 @@ export function canSendAftercare(identity: Identity): boolean {
   return identity.role === "nurse" || identity.role === "doctor";
 }
 
+// Aftercare + delivery-status are note writes: they need an actual note-write grant, not
+// just canView. A read-only reviewer (open request) has neither write flag, so this is
+// false for them (spec 2026-07-07 reviewer-file-access).
+export function canWriteAnyNote(perms: Permissions): boolean {
+  return perms.canWriteTreatmentNote || perms.canWriteGeneralNote;
+}
+
 export interface RecordAftercareSendInput {
   patientID: string;
   content: string;
@@ -1067,8 +1102,11 @@ export function recordAftercareSend(
 ): { state: DemoState; note: Note } {
   const patient = state.patients[input.patientID];
   if (!patient) throw new BackendError("notFound");
-  if (!patientPermissions(input.identity, patient).canView) throw new BackendError("notPermitted");
-  if (!canSendAftercare(input.identity)) throw new BackendError("notPermitted");
+  // Aftercare is a note-write: a read-only reviewer (open request, no write perms) may not
+  // send it even though their role could (spec 2026-07-07 reviewer-file-access).
+  if (!canSendAftercare(input.identity) || !canWriteAnyNote(patientPermissions(input.identity, patient))) {
+    throw new BackendError("notPermitted");
+  }
   const note: Note = {
     id: makeID("n"),
     patientID: input.patientID,
@@ -1092,10 +1130,11 @@ export function setNoteDeliveryStatus(
 ): DemoState {
   const patient = state.patients[patientID];
   if (!patient) throw new BackendError("notFound");
-  // Mirror recordAftercareSend's gate exactly — only a sender (nurse/doctor) who can view
-  // the patient may change an aftercare record's delivery status (not clinic admins).
-  if (!patientPermissions(identity, patient).canView) throw new BackendError("notPermitted");
-  if (!canSendAftercare(identity)) throw new BackendError("notPermitted");
+  // Mirror recordAftercareSend's gate exactly — only a sender (nurse/doctor) with note-write
+  // access may change an aftercare record's delivery status. A read-only reviewer cannot.
+  if (!canSendAftercare(identity) || !canWriteAnyNote(patientPermissions(identity, patient))) {
+    throw new BackendError("notPermitted");
+  }
   const list = state.notesByPatient[patientID] ?? [];
   const idx = list.findIndex((n) => n.id === noteID);
   if (idx < 0) throw new BackendError("notFound");
@@ -1265,6 +1304,7 @@ export function createPatient(
     currentMedications: draft.currentMedications.trim(),
     owner: ownerFor(identity),
     prescribingDoctorIDs: [],
+    openReviewerDoctorIDs: [],
     alert: draft.alert.trim() ? draft.alert.trim() : undefined,
     preferredName: draft.preferredName.trim() ? draft.preferredName.trim() : undefined,
   };
@@ -1275,7 +1315,7 @@ export function updatePatient(state: DemoState, patient: Patient, identity: Iden
   const existing = state.patients[patient.id];
   if (!existing) throw new BackendError("notFound");
   if (!patientPermissions(identity, existing).canEditDetails) throw new BackendError("notPermitted");
-  const merged: Patient = { ...patient, owner: existing.owner, prescribingDoctorIDs: existing.prescribingDoctorIDs };
+  const merged: Patient = { ...patient, owner: existing.owner, prescribingDoctorIDs: existing.prescribingDoctorIDs, openReviewerDoctorIDs: existing.openReviewerDoctorIDs };
   return { ...state, patients: { ...state.patients, [patient.id]: merged } };
 }
 
@@ -1355,11 +1395,27 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
     if (a.patientID === removeId) appointments[id] = { ...a, patientID: keepId, patientName: keepCalendarName };
   }
 
-  const mergedKeep: Patient = { ...keep, prescribingDoctorIDs: [...new Set([...keep.prescribingDoctorIDs, ...remove.prescribingDoctorIDs])] };
+  // Re-point requests so review-access + request history follow the merge (and no request
+  // is orphaned pointing at the deleted file — an orphan would break a later approval).
+  const requests = Object.fromEntries(
+    Object.entries(state.requests).map(([id, r]) =>
+      (r.patientID === removeId ? [id, { ...r, patientID: keepId }] : [id, r])),
+  );
+
+  const mergedKeep: Patient = {
+    ...keep,
+    prescribingDoctorIDs: [...new Set([...keep.prescribingDoctorIDs, ...remove.prescribingDoctorIDs])],
+  };
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
-  return { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments };
+  // Recompute the kept file's reviewer set from the re-pointed request set (mirror of the
+  // backend trigger) rather than unioning the two stale arrays — this drops any reviewer
+  // whose request didn't actually move, keeping the invariant true.
+  return syncReviewerAccess(
+    { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests },
+    keepId,
+  );
 }
 
 // --- Signed forms ---

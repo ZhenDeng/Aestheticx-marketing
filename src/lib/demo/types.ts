@@ -71,6 +71,12 @@ export interface Patient {
   currentMedications: string;
   owner: PatientOwner;
   prescribingDoctorIDs: string[];
+  // Doctors with an open (pending/needsEdit) request for this patient — granted read-only
+  // file access while they review (spec 2026-07-07 reviewer-file-access). Maintained
+  // server-side (Firestore trigger) / by the demo backend; cleared on approval, where
+  // access continues via prescribingDoctorIDs. Mirrors the persisted `openReviewerDoctorIds`.
+  // Optional: patient docs created before this feature (and older fixtures) simply have none.
+  openReviewerDoctorIDs?: string[];
   // Patient photo (spec: patient-records — monogram until one is uploaded). Mirrors iOS
   // Patient.avatarFileID / the patient doc's `avatarFileId`: a Storage object key under
   // patients/{id}/** minted fresh per upload (iOS mints a new fileID per pick too).

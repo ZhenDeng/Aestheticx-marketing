@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import type { AuthorisationRequest, Identity } from "@/lib/demo/types";
 
-// The doctor reviewing a PENDING request has no patient-document access until approval
-// (spec 6.12), so the patient name must NOT link to the file. Instead it discloses the
-// patient summary the request already carries. These tests pin that behaviour.
+// Policy (spec 2026-07-07 reviewer-file-access): while a request is open the addressed
+// doctor has read-only access to the patient's full file, so the review card links the
+// patient name straight to it. The clinical alert stays visible at a glance.
 
 const doctorIdentity: Identity = {
   user: { id: "doc-1", name: "Dr Demo" },
@@ -33,12 +32,8 @@ const request: AuthorisationRequest = {
 
 const consult = { start: vi.fn(), active: false };
 
-vi.mock("@/lib/demo/auth", () => ({
-  useDemoAuth: () => ({ identity: doctorIdentity }),
-}));
-vi.mock("@/components/app/ConsultCall", () => ({
-  useConsultCall: () => consult,
-}));
+vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: doctorIdentity }) }));
+vi.mock("@/components/app/ConsultCall", () => ({ useConsultCall: () => consult }));
 vi.mock("@/lib/demo/store", () => ({
   useDemoStore: () => ({
     status: "ready" as const,
@@ -48,32 +43,14 @@ vi.mock("@/lib/demo/store", () => ({
 
 import AuthorisationsPage from "@/app/app/authorisations/page";
 
-describe("Authorisations doctor view — patient summary disclosure", () => {
-  beforeEach(() => {
-    consult.start.mockClear();
-  });
-
-  it("renders the patient name as a button, not a link to the patient file", () => {
+describe("Authorisations doctor view — reviewer file access", () => {
+  it("links the patient name to the full patient file", () => {
     render(<AuthorisationsPage />);
-    const name = screen.getByRole("button", { name: /Jane Roe/i });
-    expect(name).toBeInTheDocument();
-    // Must not be an anchor to the (inaccessible) patient file.
-    expect(screen.queryByRole("link", { name: /Jane Roe/i })).not.toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /Jane Roe/i });
+    expect(link).toHaveAttribute("href", "/app/patients/pat-1");
   });
 
-  it("keeps the DOB and current medications hidden until the name is clicked, then reveals them", async () => {
-    const user = userEvent.setup();
-    render(<AuthorisationsPage />);
-    expect(screen.queryByText(/12\/4\/1990/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Sertraline/)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /Jane Roe/i }));
-
-    expect(screen.getByText(/12\/4\/1990/)).toBeInTheDocument();
-    expect(screen.getByText(/Sertraline/)).toBeInTheDocument();
-  });
-
-  it("always surfaces the clinical alert without requiring a click", () => {
+  it("surfaces the clinical alert on the card at a glance", () => {
     render(<AuthorisationsPage />);
     expect(screen.getByText(/Pregnant/)).toBeInTheDocument();
   });

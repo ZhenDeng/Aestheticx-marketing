@@ -80,6 +80,7 @@ export function mapPatient(id: string, data: Doc): Patient {
     currentMedications: str(data.currentMedications),
     owner: mapOwner(data),
     prescribingDoctorIDs: strArray(data.prescribingDoctorIds),
+    openReviewerDoctorIDs: strArray(data.openReviewerDoctorIds),
     avatarFileId: typeof data.avatarFileId === "string" && data.avatarFileId ? data.avatarFileId : undefined,
     alert: typeof data.alert === "string" ? data.alert : undefined,
     preferredName: typeof data.preferredName === "string" ? data.preferredName : undefined,

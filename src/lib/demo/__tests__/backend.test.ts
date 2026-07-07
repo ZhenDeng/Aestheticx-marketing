@@ -14,6 +14,8 @@ import {
   approveRequest,
   requireEdit,
   resubmitRequest,
+  recordAftercareSend,
+  mergePatients,
   activeAuthorisations,
   saveTreatmentNote,
   REPEATS_PER_AUTHORISATION,
@@ -47,6 +49,7 @@ function nursePatient(id: string, ownerID: string): Patient {
     currentMedications: "Nil",
     owner: { kind: "nurse", id: ownerID },
     prescribingDoctorIDs: [],
+    openReviewerDoctorIDs: [],
   };
 }
 
@@ -211,6 +214,94 @@ describe("requireEdit", () => {
     );
     const next = requireEdit(submitted.state, submitted.request.id, voss);
     expect(next.requests[submitted.request.id].status).toBe("needsEdit");
+  });
+});
+
+describe("patientPermissions — reviewer (open request) read-only access", () => {
+  it("grants a doctor with an open request read-only full-file access", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), openReviewerDoctorIDs: ["u-voss"] };
+    const perms = patientPermissions(voss, p);
+    // Read everything needed to decide.
+    expect(perms.canView).toBe(true);
+    expect(perms.canViewTreatmentNotes).toBe(true);
+    expect(perms.canViewGeneralNotes).toBe(true);
+    // But strictly read-only until approval.
+    expect(perms.canEditDetails).toBe(false);
+    expect(perms.canDelete).toBe(false);
+    expect(perms.canWriteTreatmentNote).toBe(false);
+    expect(perms.canWriteGeneralNote).toBe(false);
+    expect(perms.canSendForms).toBe(false);
+  });
+
+  it("does not grant access to a doctor who is not a reviewer of the patient", () => {
+    const p = nursePatient("p1", "u-sarah");
+    expect(patientPermissions(voss, p).canView).toBe(false);
+  });
+});
+
+describe("openReviewerDoctorIDs maintenance", () => {
+  it("adds the addressed doctor on submit and clears them on approval (access then via prescriber)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    expect(submitted.state.patients["p1"].openReviewerDoctorIDs).toContain("u-voss");
+    expect(patientPermissions(voss, submitted.state.patients["p1"]).canView).toBe(true);
+
+    const approved = approveRequest(submitted.state, submitted.request.id, voss, NOW);
+    expect(approved.state.patients["p1"].openReviewerDoctorIDs).not.toContain("u-voss");
+    // Still viewable — now as the prescribing doctor.
+    expect(approved.state.patients["p1"].prescribingDoctorIDs).toContain("u-voss");
+    expect(patientPermissions(voss, approved.state.patients["p1"]).canView).toBe(true);
+  });
+
+  it("keeps the reviewer while the request is returned for edit (needsEdit stays open)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    const returned = requireEdit(submitted.state, submitted.request.id, voss);
+    expect(returned.patients["p1"].openReviewerDoctorIDs).toContain("u-voss");
+  });
+});
+
+describe("reviewer is read-only — write paths are blocked", () => {
+  it("recordAftercareSend throws for a reviewing doctor (no write grant)", () => {
+    const p: Patient = { ...nursePatient("p1", "u-sarah"), openReviewerDoctorIDs: ["u-voss"] };
+    const state = stateWith(p);
+    expect(() =>
+      recordAftercareSend(state, { patientID: "p1", content: "x", medications: [], categories: [], identity: voss }, NOW),
+    ).toThrow();
+  });
+});
+
+describe("mergePatients — reviewer access follows the merge (invariant preserved)", () => {
+  const clinicAdmin: Identity = {
+    user: { id: "u-admin", name: "Admin" }, role: "clinicAdmin", context: { kind: "clinic", clinic: { id: "clinic-x", name: "X" } },
+  };
+  const nurseInClinic: Identity = { ...sarahIndependent, context: { kind: "clinic", clinic: { id: "clinic-x", name: "X" } } };
+  const clinicPatient = (id: string): Patient => ({ ...nursePatient(id, "u-sarah"), owner: { kind: "clinic", id: "clinic-x" } });
+
+  it("re-points the open request onto the kept file and recomputes its reviewer set", () => {
+    let state = stateWith(clinicPatient("keep"), clinicPatient("remove"));
+    const submitted = submitRequest(
+      state, { patientID: "remove", doctorID: "u-voss", items: [profhilo], identity: nurseInClinic }, NOW,
+    );
+    state = submitted.state;
+    expect(state.patients["remove"].openReviewerDoctorIDs).toContain("u-voss");
+
+    const merged = mergePatients(state, "keep", "remove", clinicAdmin);
+    expect(merged.patients["remove"]).toBeUndefined();
+    // The request moved to the kept file, so the reviewer follows it — and the invariant
+    // holds: every reviewer on the kept file has a matching open request there.
+    expect(merged.requests[submitted.request.id].patientID).toBe("keep");
+    expect(merged.patients["keep"].openReviewerDoctorIDs).toContain("u-voss");
+    const openHere = Object.values(merged.requests).filter(
+      (r) => r.patientID === "keep" && (r.status === "pending" || r.status === "needsEdit"),
+    );
+    for (const doc of merged.patients["keep"].openReviewerDoctorIDs ?? []) {
+      expect(openHere.some((r) => r.doctorID === doc)).toBe(true);
+    }
   });
 });
 

@@ -210,6 +210,9 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     [where("ownerType", "==", "doctor"), where("ownerId", "==", uid)],
     [where("ownerType", "==", "nurse"), where("prescribingDoctorIds", "array-contains", uid)],
     [where("ownerType", "==", "clinic"), where("prescribingDoctorIds", "array-contains", uid)],
+    // Reviewer access: patients with an open request addressed to this doctor (spec
+    // 2026-07-07 reviewer-file-access) — read-only until they approve. Any owner type.
+    [where("openReviewerDoctorIds", "array-contains", uid)],
     ...clinicIds.map((cid) => [where("ownerType", "==", "clinic"), where("ownerId", "==", cid)]),
   ];
   const patientsById = new Map<string, Row>();
