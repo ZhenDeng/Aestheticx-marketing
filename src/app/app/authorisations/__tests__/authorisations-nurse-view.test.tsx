@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { AuthorisationRequest, Identity, Patient } from "@/lib/demo/types";
 
 // A doctor-returned (needsEdit) request must give the nurse a way to edit and resubmit it;
@@ -10,6 +10,8 @@ const nurse: Identity = {
   role: "nurse",
   context: { kind: "independent" },
 };
+
+const { withdrawRequest } = vi.hoisted(() => ({ withdrawRequest: vi.fn() }));
 
 const patient = { id: "pat-1", givenName: "Jane", lastName: "Roe" } as unknown as Patient;
 
@@ -39,10 +41,13 @@ vi.mock("@/lib/demo/store", () => ({
     status: "ready" as const,
     searchPatients: () => [patient],
     openRequestsForPatient: () => requests[mode],
+    withdrawRequest,
   }),
 }));
 
 import AuthorisationsPage from "@/app/app/authorisations/page";
+
+beforeEach(() => withdrawRequest.mockClear());
 
 describe("Authorisations nurse view — edit & resubmit", () => {
   it("offers an Edit & resubmit link (to the builder in edit mode) for a returned request", () => {
@@ -56,5 +61,21 @@ describe("Authorisations nurse view — edit & resubmit", () => {
     mode = "pending";
     render(<AuthorisationsPage />);
     expect(screen.queryByRole("link", { name: /Edit & resubmit/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("Authorisations nurse view — withdraw", () => {
+  it("offers a Withdraw button that withdraws the open request (revocation)", () => {
+    mode = "pending";
+    render(<AuthorisationsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Withdraw/i }));
+    expect(withdrawRequest).toHaveBeenCalledWith("req-pending", nurse);
+  });
+
+  it("also offers Withdraw for a returned (needsEdit) request", () => {
+    mode = "needs";
+    render(<AuthorisationsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Withdraw/i }));
+    expect(withdrawRequest).toHaveBeenCalledWith("req-needs", nurse);
   });
 });

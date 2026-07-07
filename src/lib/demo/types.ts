@@ -87,7 +87,7 @@ export interface Patient {
   preferredName?: string;
 }
 
-export type RequestStatus = "pending" | "needsEdit" | "approved";
+export type RequestStatus = "pending" | "needsEdit" | "approved" | "withdrawn";
 
 export interface PatientSummary {
   fullName: string;

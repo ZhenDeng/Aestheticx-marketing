@@ -114,8 +114,15 @@ export default function AuthorisationsPage() {
                 className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
                 Start consult
               </button>
+              {/* Withdraw closes a mis-addressed/abandoned request; the trigger then revokes the
+                  reviewing doctor's read-only file access (spec 2026-07-07 revocation hardening). */}
+              <button onClick={() => store.withdrawRequest(request.id, identity)}
+                className="rounded-btn border border-line px-3 py-1.5 text-sm hover:border-danger"
+                style={{ color: "var(--color-danger)" }}>
+                Withdraw
+              </button>
               <span className="micro rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
-                {request.status === "needsEdit" ? "Needs edit" : "Pending"}
+                {request.status === "needsEdit" ? "Needs edit" : request.status === "withdrawn" ? "Withdrawn" : "Pending"}
               </span>
             </span>
           </li>

@@ -14,6 +14,7 @@ import {
   approveRequest,
   requireEdit,
   resubmitRequest,
+  withdrawRequest,
   recordAftercareSend,
   mergePatients,
   activeAuthorisations,
@@ -215,6 +216,26 @@ describe("requireEdit", () => {
     const next = requireEdit(submitted.state, submitted.request.id, voss);
     expect(next.requests[submitted.request.id].status).toBe("needsEdit");
   });
+
+  it("refuses to resurrect a terminal (withdrawn) request — a doctor cannot regain access", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    const withdrawn = withdrawRequest(submitted.state, submitted.request.id, sarahIndependent);
+    // Without a status guard the doctor could flip withdrawn → needsEdit (an open status) and
+    // the reviewer grant would return, defeating withdraw + the TTL sweep (revocation hardening).
+    expect(() => requireEdit(withdrawn, submitted.request.id, voss)).toThrow();
+  });
+
+  it("refuses to return an already-approved request for edit", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    const approved = approveRequest(submitted.state, submitted.request.id, voss, NOW);
+    expect(() => requireEdit(approved.state, submitted.request.id, voss)).toThrow();
+  });
 });
 
 describe("patientPermissions — reviewer (open request) read-only access", () => {
@@ -262,6 +283,82 @@ describe("openReviewerDoctorIDs maintenance", () => {
     );
     const returned = requireEdit(submitted.state, submitted.request.id, voss);
     expect(returned.patients["p1"].openReviewerDoctorIDs).toContain("u-voss");
+  });
+
+  it("clears the reviewer when the request is withdrawn (revocation hardening)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    expect(submitted.state.patients["p1"].openReviewerDoctorIDs).toContain("u-voss");
+
+    const withdrawn = withdrawRequest(submitted.state, submitted.request.id, sarahIndependent);
+    expect(withdrawn.requests[submitted.request.id].status).toBe("withdrawn");
+    // Access is revoked the moment the request leaves the open set.
+    expect(withdrawn.patients["p1"].openReviewerDoctorIDs).not.toContain("u-voss");
+    expect(patientPermissions(voss, withdrawn.patients["p1"]).canView).toBe(false);
+  });
+});
+
+describe("withdrawRequest", () => {
+  const clinicAdmin: Identity = {
+    user: { id: "u-admin", name: "Admin" },
+    role: "clinicAdmin",
+    context: { kind: "clinic", clinic: { id: "clinic-x", name: "X" } },
+  };
+  const nurseInClinic: Identity = { ...sarahIndependent, context: { kind: "clinic", clinic: { id: "clinic-x", name: "X" } } };
+  const otherNurse: Identity = { ...sarahIndependent, user: { id: "u-ruby", name: "Ruby" } };
+  const clinicPatient = (id: string): Patient => ({ ...nursePatient(id, "u-sarah"), owner: { kind: "clinic", id: "clinic-x" } });
+
+  function submitted() {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    return submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+  }
+
+  it("lets the raising nurse withdraw her pending request", () => {
+    const s = submitted();
+    const next = withdrawRequest(s.state, s.request.id, sarahIndependent);
+    expect(next.requests[s.request.id].status).toBe("withdrawn");
+  });
+
+  it("lets the raising nurse withdraw a returned (needsEdit) request", () => {
+    const s = submitted();
+    const returned = requireEdit(s.state, s.request.id, voss);
+    const next = withdrawRequest(returned, s.request.id, sarahIndependent);
+    expect(next.requests[s.request.id].status).toBe("withdrawn");
+  });
+
+  it("lets a clinic admin withdraw a clinic request", () => {
+    let state = stateWith(clinicPatient("p1"));
+    const s = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: nurseInClinic }, NOW,
+    );
+    state = s.state;
+    const next = withdrawRequest(state, s.request.id, clinicAdmin);
+    expect(next.requests[s.request.id].status).toBe("withdrawn");
+    expect(next.patients["p1"].openReviewerDoctorIDs).not.toContain("u-voss");
+  });
+
+  it("refuses a withdraw from an unrelated nurse", () => {
+    const s = submitted();
+    expect(() => withdrawRequest(s.state, s.request.id, otherNurse)).toThrow();
+  });
+
+  it("refuses a withdraw from the addressed doctor", () => {
+    const s = submitted();
+    expect(() => withdrawRequest(s.state, s.request.id, voss)).toThrow();
+  });
+
+  it("refuses to withdraw an already-approved request", () => {
+    const s = submitted();
+    const approved = approveRequest(s.state, s.request.id, voss, NOW);
+    expect(() => withdrawRequest(approved.state, s.request.id, sarahIndependent)).toThrow();
+  });
+
+  it("throws for an unknown request", () => {
+    expect(() => withdrawRequest(emptyState(), "nope", sarahIndependent)).toThrow();
   });
 });
 

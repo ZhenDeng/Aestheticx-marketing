@@ -46,6 +46,14 @@ export async function mirrorResubmitRequest(requestId: string, items: Medication
   });
 }
 
+// Withdraw is a direct client update the rules allow for the raising nurse or a clinic admin:
+// flip status pending/needsEdit → withdrawn (status only), and nothing else. The
+// onAuthRequestWritten trigger then removes the reviewing doctor from openReviewerDoctorIds,
+// revoking their read-only file access (spec 2026-07-07 revocation hardening).
+export async function mirrorWithdrawRequest(requestId: string): Promise<void> {
+  await updateDoc(doc(firestore(), "authRequests", requestId), { status: "withdrawn" });
+}
+
 // consumeRepeats both decrements repeats AND writes the treatment note in one
 // server transaction (verified against backend/functions/src/index.ts). Callers
 // pass the note here and must NOT separately create the treatment note.
