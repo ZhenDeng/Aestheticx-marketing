@@ -1020,6 +1020,7 @@ function NewAppointmentForm({ dateISO, me, onDone, initialStart, initialBlock }:
 function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identity; onDone: () => void }) {
   const store = useDemoStore();
   const [creating, setCreating] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const lead = isLeadAppointment(appt);
   // Client contact (spec: DOB/phone/email on the calendar) — lead fields, patient-record fallback.
   const contact = appointmentContact(appt, appt.patientID ? store.state.patients[appt.patientID] : undefined);
@@ -1027,7 +1028,10 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
     .filter(Boolean).join(" · ");
   // Return-patient detection (feedback 2026-07-07 item 3): existing files of THIS subject that
   // match the lead on name + DOB, so a returning client is linked instead of duplicated.
-  const leadMatches = appt.lead ? store.matchLeadToPatients(appt.lead, me) : [];
+  const leadMatches = useMemo(
+    () => (appt.lead ? store.matchLeadToPatients(appt.lead, me) : []),
+    [appt.lead, me, store],
+  );
 
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -1084,13 +1088,18 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
                       {p.givenName} {p.lastName}
                       <span className="micro text-ink-soft"> · DOB {p.dateOfBirth.day}/{p.dateOfBirth.month}/{p.dateOfBirth.year}</span>
                     </span>
-                    <button onClick={() => store.linkAppointmentPatient(appt.id, p.id, me)}
+                    <button onClick={() => {
+                      // Eager-validated in the store, so a race (already linked) throws here, not mid-render.
+                      try { store.linkAppointmentPatient(appt.id, p.id, me); onDone(); }
+                      catch { setLinkError("Could not link — this booking may have just been actioned elsewhere."); }
+                    }}
                       className="flex-none rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
                       Use this file
                     </button>
                   </li>
                 ))}
               </ul>
+              {linkError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{linkError}</p>}
             </div>
           )}
           <button onClick={() => setCreating(true)}

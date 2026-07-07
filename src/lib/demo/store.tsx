@@ -460,11 +460,13 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorMarkAppointment(id, status),
         );
       },
-      linkAppointmentPatient: (apptId, patientId, identity) =>
+      linkAppointmentPatient: (apptId, patientId, identity) => {
+        backend.linkAppointmentPatient(state, apptId, patientId, identity); // eager validate — throws synchronously (e.g. already linked, or a foreign-owned file)
         applyAndMirror(
           (s) => backend.linkAppointmentPatient(s, apptId, patientId, identity),
           (m) => m.mirrorLinkAppointmentPatient(apptId, patientId),
-        ),
+        );
+      },
       publishAvailability: (input, identity) => {
         // Validate + mint the window once (eagerly) so Strict-Mode double-invoke can't mint two.
         const { window } = backend.publishAvailability(state, input, identity);
