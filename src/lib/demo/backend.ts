@@ -1070,7 +1070,29 @@ export function appointmentContact(a: Appointment, patient: Patient | undefined)
   return contact;
 }
 
-// Link a lead appointment to a newly-created patient: stamp the id + calendar name, clear the lead.
+// Existing patients OWNED BY the acting subject that match a booking lead on name + full DOB —
+// "return patient" detection so a self-booking reuses the file instead of minting a duplicate.
+// Per-subject isolation (feedback 2026-07-07 item 4): matches only the caller's OWN files
+// (owner === ownerFor(identity)), never another subject's records. Requires given + last name
+// (trimmed, case-insensitive) AND a complete DOB; a partial/absent DOB yields no confident match
+// (returns []), so two different people are never silently treated as one.
+export function matchLeadToPatients(state: DemoState, lead: AppointmentLead, identity: Identity): Patient[] {
+  const dob = dobFromISO(lead.dob);
+  if (!dob) return [];
+  const given = lead.givenName.trim().toLowerCase();
+  const last = lead.lastName.trim().toLowerCase();
+  if (!given || !last) return [];
+  const owner = ownerFor(identity);
+  return Object.values(state.patients).filter(
+    (p) =>
+      p.owner.kind === owner.kind && p.owner.id === owner.id &&
+      p.givenName.trim().toLowerCase() === given &&
+      p.lastName.trim().toLowerCase() === last &&
+      p.dateOfBirth.year === dob.year && p.dateOfBirth.month === dob.month && p.dateOfBirth.day === dob.day,
+  );
+}
+
+// Link a lead appointment to a patient: stamp the id + calendar name, clear the lead.
 export function linkAppointmentPatient(
   state: DemoState, apptId: string, patientId: string, identity: Identity,
 ): DemoState {
@@ -1080,6 +1102,10 @@ export function linkAppointmentPatient(
   if (appt.patientID) throw new BackendError("notActive"); // only an unlinked lead can be linked
   const patient = state.patients[patientId];
   if (!patient) throw new BackendError("notFound");
+  // Same-subject isolation (feedback 2026-07-07 item 4): a lead may only be linked to a file the
+  // acting subject owns — never one belonging to another doctor/nurse/clinic.
+  const owner = ownerFor(identity);
+  if (patient.owner.kind !== owner.kind || patient.owner.id !== owner.id) throw new BackendError("notPermitted");
   return {
     ...state,
     appointments: { ...state.appointments, [apptId]: { ...appt, patientID: patientId, patientName: calendarName(patient), lead: undefined } },

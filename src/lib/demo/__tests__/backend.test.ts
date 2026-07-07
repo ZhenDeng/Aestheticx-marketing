@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type {
+  Appointment,
+  AppointmentLead,
   DemoState,
   Identity,
   Patient,
@@ -10,6 +12,8 @@ import {
   classifySearch,
   patientPermissions,
   visibleNotesForPatient,
+  matchLeadToPatients,
+  linkAppointmentPatient,
   searchPatients,
   submitRequest,
   approveRequest,
@@ -276,6 +280,58 @@ describe("patientPermissions — reviewer (open request) read-only access", () =
   it("does not grant access to a doctor who is not a reviewer of the patient", () => {
     const p = nursePatient("p1", "u-sarah");
     expect(patientPermissions(voss, p).canView).toBe(false);
+  });
+});
+
+describe("matchLeadToPatients — return-patient detection (name + DOB, same subject)", () => {
+  const claireLead: AppointmentLead = { givenName: "Claire", lastName: "Donovan", dob: "1987-07-04" };
+
+  it("matches an existing same-owner patient on name + full DOB", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const hits = matchLeadToPatients(state, claireLead, sarahIndependent).map((p) => p.id);
+    expect(hits).toEqual(["p1"]);
+  });
+
+  it("is case-insensitive on the name", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const lead: AppointmentLead = { ...claireLead, givenName: "claire", lastName: "DONOVAN" };
+    expect(matchLeadToPatients(state, lead, sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+  });
+
+  it("does NOT match a patient owned by a different subject (isolation)", () => {
+    const state = stateWith(nursePatient("p1", "u-other"));
+    expect(matchLeadToPatients(state, claireLead, sarahIndependent)).toEqual([]);
+  });
+
+  it("does NOT match when the DOB differs", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const lead: AppointmentLead = { ...claireLead, dob: "1990-01-01" };
+    expect(matchLeadToPatients(state, lead, sarahIndependent)).toEqual([]);
+  });
+
+  it("returns [] when the lead has no DOB (never guesses a match on name alone)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const lead: AppointmentLead = { givenName: "Claire", lastName: "Donovan" };
+    expect(matchLeadToPatients(state, lead, sarahIndependent)).toEqual([]);
+  });
+});
+
+describe("linkAppointmentPatient — same-subject guard (feedback 2026-07-07 item 4)", () => {
+  const leadAppt: Appointment = {
+    id: "a1", type: "treatment", ownerID: "u-sarah", dateISO: "2026-07-10",
+    startMinute: 600, endMinute: 630, status: "awaitingConfirmation",
+    lead: { givenName: "Claire", lastName: "Donovan", dob: "1987-07-04" },
+  };
+  const withAppt = (patient: Patient): DemoState => ({ ...stateWith(patient), appointments: { a1: leadAppt } });
+
+  it("links a lead to a patient owned by the same subject", () => {
+    const next = linkAppointmentPatient(withAppt(nursePatient("p1", "u-sarah")), "a1", "p1", sarahIndependent);
+    expect(next.appointments["a1"].patientID).toBe("p1");
+    expect(next.appointments["a1"].lead).toBeUndefined();
+  });
+
+  it("refuses to link a lead to a patient owned by another subject", () => {
+    expect(() => linkAppointmentPatient(withAppt(nursePatient("p1", "u-other")), "a1", "p1", sarahIndependent)).toThrow();
   });
 });
 

@@ -82,6 +82,8 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
           <span className="block font-medium text-ink">{appointmentTitle(appt, "New booking")}</span>
           <span className="micro block">{appt.dateISO} · {timeLabel(appt.startMinute)}–{timeLabel(appt.endMinute)}</span>
           {contactLine && <span className="micro block truncate">{contactLine}</span>}
+          {/* The patient's own message from the booking form (feedback 2026-07-07 item 5). */}
+          {appt.appointmentNote && <span className="mt-0.5 block text-sm italic text-ink-soft">“{appt.appointmentNote}”</span>}
         </span>
         <span className="flex flex-none gap-2">
           <button onClick={() => act(() => store.confirmAppointment(appt.id, me))}

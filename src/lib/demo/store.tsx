@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
+import type { AppointmentLead, DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 import * as billing from "./billing";
@@ -18,6 +18,7 @@ interface StoreValue {
   lastSyncError: string | null;
   rehydrate: () => void;
   searchPatients: (query: string, identity: Identity) => ReturnType<typeof backend.searchPatients>;
+  matchLeadToPatients: (lead: AppointmentLead, identity: Identity) => ReturnType<typeof backend.matchLeadToPatients>;
   notesForPatient: (patientID: string) => ReturnType<typeof backend.notesForPatient>;
   visibleNotesForPatient: (patientID: string, identity: Identity) => ReturnType<typeof backend.visibleNotesForPatient>;
   activeAuthorisations: (patientID: string) => ReturnType<typeof backend.activeAuthorisations>;
@@ -185,6 +186,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       lastSyncError,
       rehydrate: () => setRefreshTick((t) => t + 1),
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
+      matchLeadToPatients: (lead, id) => backend.matchLeadToPatients(state, lead, id),
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
       visibleNotesForPatient: (pid, id) => backend.visibleNotesForPatient(state, pid, id),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
