@@ -33,6 +33,11 @@ import type {
   TreatmentMedication,
   UserProfile,
   UserProfileEdit,
+  CooperationRelationship,
+  CounterpartyType,
+  RelationshipStatus,
+  RelationshipAuditEntry,
+  RelationshipAction,
 } from "./types";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
@@ -42,6 +47,7 @@ import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } fr
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyKindsFor } from "./emergency";
+import { cooperatingDoctorsFor, relationshipFor, priceCentsFor, invoiceAppliesFor, cooperationDocId } from "./cooperation";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -1555,6 +1561,99 @@ export function setScriptPrice(state: DemoState, doctorID: string, counterpartyI
   return { ...state, scriptPricing: { ...state.scriptPricing, [scriptPriceKey(doctorID, counterpartyID)]: priceCents } };
 }
 
+// --- Cooperation relationships (spec 2026-07-08 cooperation-relationships, constitution §17) ---
+
+// The doctors the acting nurse/clinic may request authorisation from (the single eligibility source).
+export function cooperatingDoctors(state: DemoState, identity: Identity): { doctorId: string; doctorName: string }[] {
+  const owner = ownerFor(identity);
+  if (owner.kind === "doctor") return []; // doctors don't raise requests
+  return cooperatingDoctorsFor(Object.values(state.cooperationRelationshipsByID), owner.kind, owner.id);
+}
+
+export function cooperationRelationshipsList(state: DemoState): CooperationRelationship[] {
+  return Object.values(state.cooperationRelationshipsByID)
+    .sort((a, b) => a.doctorName.localeCompare(b.doctorName) || a.counterpartyName.localeCompare(b.counterpartyName));
+}
+
+export function relationshipAuditForRelationship(state: DemoState, relationshipID: string): RelationshipAuditEntry[] {
+  return Object.values(state.relationshipAuditByID)
+    .filter((e) => e.relationshipID === relationshipID)
+    .sort((a, b) => b.at - a.at);
+}
+
+export interface SetCooperationRelationshipInput {
+  doctorID: string;
+  doctorName: string;
+  counterpartyType: CounterpartyType;
+  counterpartyID: string;
+  counterpartyName: string;
+  status: RelationshipStatus;
+  authRequestsAllowed: boolean;
+  invoiceApplies: boolean;
+  priceCentsOverride: number | null;
+}
+
+function relationshipSummary(r: CooperationRelationship): string {
+  const price = r.priceCentsOverride == null ? "default" : `$${(r.priceCentsOverride / 100).toFixed(2)}`;
+  return `${r.status}${r.authRequestsAllowed ? "" : " · requests paused"} · price ${price} · invoicing ${r.invoiceApplies ? "on" : "off"}`;
+}
+
+function relationshipAudit(action: RelationshipAction, rel: CooperationRelationship, actor: Identity, now: number): RelationshipAuditEntry {
+  return {
+    id: makeID("relaudit"),
+    relationshipID: rel.id,
+    actorID: actor.user.id,
+    actorName: actor.user.name,
+    action,
+    summary: `${action} · ${relationshipSummary(rel)}`,
+    at: now,
+  };
+}
+
+// superAdmin upsert of a relationship (create or edit), always recording an audit entry.
+export function setCooperationRelationship(state: DemoState, input: SetCooperationRelationshipInput, actor: Identity, now: number): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  if (input.priceCentsOverride != null && (!Number.isInteger(input.priceCentsOverride) || input.priceCentsOverride <= 0)) {
+    throw new BackendError("validationFailed");
+  }
+  const id = cooperationDocId(input.doctorID, input.counterpartyType, input.counterpartyID);
+  const prior = state.cooperationRelationshipsByID[id];
+  const rel: CooperationRelationship = {
+    id,
+    doctorID: input.doctorID,
+    doctorName: input.doctorName,
+    counterpartyType: input.counterpartyType,
+    counterpartyID: input.counterpartyID,
+    counterpartyName: input.counterpartyName,
+    status: input.status,
+    authRequestsAllowed: input.authRequestsAllowed,
+    invoiceApplies: input.invoiceApplies,
+    priceCentsOverride: input.priceCentsOverride,
+    createdAt: prior?.createdAt ?? now,
+    updatedAt: now,
+  };
+  const audit = relationshipAudit(prior ? "updated" : "created", rel, actor, now);
+  return {
+    ...state,
+    cooperationRelationshipsByID: { ...state.cooperationRelationshipsByID, [id]: rel },
+    relationshipAuditByID: { ...state.relationshipAuditByID, [audit.id]: audit },
+  };
+}
+
+// "Remove" is a soft deactivation (status inactive) so history is preserved; the gate excludes it.
+export function removeCooperationRelationship(state: DemoState, id: string, actor: Identity, now: number): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  const prior = state.cooperationRelationshipsByID[id];
+  if (!prior) throw new BackendError("notFound");
+  const rel: CooperationRelationship = { ...prior, status: "inactive", updatedAt: now };
+  const audit = relationshipAudit("removed", rel, actor, now);
+  return {
+    ...state,
+    cooperationRelationshipsByID: { ...state.cooperationRelationshipsByID, [id]: rel },
+    relationshipAuditByID: { ...state.relationshipAuditByID, [audit.id]: audit },
+  };
+}
+
 export interface BillableAuthorisation {
   id: string;
   counterpartyID: string;
@@ -1570,16 +1669,19 @@ export function billableAuthorisations(state: DemoState, doctorID: string): Bill
     .filter((a) => a.doctorID === doctorID && !a.invoiced)
     .map((a) => {
       const patient = state.patients[a.patientID];
+      const counterpartyType: "clinic" | "nurse" = a.clinicID ? "clinic" : "nurse";
       return {
         id: a.id,
         counterpartyID: a.clinicID ?? a.nurseID,
-        counterpartyType: a.clinicID ? "clinic" as const : "nurse" as const,
+        counterpartyType,
         monthKey: monthKey(a.createdAt),
         invoiced: a.invoiced,
         patientName: patient ? fullName(patient) : "",
         dateISO: new Date(a.createdAt).toISOString().slice(0, 10),
       };
-    });
+    })
+    // Spec 2026-07-08: a relationship with invoiceApplies:false makes its counterparty's auths non-billable.
+    .filter((r) => invoiceAppliesFor(relationshipFor(state.cooperationRelationshipsByID, doctorID, r.counterpartyType, r.counterpartyID)));
 }
 
 export interface GenerateInvoiceInput {
@@ -1597,7 +1699,9 @@ export function generateInvoice(
   const rows = billableAuthorisations(state, input.doctorID)
     .filter((r) => input.authIDs.includes(r.id) && r.counterpartyID === input.counterpartyID && !r.invoiced);
   if (rows.length === 0) throw new BackendError("validationFailed");
-  const priceCents = state.scriptPricing[scriptPriceKey(input.doctorID, input.counterpartyID)] ?? DEFAULT_SCRIPT_PRICE_CENTS;
+  // Spec 2026-07-08: price precedence is relationship override → legacy scriptPricing → default.
+  const priceRel = relationshipFor(state.cooperationRelationshipsByID, input.doctorID, input.counterpartyType, input.counterpartyID);
+  const priceCents = priceCentsFor(priceRel, state.scriptPricing[scriptPriceKey(input.doctorID, input.counterpartyID)]);
   const computed = computeInvoice({
     pricePerScriptCents: priceCents, gstRate: GST_RATE,
     authorisations: rows.map((r) => ({ id: r.id, dateISO: r.dateISO, patientName: r.patientName })),
