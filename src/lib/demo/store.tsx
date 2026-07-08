@@ -6,6 +6,7 @@ import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 import * as billing from "./billing";
 import * as invoicing from "./invoicing";
+import * as emergency from "./emergency";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 import { useDemoAuth } from "./auth";
 
@@ -22,6 +23,7 @@ interface StoreValue {
   notesForPatient: (patientID: string) => ReturnType<typeof backend.notesForPatient>;
   visibleNotesForPatient: (patientID: string, identity: Identity) => ReturnType<typeof backend.visibleNotesForPatient>;
   activeAuthorisations: (patientID: string) => ReturnType<typeof backend.activeAuthorisations>;
+  activeEmergencyAuthorisations: (patientID: string) => ReturnType<typeof emergency.activeEmergencyAuthorisationsForPatient>;
   pendingRequestsForDoctor: (doctorID: string) => ReturnType<typeof backend.pendingRequestsForDoctor>;
   openRequestsForPatient: (patientID: string, nurseID: string) => ReturnType<typeof backend.openRequestsForPatient>;
   submitRequest: (input: { patientID: string; doctorID: string; items: MedicationItem[]; identity: Identity }) => void;
@@ -190,6 +192,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       notesForPatient: (pid) => backend.notesForPatient(state, pid),
       visibleNotesForPatient: (pid, id) => backend.visibleNotesForPatient(state, pid, id),
       activeAuthorisations: (pid) => backend.activeAuthorisations(state, pid, now),
+      activeEmergencyAuthorisations: (pid) => emergency.activeEmergencyAuthorisationsForPatient(state, pid, now),
       billingSummary: (id) => billing.billingSummary(Object.values(state.authorisations), id),
       customTimeframeCount: (id, fromMillis, toMillis) => billing.customTimeframeCount(Object.values(state.authorisations), id, fromMillis, toMillis),
       clinicBusinessStats: (id, fromMillis, toMillis) => billing.clinicBusinessStats(Object.values(state.authorisations), state.usages, id, fromMillis, toMillis),
