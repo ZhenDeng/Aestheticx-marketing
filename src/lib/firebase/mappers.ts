@@ -7,6 +7,7 @@ import type {
   ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
+  CooperationRelationship, CounterpartyType, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -153,6 +154,40 @@ export function mapEmergencyAuthorisation(id: string, data: Doc): EmergencyAutho
     refreshedAt: toMillis(data.refreshedAt),
     expiresAt: intValue(data.expiresAtMillis),
     sourceAuthorisationIDs: strArray(data.sourceAuthorisationIds),
+  };
+}
+
+// Cooperation relationship (spec 2026-07-08) written by the setCooperationRelationship /
+// backfillCooperationRelationships Cloud Functions. priceCentsOverride is a plain number or null.
+export function mapCooperationRelationship(id: string, data: Doc): CooperationRelationship {
+  const counterpartyType: CounterpartyType = data.counterpartyType === "clinic" ? "clinic" : "nurse";
+  const status: RelationshipStatus = data.status === "inactive" ? "inactive" : "active";
+  return {
+    id,
+    doctorID: str(data.doctorId),
+    doctorName: str(data.doctorName) || "Doctor",
+    counterpartyType,
+    counterpartyID: str(data.counterpartyId),
+    counterpartyName: str(data.counterpartyName),
+    status,
+    authRequestsAllowed: data.authRequestsAllowed !== false, // default true when absent
+    invoiceApplies: data.invoiceApplies !== false,           // default true when absent
+    priceCentsOverride: typeof data.priceCentsOverride === "number" ? Math.trunc(data.priceCentsOverride) : null,
+    createdAt: toMillis(data.createdAt),
+    updatedAt: toMillis(data.updatedAt),
+  };
+}
+
+export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEntry {
+  const action: RelationshipAction = data.action === "created" || data.action === "removed" ? data.action : "updated";
+  return {
+    id,
+    relationshipID: str(data.relationshipId),
+    actorID: str(data.actorId),
+    actorName: str(data.actorName) || "Admin",
+    action,
+    summary: str(data.summary),
+    at: toMillis(data.at),
   };
 }
 

@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit } from "./mappers";
 import type { DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -32,6 +32,8 @@ export interface HydrationRows {
   /** users collection rows — super-admin hydration only (rules gate the list to that role). */
   accounts?: Row[];
   emergencyAuthorisations?: Row[];
+  cooperationRelationships?: Row[];
+  relationshipAudit?: Row[];
   currentUserID: string;
 }
 
@@ -100,10 +102,15 @@ export function assembleState(rows: HydrationRows): DemoState {
   const emergencyAuthorisationsByID: DemoState["emergencyAuthorisationsByID"] = {};
   for (const r of rows.emergencyAuthorisations ?? []) emergencyAuthorisationsByID[r.id] = mapEmergencyAuthorisation(r.id, r.data);
 
+  const cooperationRelationshipsByID: DemoState["cooperationRelationshipsByID"] = {};
+  for (const r of rows.cooperationRelationships ?? []) cooperationRelationshipsByID[r.id] = mapCooperationRelationship(r.id, r.data);
+  const relationshipAuditByID: DemoState["relationshipAuditByID"] = {};
+  for (const r of rows.relationshipAudit ?? []) relationshipAuditByID[r.id] = mapRelationshipAudit(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {

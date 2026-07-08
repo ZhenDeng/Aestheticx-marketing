@@ -72,6 +72,8 @@ export function emptyState(): DemoState {
     addressByIdentity: {},
     accountsByID: {},
     emergencyAuthorisationsByID: {},
+    cooperationRelationshipsByID: {},
+    relationshipAuditByID: {},
   };
 }
 
