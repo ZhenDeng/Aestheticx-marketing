@@ -433,7 +433,13 @@ function BookConsult({ me }: { me: Identity }) {
   }
 
   if (loading) return <p className="mt-6 text-sm text-ink-soft">Loading availability…</p>;
-  if (doctors.length === 0) return <p className="mt-6 text-sm text-ink-soft">No cooperating doctors yet — ask your platform admin to add one.</p>;
+  if (doctors.length === 0) {
+    // Distinguish "no relationship at all" from "cooperating doctor(s) exist but none available now".
+    const hasCooperating = store.cooperatingDoctors(me).length > 0;
+    return <p className="mt-6 text-sm text-ink-soft">{hasCooperating
+      ? "None of your cooperating doctors are available to consult right now."
+      : "No cooperating doctors yet — ask your platform admin to add one."}</p>;
+  }
 
   return (
     <div className="mt-6 flex flex-col gap-4">

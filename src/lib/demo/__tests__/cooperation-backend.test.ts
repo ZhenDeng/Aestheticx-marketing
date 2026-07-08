@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Authorisation, DemoState, Identity } from "@/lib/demo/types";
 import {
   emptyState, setCooperationRelationship, removeCooperationRelationship, cooperatingDoctors,
-  relationshipAuditForRelationship, billableAuthorisations,
+  relationshipAuditForRelationship, billableAuthorisations, resolvedScriptPriceCents,
 } from "@/lib/demo/backend";
 
 const admin: Identity = { user: { id: "u-admin", name: "Admin" }, role: "superAdmin", context: { kind: "independent" } };
@@ -69,6 +69,17 @@ describe("cooperatingDoctors (gate)", () => {
     const s = setCooperationRelationship(emptyState(), baseInput(), admin, NOW);
     const voss: Identity = { user: { id: "u-voss", name: "Dr Voss" }, role: "doctor", context: { kind: "independent" } };
     expect(cooperatingDoctors(s, voss)).toEqual([]);
+  });
+});
+
+describe("resolvedScriptPriceCents (billing preview fold)", () => {
+  it("prefers relationship override, then the doctor's scriptPricing, then default", () => {
+    let s: DemoState = emptyState();
+    expect(resolvedScriptPriceCents(s, "u-voss", "u-sarah")).toBe(2500); // default
+    s = { ...s, scriptPricing: { "u-voss_u-sarah": 3000 } };
+    expect(resolvedScriptPriceCents(s, "u-voss", "u-sarah")).toBe(3000); // doctor's own price
+    s = setCooperationRelationship(s, baseInput({ priceCentsOverride: 4000 }), admin, NOW);
+    expect(resolvedScriptPriceCents(s, "u-voss", "u-sarah")).toBe(4000); // admin override wins
   });
 });
 

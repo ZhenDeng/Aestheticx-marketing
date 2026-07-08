@@ -1561,6 +1561,15 @@ export function setScriptPrice(state: DemoState, doctorID: string, counterpartyI
   return { ...state, scriptPricing: { ...state.scriptPricing, [scriptPriceKey(doctorID, counterpartyID)]: priceCents } };
 }
 
+// The price a doctor's invoice/preview will use for a counterparty: relationship admin-override →
+// the doctor's own scriptPricing → default. counterpartyType isn't threaded here (billing UI only
+// has the id), and an id is a nurse XOR clinic (disjoint namespaces), so try both relationship keys.
+export function resolvedScriptPriceCents(state: DemoState, doctorID: string, counterpartyID: string): number {
+  const rel = relationshipFor(state.cooperationRelationshipsByID, doctorID, "nurse", counterpartyID)
+    ?? relationshipFor(state.cooperationRelationshipsByID, doctorID, "clinic", counterpartyID);
+  return priceCentsFor(rel, state.scriptPricing[scriptPriceKey(doctorID, counterpartyID)]);
+}
+
 // --- Cooperation relationships (spec 2026-07-08 cooperation-relationships, constitution §17) ---
 
 // The doctors the acting nurse/clinic may request authorisation from (the single eligibility source).

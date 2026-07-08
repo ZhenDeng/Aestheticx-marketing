@@ -204,7 +204,8 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       customTimeframeCount: (id, fromMillis, toMillis) => billing.customTimeframeCount(Object.values(state.authorisations), id, fromMillis, toMillis),
       clinicBusinessStats: (id, fromMillis, toMillis) => billing.clinicBusinessStats(Object.values(state.authorisations), state.usages, id, fromMillis, toMillis),
       invoicesFor: (id) => invoicing.invoicesFor(state.invoices, id),
-      scriptPrice: (did, cid) => state.scriptPricing[backend.scriptPriceKey(did, cid)] ?? invoicing.DEFAULT_SCRIPT_PRICE_CENTS,
+      // Folds the cooperation-relationship override (spec 2026-07-08): override → scriptPricing → default.
+      scriptPrice: (did, cid) => backend.resolvedScriptPriceCents(state, did, cid),
       billableAuthorisations: (did) => backend.billableAuthorisations(state, did),
       setScriptPrice: (cid, priceCents, id) => {
         if (!live) { setState((s) => backend.setScriptPrice(s, id.user.id, cid, priceCents)); return; }

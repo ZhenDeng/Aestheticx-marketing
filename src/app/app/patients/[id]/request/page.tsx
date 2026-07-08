@@ -365,7 +365,11 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
       <label className="mt-6 block max-w-xs">
         <span className="micro">Prescribing doctor</span>
-        {doctors.length === 0 ? (
+        {editing ? (
+          // Resubmit locks the originally-addressed doctor (independent of the current gate), so
+          // never show the "no cooperating doctors" message here — resubmission still works.
+          <p className="mt-1 text-sm text-ink">Resubmitting to the originally-addressed doctor.</p>
+        ) : doctors.length === 0 ? (
           // Cooperation-relationship gate is empty — never render an empty <select>; the
           // absent chosenDoctor already keeps canSubmit false (submit stays disabled).
           <p className="mt-1 text-sm text-ink-soft">No cooperating doctors yet — ask your platform admin to add one.</p>

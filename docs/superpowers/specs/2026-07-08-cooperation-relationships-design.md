@@ -96,7 +96,9 @@ Fold the existing per-pair `scriptPricing` into the relationship's `priceCentsOv
 - **Price resolution** — a shared helper `priceForCounterparty(state, doctorID, counterpartyID)` resolves
   `relationship.priceCentsOverride ?? scriptPricing[key] ?? DEFAULT`. Applied at the 3 sites: `store.tsx` `scriptPrice`,
   `backend.ts` `generateInvoice`, `billing/page.tsx` preview. (`scriptPricing` stays as a fallback so nothing breaks
-  before backfill migrates it; backfill copies existing `scriptPricing` values into `priceCentsOverride`.)
+  it stays the doctor's own price store.) `priceCentsOverride` is an **admin-only** override; backfill does
+  NOT seed it from `scriptPricing` (that would shadow the doctor's own billing-UI price — §14 keeps price
+  doctor-settable via `scriptPricing`, §17 lets the admin override via the relationship).
 - **invoice-applies** — `billableAuthorisations` excludes authorisations whose `(doctor, counterparty)` relationship
   has `invoiceApplies === false`. Default true (no behaviour change for existing pairs).
 - The billing UI's "set price" continues to work, now writing the relationship's `priceCentsOverride` (live: a
@@ -105,7 +107,7 @@ Fold the existing per-pair `scriptPricing` into the relationship's `priceCentsOv
 ## Backfill
 Pure `deriveCooperationRelationships(requests, patients, scriptPricing)` → deterministic-id relationship set:
 each `authRequests` doc → `(doctorId, billingCounterparty(request))`; each patient → `(prescribingDoctorId,
-ownerType, ownerId)` for nurse/clinic owners; each `scriptPricing` doc → seeds `priceCentsOverride`. All **active**,
+ownerType, ownerId)` for nurse/clinic owners. All **active**,
 `authRequestsAllowed:true`, `invoiceApplies:true`. Idempotent (upsert on the deterministic id).
 - **Live:** a superAdmin-gated `backfillCooperationRelationships` callable (run once, safe to re-run) via an
   extracted `backfillCooperationRelationshipsTx(db)` core (emulator-tested).

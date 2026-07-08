@@ -296,8 +296,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   // Cooperation relationships this user is party to (doctor side or nurse/clinic counterparty),
   // for the request-picker gate. Best-effort until the rule deploys (runQuerySafe).
   const relConstraints: QueryConstraint[][] = [
-    [where("counterpartyId", "==", uid)],
-    ...clinicIds.map((cid) => [where("counterpartyId", "==", cid)]),
+    [where("counterpartyType", "==", "nurse"), where("counterpartyId", "==", uid)],
+    ...clinicIds.map((cid) => [where("counterpartyType", "==", "clinic"), where("counterpartyId", "==", cid)]),
     [where("doctorId", "==", uid)],
   ];
   const coopById = new Map<string, Row>();
