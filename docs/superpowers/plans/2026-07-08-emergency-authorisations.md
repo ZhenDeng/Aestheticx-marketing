@@ -674,7 +674,7 @@ Start the dev server (preview tooling), sign in as **Sarah Chen — Nurse**, ope
 
 ## Live parity boundary (companion `~/Documents/AestheticX` PR — NOT in this plan)
 
-The live write-side is a separate backend increment: add the same create-or-refresh to the `approveRequest` Cloud Function, decide the Firestore doc path/shape (likely `patients/{id}/emergencyAuthorisations/{doctorId}_{kind}`), add read rules matching the authorisation audience, then in this web repo add a `mapEmergencyAuthorisation` mapper + a `hydrate.ts` read populating `emergencyAuthorisationsByID`. Until that deploys, live mode correctly shows no emergency records (the map initialises empty in `assembleState`, Task 1 Step 3). Demo mode is fully functional now.
+The live write-side is a separate backend increment: add the same create-or-refresh to the `approveRequest` Cloud Function, decide the Firestore doc path/shape (likely `patients/{id}/emergencyAuthorisations/{doctorId}_{kind}`), add read rules matching the authorisation audience, then in this web repo add a `mapEmergencyAuthorisation` mapper + a `hydrate.ts` read populating `emergencyAuthorisationsByID`. Until that deploys, live mode correctly shows no emergency records: the map initialises empty in `assembleState` (Task 1 Step 3) AND the store passes `generateEmergency: !live` into `approveRequest` so the optimistic reducer skips the emergency fold in live mode (otherwise it would fabricate a phantom record against production PHI that the not-yet-deployed Cloud Function never persists). Demo mode is fully functional now.
 
 ## Notes for the implementer
 - `emergency.ts` must import **only** from `./types` (never `./backend`) to avoid an import cycle — `backend.ts` imports `emergency.ts`, not the reverse.

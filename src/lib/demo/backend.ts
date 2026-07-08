@@ -370,6 +370,7 @@ export function approveRequest(
   requestID: string,
   identity: Identity,
   now: number,
+  options: { generateEmergency?: boolean } = {},
 ): { state: DemoState; granted: Authorisation[] } {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
@@ -397,15 +398,21 @@ export function approveRequest(
 
   // Spec 2026-07-08 emergency-authorisations: every approval creates/refreshes an Adrenaline
   // standing authorisation for (patient, prescribing doctor); an HA filler adds Hyaluronidase.
-  const emergencyAuthorisationsByID = applyEmergencyAuthorisations(state.emergencyAuthorisationsByID, {
-    patientID: request.patientID,
-    doctorID: request.doctorID,
-    doctorName: identity.user.name, // the approver is the addressed doctor (asserted above)
-    kinds: emergencyKindsFor(request.items),
-    sourceAuthIDs: granted.map((a) => a.id),
-    now,
-    expiresAt: addMonthsUTC(now, EMERGENCY_VALIDITY_MONTHS),
-  });
+  // Skipped in live mode (`generateEmergency: false`): there the deployed approveRequest Cloud
+  // Function is the writer (companion backend PR) and hydrate reads the persisted records, so the
+  // client must NOT optimistically fabricate one that would silently vanish on the next hydrate.
+  const generateEmergency = options.generateEmergency ?? true;
+  const emergencyAuthorisationsByID = generateEmergency
+    ? applyEmergencyAuthorisations(state.emergencyAuthorisationsByID, {
+        patientID: request.patientID,
+        doctorID: request.doctorID,
+        doctorName: identity.user.name, // the approver is the addressed doctor (asserted above)
+        kinds: emergencyKindsFor(request.items),
+        sourceAuthIDs: granted.map((a) => a.id),
+        now,
+        expiresAt: addMonthsUTC(now, EMERGENCY_VALIDITY_MONTHS),
+      })
+    : state.emergencyAuthorisationsByID;
 
   const patient = state.patients[request.patientID];
   const patients = { ...state.patients };

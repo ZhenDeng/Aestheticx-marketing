@@ -261,6 +261,15 @@ describe("approveRequest — emergency authorisations", () => {
     // one granted authorisation, not the two emergency records
     expect(activeAuthorisations(state, "p1", NOW)).toHaveLength(1);
   });
+
+  it("skips emergency generation when generateEmergency is false (live mode defers to the backend)", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(state, { patientID: "p1", doctorID: "u-voss", items: [fillerItem], identity: sarahIndependent }, NOW);
+    const { state: next } = approveRequest(submitted.state, submitted.request.id, voss, NOW, { generateEmergency: false });
+    expect(next.emergencyAuthorisationsByID).toEqual({});
+    // the authorisation itself is still granted — only the emergency side effect is deferred
+    expect(next.requests[submitted.request.id].status).toBe("approved");
+  });
 });
 
 describe("requireEdit", () => {

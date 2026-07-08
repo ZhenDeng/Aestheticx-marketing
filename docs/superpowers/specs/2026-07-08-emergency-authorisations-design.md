@@ -115,6 +115,12 @@ the approval path changes; the return shape (`{ state, granted }`) is unchanged.
 - **No web mirror write** — creation/refresh is server-side in `approveRequest`. The web PR is
   self-contained (demo fully exercises the logic; live displays whatever the backend has
   written). Live automation activates when the companion AestheticX PR deploys.
+- **No optimistic fabrication in live mode.** `applyAndMirror` applies the demo reducer
+  optimistically for BOTH modes, so the store passes `generateEmergency: !live` into
+  `approveRequest`: in live mode the demo reducer skips the emergency fold entirely, leaving
+  `emergencyAuthorisationsByID` empty until hydrate reads the backend-written records. Without
+  this the client would show a phantom emergency authorisation (against production PHI) that the
+  not-yet-deployed Cloud Function never persists and that silently vanishes on the next hydrate.
 
 ### UI (`src/app/app/patients/[id]/page.tsx`, authorisation aside `:264`)
 A quiet **"Emergency authorisations"** subsection at the **end** of the Active-authorisations

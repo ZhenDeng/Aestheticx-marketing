@@ -227,7 +227,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(() => next, (m) => m.mirrorCreateRequest(request));
       },
       approveRequest: (requestID, id) =>
-        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now).state, (m) => m.mirrorApproveRequest(requestID)),
+        // generateEmergency: !live — in live mode the backend Cloud Function writes the emergency
+        // records and hydrate reads them; the optimistic client must not fabricate a phantom one.
+        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now, { generateEmergency: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
       requireEdit: (requestID, id) =>
         applyAndMirror((s) => backend.requireEdit(s, requestID, id), (m) => m.mirrorRequireEdit(requestID)),
       resubmitRequest: (input) =>
