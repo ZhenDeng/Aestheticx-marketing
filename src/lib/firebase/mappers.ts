@@ -6,7 +6,7 @@ import type {
   MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
-  TreatmentAvailability, DaySchedule, TreatmentBlock,
+  TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -136,6 +136,23 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     expiresAt,
     createdAt: toMillis(data.createdAt),
     invoiced: data.invoiced === true,
+  };
+}
+
+// Emergency standing authorisation (spec 2026-07-08) written by the approveRequest Cloud
+// Function. expiresAtMillis is a plain number; createdAt/refreshedAt are serverTimestamps.
+export function mapEmergencyAuthorisation(id: string, data: Doc): EmergencyAuthorisation {
+  const kind: EmergencyKind = data.kind === "hyaluronidase" ? "hyaluronidase" : "adrenaline";
+  return {
+    id,
+    patientID: str(data.patientId),
+    doctorID: str(data.doctorId),
+    doctorName: str(data.doctorName) || "Doctor",
+    kind,
+    createdAt: toMillis(data.createdAt),
+    refreshedAt: toMillis(data.refreshedAt),
+    expiresAt: intValue(data.expiresAtMillis),
+    sourceAuthorisationIDs: strArray(data.sourceAuthorisationIds),
   };
 }
 

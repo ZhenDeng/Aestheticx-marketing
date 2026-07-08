@@ -41,6 +41,7 @@ import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
+import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyKindsFor } from "./emergency";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -70,6 +71,7 @@ export function emptyState(): DemoState {
     profileByUser: {},
     addressByIdentity: {},
     accountsByID: {},
+    emergencyAuthorisationsByID: {},
   };
 }
 
@@ -368,6 +370,7 @@ export function approveRequest(
   requestID: string,
   identity: Identity,
   now: number,
+  options: { generateEmergency?: boolean } = {},
 ): { state: DemoState; granted: Authorisation[] } {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
@@ -393,6 +396,24 @@ export function approveRequest(
   const authorisations = { ...state.authorisations };
   for (const a of granted) authorisations[a.id] = a;
 
+  // Spec 2026-07-08 emergency-authorisations: every approval creates/refreshes an Adrenaline
+  // standing authorisation for (patient, prescribing doctor); an HA filler adds Hyaluronidase.
+  // Skipped in live mode (`generateEmergency: false`): there the deployed approveRequest Cloud
+  // Function is the writer (companion backend PR) and hydrate reads the persisted records, so the
+  // client must NOT optimistically fabricate one that would silently vanish on the next hydrate.
+  const generateEmergency = options.generateEmergency ?? true;
+  const emergencyAuthorisationsByID = generateEmergency
+    ? applyEmergencyAuthorisations(state.emergencyAuthorisationsByID, {
+        patientID: request.patientID,
+        doctorID: request.doctorID,
+        doctorName: identity.user.name, // the approver is the addressed doctor (asserted above)
+        kinds: emergencyKindsFor(request.items),
+        sourceAuthIDs: granted.map((a) => a.id),
+        now,
+        expiresAt: addMonthsUTC(now, EMERGENCY_VALIDITY_MONTHS),
+      })
+    : state.emergencyAuthorisationsByID;
+
   const patient = state.patients[request.patientID];
   const patients = { ...state.patients };
   if (patient && !patient.prescribingDoctorIDs.includes(identity.user.id)) {
@@ -404,6 +425,7 @@ export function approveRequest(
       ...state,
       patients,
       authorisations,
+      emergencyAuthorisationsByID,
       requests: { ...state.requests, [requestID]: { ...request, status: "approved" } },
     },
     request.patientID,

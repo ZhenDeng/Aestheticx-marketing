@@ -65,6 +65,16 @@ function OtherLineEditor({ line, onChange, onRemove }: {
         <input value={item.name} onChange={(e) => onChange({ ...item, name: e.target.value })}
           className="mt-1 w-full rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
       </label>
+      {/* Spec 2026-07-08: classify a manual/compounded product as an HA filler so it triggers
+          the Hyaluronidase emergency authorisation on approval (Rule 5 / §15). */}
+      <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={item.category === "haFiller"}
+          onChange={(e) => onChange({ ...item, category: e.target.checked ? "haFiller" : "other" })}
+        />
+        This is an HA (hyaluronic acid) filler
+      </label>
       <div className="mt-3 flex flex-wrap gap-3">
         <label className="block">
           <span className="micro">Dosage</span>
@@ -351,7 +361,11 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
       <h2 className="mt-8 font-display text-xl text-ink">Request items</h2>
       <div className="mt-3 flex flex-col gap-3">
-        {lines.map((l) => l.item.category === "other" ? (
+        {/* Manual/compounded lines are identified by their freeText unit, not their category:
+            the HA-filler toggle (spec 2026-07-08) may set an "Other" line's category to haFiller
+            while it stays a free-text line, so branching on category would flip it to the
+            structured editor and lose the free-text fields. */}
+        {lines.map((l) => l.item.unit === "freeText" ? (
           <OtherLineEditor key={l.key} line={l} onChange={(item) => updateLine(l.key, item)} onRemove={() => removeLine(l.key)} />
         ) : (
           <LineEditor key={l.key} line={l} onChange={(item) => updateLine(l.key, item)} onRemove={() => removeLine(l.key)} />

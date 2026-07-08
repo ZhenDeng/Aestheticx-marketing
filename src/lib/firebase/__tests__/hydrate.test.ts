@@ -47,6 +47,20 @@ describe("assembleState", () => {
     expect(state.bookingTokensByUser["u-voss"]).toBe("bk-voss");
   });
 
+  it("maps emergency authorisations into emergencyAuthorisationsByID (empty when none)", () => {
+    expect(assembleState(rows).emergencyAuthorisationsByID).toEqual({});
+    const state = assembleState({
+      ...rows,
+      emergencyAuthorisations: [
+        { id: "p1_u-voss_adrenaline", data: { patientId: "p1", doctorId: "u-voss", doctorName: "Dr Elena Voss", kind: "adrenaline", nurseId: "u-sarah", clinicId: "clinic-lumiere", createdAt: 100, refreshedAt: 200, expiresAtMillis: 1800000000000, sourceAuthorisationIds: ["a1"] } },
+      ],
+    });
+    expect(state.emergencyAuthorisationsByID["p1_u-voss_adrenaline"]).toMatchObject({
+      patientID: "p1", doctorID: "u-voss", doctorName: "Dr Elena Voss", kind: "adrenaline",
+      createdAt: 100, refreshedAt: 200, expiresAt: 1800000000000, sourceAuthorisationIDs: ["a1"],
+    });
+  });
+
   it("omits follow-up settings + booking token when the user doc carries neither", () => {
     const state = assembleState({ ...rows, followUpSettings: null, bookingToken: null });
     expect(state.followUpSettingsByUser).toEqual({});

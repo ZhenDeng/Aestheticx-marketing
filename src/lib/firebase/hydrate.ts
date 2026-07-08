@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation } from "./mappers";
 import type { DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -31,6 +31,7 @@ export interface HydrationRows {
   externalBusy?: Row[];
   /** users collection rows — super-admin hydration only (rules gate the list to that role). */
   accounts?: Row[];
+  emergencyAuthorisations?: Row[];
   currentUserID: string;
 }
 
@@ -96,15 +97,30 @@ export function assembleState(rows: HydrationRows): DemoState {
   const accountsByID: DemoState["accountsByID"] = {};
   for (const r of rows.accounts ?? []) accountsByID[r.id] = mapAccount(r.id, r.data);
 
+  const emergencyAuthorisationsByID: DemoState["emergencyAuthorisationsByID"] = {};
+  for (const r of rows.emergencyAuthorisations ?? []) emergencyAuthorisationsByID[r.id] = mapEmergencyAuthorisation(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
   const snap = await getDocs(query(collection(firestore(), path), ...constraints));
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
+}
+
+// Best-effort query for a collection whose read rule may not be deployed yet (the
+// emergencyAuthorisations rule ships in a separate backend deploy). Firestore denies a query
+// against a collection with no matching allow rule, which would otherwise reject the whole
+// hydrate — so a failure here degrades to "none" instead of breaking live loading.
+async function runQuerySafe(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
+  try {
+    return await runQuery(path, ...constraints);
+  } catch {
+    return [];
+  }
 }
 
 // availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
@@ -200,6 +216,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       externalBusy: await readExternalBusy([uid]),
       // The admin console's account inventory (rules: users list is superAdmin-only).
       accounts: await runQuery("users"),
+      emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
       currentUserID: uid,
     });
   }
@@ -238,9 +255,13 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   ];
   const authsById = new Map<string, Row>();
   const reqsById = new Map<string, Row>();
+  const emergencyById = new Map<string, Row>();
   for (const constraints of authConstraints) {
     for (const row of await runQuery("authorisations", ...constraints)) authsById.set(row.id, row);
     for (const row of await runQuery("authRequests", ...constraints)) reqsById.set(row.id, row);
+    // Emergency authorisations carry the same nurseId/doctorId/clinicId ownership fields.
+    // Best-effort: its read rule ships in a separate backend deploy (see runQuerySafe).
+    for (const row of await runQuerySafe("emergencyAuthorisations", ...constraints)) emergencyById.set(row.id, row);
   }
 
   // Appointments owned by the user or their clinics.
@@ -268,6 +289,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     patients,
     notesByPatient,
     authorisations: [...authsById.values()],
+    emergencyAuthorisations: [...emergencyById.values()],
     requests: [...reqsById.values()],
     appointments: [...apptsById.values()],
     formsByPatient,
