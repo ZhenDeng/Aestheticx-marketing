@@ -111,6 +111,18 @@ async function runQuery(path: string, ...constraints: QueryConstraint[]): Promis
   return snap.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
 }
 
+// Best-effort query for a collection whose read rule may not be deployed yet (the
+// emergencyAuthorisations rule ships in a separate backend deploy). Firestore denies a query
+// against a collection with no matching allow rule, which would otherwise reject the whole
+// hydrate — so a failure here degrades to "none" instead of breaking live loading.
+async function runQuerySafe(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
+  try {
+    return await runQuery(path, ...constraints);
+  } catch {
+    return [];
+  }
+}
+
 // availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
 // caller's own + any clinics they belong to; a missing doc means "not configured" → the
 // default schedule applies client-side. Doc id == ownerId, matching mapTreatmentAvailability.
@@ -204,7 +216,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       externalBusy: await readExternalBusy([uid]),
       // The admin console's account inventory (rules: users list is superAdmin-only).
       accounts: await runQuery("users"),
-      emergencyAuthorisations: await runQuery("emergencyAuthorisations"),
+      emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
       currentUserID: uid,
     });
   }
@@ -248,7 +260,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     for (const row of await runQuery("authorisations", ...constraints)) authsById.set(row.id, row);
     for (const row of await runQuery("authRequests", ...constraints)) reqsById.set(row.id, row);
     // Emergency authorisations carry the same nurseId/doctorId/clinicId ownership fields.
-    for (const row of await runQuery("emergencyAuthorisations", ...constraints)) emergencyById.set(row.id, row);
+    // Best-effort: its read rule ships in a separate backend deploy (see runQuerySafe).
+    for (const row of await runQuerySafe("emergencyAuthorisations", ...constraints)) emergencyById.set(row.id, row);
   }
 
   // Appointments owned by the user or their clinics.
