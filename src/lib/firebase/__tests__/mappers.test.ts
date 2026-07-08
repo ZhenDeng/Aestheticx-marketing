@@ -3,6 +3,7 @@ import {
   mapPatient,
   mapNote,
   mapAuthorisation,
+  mapEmergencyAuthorisation,
   mapAuthRequest,
   mapAppointment,
   mapExternalBusy,
@@ -24,6 +25,27 @@ const patient: Patient = {
   currentMedications: "Nil", owner: { kind: "clinic", id: "clinic-lumiere" },
   prescribingDoctorIDs: ["u-voss"], alert: "anaphylaxis", preferredName: "Mara",
 };
+
+describe("mapEmergencyAuthorisation", () => {
+  it("maps fields, converts timestamps, keeps a valid kind", () => {
+    const rec = mapEmergencyAuthorisation("p1_d1_hyaluronidase", {
+      patientId: "p1", doctorId: "d1", doctorName: "Dr Voss", kind: "hyaluronidase",
+      createdAt: { toMillis: () => 100 }, refreshedAt: { toMillis: () => 200 },
+      expiresAtMillis: 1800000000000, sourceAuthorisationIds: ["a1", "a2"],
+    });
+    expect(rec).toEqual({
+      id: "p1_d1_hyaluronidase", patientID: "p1", doctorID: "d1", doctorName: "Dr Voss",
+      kind: "hyaluronidase", createdAt: 100, refreshedAt: 200, expiresAt: 1800000000000,
+      sourceAuthorisationIDs: ["a1", "a2"],
+    });
+  });
+  it("defaults an unknown kind to adrenaline and a missing name to 'Doctor'", () => {
+    const rec = mapEmergencyAuthorisation("x", { kind: "weird" });
+    expect(rec.kind).toBe("adrenaline");
+    expect(rec.doctorName).toBe("Doctor");
+    expect(rec.sourceAuthorisationIDs).toEqual([]);
+  });
+});
 
 describe("encodePatientForCreate", () => {
   it("writes ownerType/ownerId + dob string and omits prescribingDoctorIds", () => {
