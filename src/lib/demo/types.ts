@@ -332,6 +332,40 @@ export interface SignedFormRecord {
   pdfFileId?: string;
 }
 
+export type CounterpartyType = "nurse" | "clinic";
+export type RelationshipStatus = "active" | "inactive";
+
+// A doctor ↔ (nurse|clinic) cooperation relationship (spec 2026-07-08 cooperation-relationships,
+// constitution §17). Gates which doctors a nurse/clinic may request authorisation from
+// (status active && authRequestsAllowed) and carries the pricing override + invoice-applies flag
+// folded from scriptPricing. Function-only writes in live; deterministic id so admin edits upsert.
+export interface CooperationRelationship {
+  id: string; // `${doctorID}_${counterpartyType}_${counterpartyID}`
+  doctorID: string;
+  doctorName: string;         // denormalised for display
+  counterpartyType: CounterpartyType;
+  counterpartyID: string;     // nurse uid or clinic id
+  counterpartyName: string;   // denormalised
+  status: RelationshipStatus;
+  authRequestsAllowed: boolean;
+  invoiceApplies: boolean;
+  priceCentsOverride: number | null; // null ⇒ DEFAULT_SCRIPT_PRICE_CENTS
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type RelationshipAction = "created" | "updated" | "removed";
+// One entry in a relationship's change history (constitution §17 "history should be auditable").
+export interface RelationshipAuditEntry {
+  id: string;
+  relationshipID: string;
+  actorID: string;   // the acting super admin
+  actorName: string;
+  action: RelationshipAction;
+  summary: string;   // human-readable, e.g. "created · active · price $30.00 · invoicing on"
+  at: number;
+}
+
 export type EmergencyKind = "adrenaline" | "hyaluronidase";
 
 // An automatically-generated emergency standing authorisation (spec 2026-07-08 emergency-
@@ -382,6 +416,10 @@ export interface DemoState {
   accountsByID: Record<string, AccountRecord>;
   // Auto-generated emergency standing authorisations, keyed by `${patientID}_${doctorID}_${kind}`.
   emergencyAuthorisationsByID: Record<string, EmergencyAuthorisation>;
+  // Cooperation relationships (spec 2026-07-08) keyed `${doctorID}_${counterpartyType}_${counterpartyID}`,
+  // and their append-only change audit.
+  cooperationRelationshipsByID: Record<string, CooperationRelationship>;
+  relationshipAuditByID: Record<string, RelationshipAuditEntry>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

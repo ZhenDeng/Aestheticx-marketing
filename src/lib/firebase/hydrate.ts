@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit } from "./mappers";
 import type { DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -32,6 +32,8 @@ export interface HydrationRows {
   /** users collection rows — super-admin hydration only (rules gate the list to that role). */
   accounts?: Row[];
   emergencyAuthorisations?: Row[];
+  cooperationRelationships?: Row[];
+  relationshipAudit?: Row[];
   currentUserID: string;
 }
 
@@ -100,10 +102,15 @@ export function assembleState(rows: HydrationRows): DemoState {
   const emergencyAuthorisationsByID: DemoState["emergencyAuthorisationsByID"] = {};
   for (const r of rows.emergencyAuthorisations ?? []) emergencyAuthorisationsByID[r.id] = mapEmergencyAuthorisation(r.id, r.data);
 
+  const cooperationRelationshipsByID: DemoState["cooperationRelationshipsByID"] = {};
+  for (const r of rows.cooperationRelationships ?? []) cooperationRelationshipsByID[r.id] = mapCooperationRelationship(r.id, r.data);
+  const relationshipAuditByID: DemoState["relationshipAuditByID"] = {};
+  for (const r of rows.relationshipAudit ?? []) relationshipAuditByID[r.id] = mapRelationshipAudit(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -217,6 +224,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       // The admin console's account inventory (rules: users list is superAdmin-only).
       accounts: await runQuery("users"),
       emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
+      cooperationRelationships: await runQuerySafe("cooperationRelationships"),
+      relationshipAudit: await runQuerySafe("relationshipAudit"),
       currentUserID: uid,
     });
   }
@@ -283,6 +292,18 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     for (const row of await runQuery("invoices", ...constraints)) invoicesById.set(row.id, row);
   }
   const scriptPricingRows = await runQuery("scriptPricing", where("doctorId", "==", uid));
+
+  // Cooperation relationships this user is party to (doctor side or nurse/clinic counterparty),
+  // for the request-picker gate. Best-effort until the rule deploys (runQuerySafe).
+  const relConstraints: QueryConstraint[][] = [
+    [where("counterpartyType", "==", "nurse"), where("counterpartyId", "==", uid)],
+    ...clinicIds.map((cid) => [where("counterpartyType", "==", "clinic"), where("counterpartyId", "==", cid)]),
+    [where("doctorId", "==", uid)],
+  ];
+  const coopById = new Map<string, Row>();
+  for (const constraints of relConstraints) {
+    for (const row of await runQuerySafe("cooperationRelationships", ...constraints)) coopById.set(row.id, row);
+  }
   const profile = await readUserProfile(uid);
 
   return assembleState({
@@ -290,6 +311,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     notesByPatient,
     authorisations: [...authsById.values()],
     emergencyAuthorisations: [...emergencyById.values()],
+    cooperationRelationships: [...coopById.values()],
     requests: [...reqsById.values()],
     appointments: [...apptsById.values()],
     formsByPatient,

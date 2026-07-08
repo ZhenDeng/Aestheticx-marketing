@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
@@ -181,18 +181,14 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   // initializer is safe and avoids an effect + extra render.
   const [recentIds, setRecentIds] = useState<string[]>(() => loadRecentlyUsed());
 
-  // The full doctor directory (live: listDoctors callable; demo: DEMO_ACCOUNTS), fetched
-  // once. Falls back to the demo cast if the live call fails so the picker never empties.
-  const [allDoctors, setAllDoctors] = useState<{ doctorId: string; doctorName: string }[]>([]);
-  const [doctorsLoaded, setDoctorsLoaded] = useState(false);
-  useEffect(() => {
-    if (doctorsLoaded) return; // fetch once; `store` recreates on every state change
-    let cancelled = false;
-    store.listDoctors()
-      .then((ds) => { if (!cancelled) { setAllDoctors(ds); setDoctorsLoaded(true); } })
-      .catch(async () => { const { demoDoctorRefs } = await import("@/lib/demo/accounts"); if (!cancelled) { setAllDoctors(demoDoctorRefs()); setDoctorsLoaded(true); } });
-    return () => { cancelled = true; };
-  }, [store, doctorsLoaded]);
+  // Cooperation-relationship gate (spec 2026-07-08): the doctors the acting nurse/clinic may
+  // request authorisation from — a sync selector over hydrated state (works in demo + live),
+  // so no fetch/loading state is needed. `identity` is still null on the very first render
+  // (before the `!identity` guard below runs), so fall back to an empty gate then.
+  const cooperating = useMemo(
+    () => (identity ? store.cooperatingDoctors(identity) : []),
+    [store, identity],
+  );
 
   // Prefill the builder from the returned request the first time it hydrates. Derived in
   // render (not an effect) so the locked doctor never flashes a wrong value before commit;
@@ -211,8 +207,8 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     [store.state.requests, identity?.user.id],
   );
   const doctors = useMemo(
-    () => rankDoctors(allDoctors, stats).map((d) => ({ id: d.doctorId, name: d.doctorName })),
-    [allDoctors, stats],
+    () => rankDoctors(cooperating, stats).map((d) => ({ id: d.doctorId, name: d.doctorName })),
+    [cooperating, stats],
   );
 
   if (!identity) return null;
@@ -234,12 +230,6 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     );
   }
   const editing = !!editId;
-  if (!doctorsLoaded) {
-    return <p className="text-ink-soft">Loading doctors…</p>;
-  }
-  if (doctors.length === 0) {
-    return <p className="text-ink-soft">No prescribing doctors are available to send this request to.</p>;
-  }
   const me = identity;
 
   // Default to the last-requested doctor, else the patient's prescribing doctor, else the
@@ -375,10 +365,20 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
       <label className="mt-6 block max-w-xs">
         <span className="micro">Prescribing doctor</span>
-        <select value={chosenDoctor} onChange={(e) => setDoctorId(e.target.value)} disabled={editing}
-          className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-ink disabled:opacity-60">
-          {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
+        {editing ? (
+          // Resubmit locks the originally-addressed doctor (independent of the current gate), so
+          // never show the "no cooperating doctors" message here — resubmission still works.
+          <p className="mt-1 text-sm text-ink">Resubmitting to the originally-addressed doctor.</p>
+        ) : doctors.length === 0 ? (
+          // Cooperation-relationship gate is empty — never render an empty <select>; the
+          // absent chosenDoctor already keeps canSubmit false (submit stays disabled).
+          <p className="mt-1 text-sm text-ink-soft">No cooperating doctors yet — ask your platform admin to add one.</p>
+        ) : (
+          <select value={chosenDoctor} onChange={(e) => setDoctorId(e.target.value)} disabled={editing}
+            className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-ink disabled:opacity-60">
+            {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        )}
         {editing && <span className="mt-1 block text-xs text-ink-faint">The addressed doctor can’t change on a resubmit.</span>}
       </label>
 

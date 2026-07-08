@@ -37,6 +37,31 @@ export async function mirrorRequireEdit(requestId: string): Promise<void> {
   await httpsCallable(functions(), "requireEdit")({ requestId });
 }
 
+// Cooperation relationships (spec 2026-07-08) — superAdmin-gated Cloud Functions. Wire names
+// are lowercase (doctorId/counterpartyId), matching the Firestore doc + backend callable.
+export async function mirrorSetCooperationRelationship(input: import("@/lib/demo/backend").SetCooperationRelationshipInput): Promise<void> {
+  await httpsCallable(functions(), "setCooperationRelationship")({
+    doctorId: input.doctorID,
+    doctorName: input.doctorName,
+    counterpartyType: input.counterpartyType,
+    counterpartyId: input.counterpartyID,
+    counterpartyName: input.counterpartyName,
+    status: input.status,
+    authRequestsAllowed: input.authRequestsAllowed,
+    invoiceApplies: input.invoiceApplies,
+    priceCentsOverride: input.priceCentsOverride,
+  });
+}
+
+export async function mirrorRemoveCooperationRelationship(relationshipId: string): Promise<void> {
+  await httpsCallable(functions(), "removeCooperationRelationship")({ relationshipId });
+}
+
+export async function mirrorBackfillCooperationRelationships(): Promise<{ created: number } | void> {
+  const res = await httpsCallable(functions(), "backfillCooperationRelationships")({});
+  return res.data as { created: number };
+}
+
 // The nurse's edit-and-resubmit is a direct client update (not a Function): the rules allow
 // the raising nurse to change items + flip status needsEdit → pending, and nothing else.
 export async function mirrorResubmitRequest(requestId: string, items: MedicationItem[]): Promise<void> {

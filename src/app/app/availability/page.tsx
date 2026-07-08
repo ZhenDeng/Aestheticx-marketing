@@ -343,17 +343,21 @@ function BookConsult({ me }: { me: Identity }) {
   const adHocPast = adHocWhen === "later" && !adHocEmpty && isPastSlot(adHocDateISO, adHocMinute, store.now);
   const adHocBlocked = adHocEmpty || adHocPast;
 
-  // Discover doctors with availability (demo: local selectors; live: backend callable).
-  // The default doctor per the appointments spec — most-recently-called when pickable,
-  // never hard-coded — is resolved ONCE when the list arrives (iOS parity: a call started
-  // later in the session must not silently flip a picker the user is already looking at).
+  // Discover doctors with availability (demo: local selectors; live: backend callable), then
+  // gate to the cooperation-relationship set (spec 2026-07-08): the doctors this nurse/clinic
+  // may actually request from. The default doctor per the appointments spec — most-recently-
+  // called when pickable, never hard-coded — is resolved ONCE when the list arrives (iOS
+  // parity: a call started later in the session must not silently flip a picker the user is
+  // already looking at).
   useEffect(() => {
     let alive = true;
     store.listAvailableDoctors()
       .then((d) => {
         if (!alive) return;
-        setDoctors(d);
-        setDoctorID((cur) => cur ?? defaultDoctorID(d, store.mostRecentlyCalledDoctor(me.user.id)));
+        const cooperatingIds = new Set(store.cooperatingDoctors(me).map((x) => x.doctorId));
+        const filtered = d.filter((doc) => cooperatingIds.has(doc.doctorID));
+        setDoctors(filtered);
+        setDoctorID((cur) => cur ?? defaultDoctorID(filtered, store.mostRecentlyCalledDoctor(me.user.id)));
         setLoading(false);
       })
       .catch(() => { if (alive) { setError("Could not load availability. Please retry."); setLoading(false); } });
@@ -429,7 +433,13 @@ function BookConsult({ me }: { me: Identity }) {
   }
 
   if (loading) return <p className="mt-6 text-sm text-ink-soft">Loading availability…</p>;
-  if (doctors.length === 0) return <p className="mt-6 text-sm text-ink-soft">No doctors are available right now.</p>;
+  if (doctors.length === 0) {
+    // Distinguish "no relationship at all" from "cooperating doctor(s) exist but none available now".
+    const hasCooperating = store.cooperatingDoctors(me).length > 0;
+    return <p className="mt-6 text-sm text-ink-soft">{hasCooperating
+      ? "None of your cooperating doctors are available to consult right now."
+      : "No cooperating doctors yet — ask your platform admin to add one."}</p>;
+  }
 
   return (
     <div className="mt-6 flex flex-col gap-4">

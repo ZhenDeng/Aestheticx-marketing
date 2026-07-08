@@ -1,6 +1,6 @@
 // Port of SessionState.demoBackend — the same demo data the iOS app seeds.
 // Built by replaying domain operations so seeded state obeys the same rules.
-import type { DemoState, FollowUpTask, Identity, MedicationItem, Note, Patient } from "./types";
+import type { CooperationRelationship, DemoState, FollowUpTask, Identity, MedicationItem, Note, Patient } from "./types";
 import { LUMIERE, DEMO_ACCOUNTS } from "./accounts";
 import {
   emptyState,
@@ -261,6 +261,22 @@ export function buildSeedState(): DemoState {
     };
   }
   state = { ...state, accountsByID };
+
+  // Cooperation relationships (spec 2026-07-08): seed the demo cast's active pairs so the gated
+  // request pickers still show Dr Voss. Sarah acts independently (nurse counterparty) and
+  // Ruby/Ava/Sarah act in Lumière (clinic counterparty) — cover both.
+  const rel = (counterpartyType: "nurse" | "clinic", counterpartyID: string, counterpartyName: string): CooperationRelationship => ({
+    id: `u-voss_${counterpartyType}_${counterpartyID}`,
+    doctorID: "u-voss", doctorName: "Dr Elena Voss",
+    counterpartyType, counterpartyID, counterpartyName,
+    status: "active", authRequestsAllowed: true, invoiceApplies: true, priceCentsOverride: null,
+    createdAt: SEED_NOW, updatedAt: SEED_NOW,
+  });
+  const cooperationRelationshipsByID: DemoState["cooperationRelationshipsByID"] = {};
+  for (const r of [rel("nurse", "u-sarah", "Sarah Chen"), rel("clinic", "clinic-lumiere", "Lumière Clinic")]) {
+    cooperationRelationshipsByID[r.id] = r;
+  }
+  state = { ...state, cooperationRelationshipsByID };
 
   return state;
 }
