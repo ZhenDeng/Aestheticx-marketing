@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Authorisation, Identity } from "@/lib/demo/types";
+import type { Authorisation, DemoState, Identity } from "@/lib/demo/types";
 import {
   emptyState, setCooperationRelationship, removeCooperationRelationship, cooperatingDoctors,
   relationshipAuditForRelationship, billableAuthorisations,
@@ -74,7 +74,7 @@ describe("cooperatingDoctors (gate)", () => {
 
 describe("invoiceApplies gates billable authorisations", () => {
   it("excludes a counterparty whose relationship has invoiceApplies:false", () => {
-    let s = { ...emptyState(), authorisations: { a1: auth() } };
+    let s: DemoState = { ...emptyState(), authorisations: { a1: auth() } };
     expect(billableAuthorisations(s, "u-voss")).toHaveLength(1);
     s = setCooperationRelationship(s, baseInput({ invoiceApplies: false }), admin, NOW);
     expect(billableAuthorisations(s, "u-voss")).toHaveLength(0);

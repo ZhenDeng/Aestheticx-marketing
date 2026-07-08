@@ -71,6 +71,13 @@ interface StoreValue {
   // The full prescribing-doctor directory for the auth-request picker (live: listDoctors
   // callable; demo: the DEMO_ACCOUNTS doctors).
   listDoctors: () => Promise<{ doctorId: string; doctorName: string }[]>;
+  // Cooperation-relationship gate (spec 2026-07-08): the doctors the acting nurse/clinic may
+  // request from — a sync selector over hydrated state (works in demo + live).
+  cooperatingDoctors: (identity: Identity) => ReturnType<typeof backend.cooperatingDoctors>;
+  cooperationRelationships: () => ReturnType<typeof backend.cooperationRelationshipsList>;
+  relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
+  setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
+  removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
   listDoctorOpenSlots: (doctorID: string, dateISO: string) => Promise<number[]>;
   publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
   withdrawAvailability: (windowID: string, identity: Identity) => void;
@@ -566,6 +573,26 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       setAddressForIdentity: (identity, address) =>
         setState((s) => backend.setAddressForIdentity(s, identity, address)),
       accounts: () => backend.accountsInventory(state),
+      cooperatingDoctors: (identity) => backend.cooperatingDoctors(state, identity),
+      cooperationRelationships: () => backend.cooperationRelationshipsList(state),
+      relationshipAuditFor: (relationshipID) => backend.relationshipAuditForRelationship(state, relationshipID),
+      setCooperationRelationship: (input, actor) => {
+        // Eager-validate (throws before the async live branch); relationships are demo-writable.
+        const next = backend.setCooperationRelationship(state, input, actor, now);
+        if (!live) { setState(() => next); return; }
+        void (async () => {
+          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetCooperationRelationship(input); setRefreshTick((t) => t + 1); }
+          catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      removeCooperationRelationship: (relationshipID, actor) => {
+        const next = backend.removeCooperationRelationship(state, relationshipID, actor, now);
+        if (!live) { setState(() => next); return; }
+        void (async () => {
+          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorRemoveCooperationRelationship(relationshipID); setRefreshTick((t) => t + 1); }
+          catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
       createUser: async (input) => {
         if (!live) throw new backend.BackendError("User creation is live-only in the demo.");
         // Server-authoritative (like bookAuthSlot): no optimistic write — the Function

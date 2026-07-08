@@ -224,6 +224,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       // The admin console's account inventory (rules: users list is superAdmin-only).
       accounts: await runQuery("users"),
       emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
+      cooperationRelationships: await runQuerySafe("cooperationRelationships"),
+      relationshipAudit: await runQuerySafe("relationshipAudit"),
       currentUserID: uid,
     });
   }
@@ -290,6 +292,18 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     for (const row of await runQuery("invoices", ...constraints)) invoicesById.set(row.id, row);
   }
   const scriptPricingRows = await runQuery("scriptPricing", where("doctorId", "==", uid));
+
+  // Cooperation relationships this user is party to (doctor side or nurse/clinic counterparty),
+  // for the request-picker gate. Best-effort until the rule deploys (runQuerySafe).
+  const relConstraints: QueryConstraint[][] = [
+    [where("counterpartyId", "==", uid)],
+    ...clinicIds.map((cid) => [where("counterpartyId", "==", cid)]),
+    [where("doctorId", "==", uid)],
+  ];
+  const coopById = new Map<string, Row>();
+  for (const constraints of relConstraints) {
+    for (const row of await runQuerySafe("cooperationRelationships", ...constraints)) coopById.set(row.id, row);
+  }
   const profile = await readUserProfile(uid);
 
   return assembleState({
@@ -297,6 +311,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     notesByPatient,
     authorisations: [...authsById.values()],
     emergencyAuthorisations: [...emergencyById.values()],
+    cooperationRelationships: [...coopById.values()],
     requests: [...reqsById.values()],
     appointments: [...apptsById.values()],
     formsByPatient,
