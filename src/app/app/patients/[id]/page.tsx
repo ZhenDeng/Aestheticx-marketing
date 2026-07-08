@@ -14,7 +14,7 @@ import { useConsultCall } from "@/components/app/ConsultCall";
 import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
-import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment, type EmergencyKind } from "@/lib/demo/types";
 
 const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
 function deliveryColor(s: DeliveryStatus): string {
@@ -36,6 +36,11 @@ function apptStatusColor(s: AppointmentStatus): string {
 function apptTime(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
+
+const EMERGENCY_LABEL: Record<EmergencyKind, string> = {
+  adrenaline: "Adrenaline — anaphylaxis",
+  hyaluronidase: "Hyaluronidase / Hylase",
+};
 
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -67,6 +72,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const notes = store.visibleNotesForPatient(id, identity);
   const openRequests = identity.role === "nurse" ? store.openRequestsForPatient(id, identity.user.id) : [];
   const active = store.activeAuthorisations(id);
+  const emergencies = store.activeEmergencyAuthorisations(id);
   const forms = store.formsForPatient(id);
   const apptHistory = store.appointmentsForPatient(id);
   const canEdit = perms.canEditDetails;
@@ -285,6 +291,22 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             ))}
             {active.length === 0 && <li className="text-sm text-ink-soft">None active.</li>}
           </ul>
+
+          {emergencies.length > 0 && (
+            <div className="mt-4 border-t border-line pt-4">
+              <p className="micro">Emergency authorisations</p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {emergencies.map((e) => (
+                  <li key={e.id} className="text-sm">
+                    <span className="text-ink">{EMERGENCY_LABEL[e.kind]}</span>
+                    <span className="micro block text-ink-soft">
+                      {e.doctorName} · refreshed {new Date(e.refreshedAt).toLocaleDateString()} · expires {new Date(e.expiresAt).toLocaleDateString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {identity.role === "nurse" && (
             <Link href={`/app/patients/${id}/request`} className="mt-4 block w-full rounded-btn border border-line px-4 py-2 text-center text-sm text-ink hover:border-tint">
