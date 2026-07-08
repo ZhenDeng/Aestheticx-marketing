@@ -71,6 +71,10 @@ const profhilo: MedicationItem = {
   areas: ["Full Face"],
 };
 
+const botoxItem: MedicationItem = { name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] };
+const fillerItem: MedicationItem = { name: "Juvederm Voluma", dosage: "1", category: "haFiller", unit: "millilitres", areas: ["Cheeks"] };
+const manualFiller: MedicationItem = { name: "Compounded HA", dosage: "1", category: "haFiller", unit: "freeText", areas: ["Lips"] };
+
 describe("classifySearch", () => {
   it("classifies a name", () => {
     expect(classifySearch("Donovan")).toBe("name");
@@ -209,6 +213,53 @@ describe("approveRequest", () => {
     state = submitted.state;
     const other: Identity = { ...voss, user: { id: "u-okafor", name: "Dr James Okafor" } };
     expect(() => approveRequest(state, submitted.request.id, other, NOW)).toThrow();
+  });
+});
+
+describe("approveRequest — emergency authorisations", () => {
+  function approve(items: MedicationItem[], doctor = voss) {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(state, { patientID: "p1", doctorID: doctor.user.id, items, identity: sarahIndependent }, NOW);
+    return approveRequest(submitted.state, submitted.request.id, doctor, NOW);
+  }
+
+  it("creates an adrenaline emergency auth (only) for a non-filler approval", () => {
+    const { state } = approve([botoxItem]);
+    const em = Object.values(state.emergencyAuthorisationsByID);
+    expect(em.map((e) => e.kind)).toEqual(["adrenaline"]);
+    expect(em[0]).toMatchObject({ patientID: "p1", doctorID: "u-voss", doctorName: "Dr Elena Voss" });
+  });
+
+  it("also creates a hyaluronidase emergency auth for an HA-filler approval", () => {
+    const { state } = approve([fillerItem]);
+    expect(Object.keys(state.emergencyAuthorisationsByID).sort()).toEqual(["p1_u-voss_adrenaline", "p1_u-voss_hyaluronidase"]);
+  });
+
+  it("treats a manual (freeText) HA filler the same as a structured one", () => {
+    const { state } = approve([manualFiller]);
+    expect(state.emergencyAuthorisationsByID["p1_u-voss_hyaluronidase"]).toBeDefined();
+  });
+
+  it("refreshes rather than duplicates on a second approval by the same doctor", () => {
+    const first = approve([botoxItem]);
+    const later = NOW + 1000;
+    const submitted = submitRequest(first.state, { patientID: "p1", doctorID: "u-voss", items: [botoxItem], identity: sarahIndependent }, later);
+    const second = approveRequest(submitted.state, submitted.request.id, voss, later);
+    const adrenaline = Object.values(second.state.emergencyAuthorisationsByID).filter((e) => e.kind === "adrenaline");
+    expect(adrenaline).toHaveLength(1);
+    expect(adrenaline[0].refreshedAt).toBe(later);
+  });
+
+  it("gives a different prescribing doctor their own record", () => {
+    const okafor: Identity = { ...voss, user: { id: "u-okafor", name: "Dr James Okafor" } };
+    const { state } = approve([botoxItem], okafor);
+    expect(state.emergencyAuthorisationsByID["p1_u-okafor_adrenaline"]).toBeDefined();
+  });
+
+  it("does not add emergency records to activeAuthorisations", () => {
+    const { state } = approve([fillerItem]);
+    // one granted authorisation, not the two emergency records
+    expect(activeAuthorisations(state, "p1", NOW)).toHaveLength(1);
   });
 });
 

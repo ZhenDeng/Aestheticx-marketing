@@ -41,6 +41,7 @@ import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
+import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyKindsFor } from "./emergency";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -394,6 +395,18 @@ export function approveRequest(
   const authorisations = { ...state.authorisations };
   for (const a of granted) authorisations[a.id] = a;
 
+  // Spec 2026-07-08 emergency-authorisations: every approval creates/refreshes an Adrenaline
+  // standing authorisation for (patient, prescribing doctor); an HA filler adds Hyaluronidase.
+  const emergencyAuthorisationsByID = applyEmergencyAuthorisations(state.emergencyAuthorisationsByID, {
+    patientID: request.patientID,
+    doctorID: request.doctorID,
+    doctorName: identity.user.name, // the approver is the addressed doctor (asserted above)
+    kinds: emergencyKindsFor(request.items),
+    sourceAuthIDs: granted.map((a) => a.id),
+    now,
+    expiresAt: addMonthsUTC(now, EMERGENCY_VALIDITY_MONTHS),
+  });
+
   const patient = state.patients[request.patientID];
   const patients = { ...state.patients };
   if (patient && !patient.prescribingDoctorIDs.includes(identity.user.id)) {
@@ -405,6 +418,7 @@ export function approveRequest(
       ...state,
       patients,
       authorisations,
+      emergencyAuthorisationsByID,
       requests: { ...state.requests, [requestID]: { ...request, status: "approved" } },
     },
     request.patientID,
