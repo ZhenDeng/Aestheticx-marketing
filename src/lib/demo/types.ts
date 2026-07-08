@@ -332,6 +332,25 @@ export interface SignedFormRecord {
   pdfFileId?: string;
 }
 
+export type EmergencyKind = "adrenaline" | "hyaluronidase";
+
+// An automatically-generated emergency standing authorisation (spec 2026-07-08 emergency-
+// authorisations). Created/refreshed on every approval: Adrenaline always; Hyaluronidase for
+// HA fillers. Deterministic id `${patientID}_${doctorID}_${kind}` — one per patient per
+// prescribing doctor per kind, so a repeat approval refreshes rather than duplicates. Not
+// billable, no repeats — deliberately separate from Authorisation.
+export interface EmergencyAuthorisation {
+  id: string;
+  patientID: string;
+  doctorID: string;
+  doctorName: string; // denormalised at issue for display
+  kind: EmergencyKind;
+  createdAt: number;   // first issued (preserved across refreshes)
+  refreshedAt: number; // last approval that refreshed it
+  expiresAt: number;   // refreshedAt + EMERGENCY_VALIDITY_MONTHS
+  sourceAuthorisationIDs: string[]; // audit trail of triggering authorisations
+}
+
 export interface DemoState {
   patients: Record<string, Patient>;
   requests: Record<string, AuthorisationRequest>;
@@ -361,6 +380,8 @@ export interface DemoState {
   addressByIdentity: Record<string, string>;
   // Super-admin account inventory (live: every users/{uid} doc; demo: the demo cast).
   accountsByID: Record<string, AccountRecord>;
+  // Auto-generated emergency standing authorisations, keyed by `${patientID}_${doctorID}_${kind}`.
+  emergencyAuthorisationsByID: Record<string, EmergencyAuthorisation>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

@@ -70,6 +70,7 @@ export function emptyState(): DemoState {
     profileByUser: {},
     addressByIdentity: {},
     accountsByID: {},
+    emergencyAuthorisationsByID: {},
   };
 }
 
