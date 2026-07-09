@@ -210,10 +210,11 @@ export function renderDirectionPdf(content: DirectionContent): Uint8Array {
   writer.text("PER ADMINISTRATION — TO RECORD", 9, GOLD, { charSpace: 1 });
   writer.moveDown(0.3);
   for (const a of content.administrations) {
-    writer.runs([
-      { text: a.substanceAndForm, size: 10.5, color: INK },
-      { text: `   ${a.category} · ${a.bodySite} · ${a.route} · ${a.quantity}`, size: 9.5, color: SOFT },
-    ]);
+    // Two wrapping text lines rather than one continued run: body sites are unbounded
+    // (areas.join) and `runs()` does not wrap or clip, so a long row would silently spill
+    // past the page edge — unacceptable data loss on a compliance document. writer.text wraps.
+    writer.text(a.substanceAndForm, 10.5, INK);
+    writer.text(`${a.category} · ${a.bodySite} · ${a.route} · ${a.quantity}`, 9.5, SOFT);
     writer.moveDown(0.3);
   }
 

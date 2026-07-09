@@ -125,13 +125,19 @@ export function formatDob(dob: DateOfBirth): string {
 }
 
 /**
- * A document date as "17 Jun 2026" in UTC with fixed month names. The direction is a
- * document, so its dates must be deterministic regardless of the exporter's locale or
- * timezone — unlike the live patient-panel which is free to use toLocaleDateString.
+ * A document date as "17 Jun 2026" with fixed month names, read in the jurisdiction's
+ * timezone (NSW / Australia/Sydney). The inputs are real wall-clock instants
+ * (Authorisation.createdAt/expiresAt, emergency expiry), and Sydney is always ahead of
+ * UTC — so reading UTC components would mis-date ~10–11h of every day to the previous
+ * calendar day (e.g. an 08:00 Sydney approval → 22:00 UTC the day before). Using a FIXED
+ * timezone keeps the document deterministic across exporters AND jurisdiction-correct.
  */
 export function formatDocDate(epochMs: number): string {
-  const d = new Date(epochMs);
-  return `${d.getUTCDate()} ${DOC_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney", day: "numeric", month: "numeric", year: "numeric",
+  }).formatToParts(new Date(epochMs));
+  const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return `${part("day")} ${DOC_MONTHS[part("month") - 1]} ${part("year")}`;
 }
 
 /** Emergency-kind display label — the single source shared with the patient-file panel. */

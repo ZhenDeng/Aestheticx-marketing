@@ -88,9 +88,12 @@ Extend `DirectionAdministration` with `category: string` (e.g. `"Neurotoxin"`).
 
 Pure helpers (new, in `direction.ts`, all unit-tested):
 - `formatDob(dob: DateOfBirth): string` → `${day}/${month}/${year}` (matches `backend.ts:1123`).
-- `formatDocDate(epochMs: number): string` → `"17 Jun 2026"` — **UTC + fixed month names** so the
-  PDF/tests are locale- and timezone-independent (the live emergency panel uses
-  `toLocaleDateString()`, but a document must be deterministic).
+- `formatDocDate(epochMs: number): string` → `"17 Jun 2026"` — fixed month names, read in the
+  **jurisdiction timezone (`Australia/Sydney`)**. The inputs are real wall-clock instants
+  (`createdAt`/`expiresAt`), and Sydney is always ahead of UTC, so reading UTC components would
+  mis-date ~10–11h of every day to the previous calendar day. A fixed timezone is both
+  deterministic across exporters and jurisdiction-correct (the live panel is free to use
+  `toLocaleDateString()`; a document must not drift).
 - `emergencyKindLabel(kind): string` — shared, so the patient-page panel and the direction agree
   (today the page has a private `EMERGENCY_LABEL` map; move/duplicate the source of truth here).
 

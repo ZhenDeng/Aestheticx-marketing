@@ -122,10 +122,17 @@ describe("direction document formatting helpers", () => {
     expect(formatDob({ year: 2004, month: 11, day: 5 })).toBe("5/11/2004");
   });
 
-  it("formats a document date in UTC with fixed month names (locale/TZ independent)", () => {
+  it("formats a document date with fixed month names, read in Australia/Sydney", () => {
     expect(formatDocDate(Date.UTC(2026, 5, 17))).toBe("17 Jun 2026");
     expect(formatDocDate(Date.UTC(2027, 6, 8))).toBe("8 Jul 2027");
     expect(formatDocDate(Date.UTC(2026, 11, 17))).toBe("17 Dec 2026");
+  });
+
+  it("uses the jurisdiction (Australia/Sydney) calendar date, not UTC", () => {
+    // 22:00 UTC on 17 Jun is already 08:00 on 18 Jun in Sydney (UTC+10) — a real approval time.
+    expect(formatDocDate(Date.UTC(2026, 5, 17, 22, 0))).toBe("18 Jun 2026");
+    // 13:00 UTC on 31 Dec is 00:00 on 1 Jan in Sydney (UTC+11, AEDT) — year rolls over too.
+    expect(formatDocDate(Date.UTC(2026, 11, 31, 13, 0))).toBe("1 Jan 2027");
   });
 
   it("labels emergency kinds to match the patient-file panel", () => {
