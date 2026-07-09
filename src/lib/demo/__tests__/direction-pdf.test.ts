@@ -89,6 +89,23 @@ describe("direction PDF", () => {
     expect(none).toContain("None on file.");
   });
 
+  it("wraps and paginates a long per-administration row without dropping trailing content", () => {
+    // Body sites are unbounded (areas.join). Regression guard for the compliance data-loss
+    // fix: a long row must wrap/paginate, never overflow one line/page and silently truncate.
+    const longAreas = Array.from({ length: 60 }, (_, i) => `Treatment area number ${i + 1}`).join(", ");
+    const text = ascii(renderDirectionPdf({
+      ...complete,
+      administrations: [
+        { substanceAndForm: "Botulinum toxin type A, injection", category: "Neurotoxin", bodySite: longAreas, route: "IM", quantity: "40 ZzEndToken" },
+      ],
+    }));
+    // The token after the long body-site list still renders — nothing was clipped.
+    expect(text).toContain("ZzEndToken");
+    // The row wrapped across a page boundary rather than being cut off on one page.
+    const pageCount = (text.match(/\/Type \/Page \/Parent/g) || []).length;
+    expect(pageCount).toBeGreaterThanOrEqual(2);
+  });
+
   it("draws an em-dash placeholder for a blank value instead of failing", () => {
     const bytes = renderDirectionPdf({ ...complete, premisesOfAdministration: "" });
     expect(ascii(bytes.subarray(0, 5))).toBe("%PDF-");
