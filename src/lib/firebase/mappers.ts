@@ -8,6 +8,7 @@ import type {
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
   CooperationRelationship, CounterpartyType, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
+  AuditLogEntry, AuditAction,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -186,6 +187,34 @@ export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEn
     actorID: str(data.actorId),
     actorName: str(data.actorName) || "Admin",
     action,
+    summary: str(data.summary),
+    at: toMillis(data.at),
+  };
+}
+
+// The platform audit log's action verbs (constitution §21), kept in sync with the AuditAction
+// union + the backend `auditLog` writer. Used to filter an unknown wire value to a safe member.
+const AUDIT_ACTIONS: readonly AuditAction[] = [
+  "request_created", "request_resubmitted", "request_withdrawn", "request_edit_requested",
+  "request_approved", "invoice_generated", "user_created", "user_deleted", "admin_patient_access",
+];
+
+// auditLog/{id} (superAdmin-read only) written by the backend. Tolerant of missing fields;
+// an unknown `action` falls back to `admin_patient_access` (defence-in-depth — the backend only
+// writes union members). targetType/targetId are string|null on the wire.
+export function mapAuditLogEntry(id: string, data: Doc): AuditLogEntry {
+  const rawAction = str(data.action);
+  const action: AuditAction = (AUDIT_ACTIONS as readonly string[]).includes(rawAction)
+    ? (rawAction as AuditAction)
+    : "admin_patient_access";
+  return {
+    id,
+    actorID: str(data.actorId),
+    actorName: str(data.actorName) || "Admin",
+    actorRole: str(data.actorRole),
+    action,
+    targetType: typeof data.targetType === "string" ? data.targetType : null,
+    targetID: typeof data.targetId === "string" ? data.targetId : null,
     summary: str(data.summary),
     at: toMillis(data.at),
   };

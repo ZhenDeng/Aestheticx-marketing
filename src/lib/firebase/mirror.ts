@@ -57,6 +57,13 @@ export async function mirrorRemoveCooperationRelationship(relationshipId: string
   await httpsCallable(functions(), "removeCooperationRelationship")({ relationshipId });
 }
 
+// Platform audit log (§21): a Platform Admin opening a patient file → the superAdmin-only
+// recordAdminPatientAccess callable, which writes the durable `admin_patient_access` entry.
+// Lowercase wire keys ({patientId, patientName}), matching the backend callable's schema.
+export async function mirrorRecordAdminAccess(patientId: string, patientName: string): Promise<void> {
+  await httpsCallable(functions(), "recordAdminPatientAccess")({ patientId, patientName });
+}
+
 export async function mirrorBackfillCooperationRelationships(): Promise<{ created: number } | void> {
   const res = await httpsCallable(functions(), "backfillCooperationRelationships")({});
   return res.data as { created: number };

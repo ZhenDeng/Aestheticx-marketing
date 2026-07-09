@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AppointmentLead, DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
+import { fullName } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 import * as billing from "./billing";
@@ -78,9 +79,9 @@ interface StoreValue {
   relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
   setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
   removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
-  // Platform-admin patient-file access audit (constitution §16/§21). In-session in both modes;
-  // durable live persistence lands with the platform Audit Log (§21).
-  adminAccessAudit: () => ReturnType<typeof backend.adminAccessAuditEntries>;
+  // Platform audit log (constitution §21). Durable in live (hydrated from the `auditLog`
+  // collection) and in-session in demo. recordAdminAccess logs an admin patient-file open.
+  auditLog: () => ReturnType<typeof backend.auditLogEntries>;
   recordAdminAccess: (patient: import("./types").Patient, identity: Identity) => void;
   listDoctorOpenSlots: (doctorID: string, dateISO: string) => Promise<number[]>;
   publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
@@ -239,11 +240,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(() => next, (m) => m.mirrorCreateRequest(request));
       },
       approveRequest: (requestID, id) =>
-        // generateEmergency: !live — in live mode the backend Cloud Function writes the emergency
-        // records and hydrate reads them; the optimistic client must not fabricate a phantom one.
-        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now, { generateEmergency: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
+        // generateEmergency/recordAudit: !live — in live mode the backend Cloud Function writes the
+        // emergency records AND the §21 audit entry, and hydrate reads them; the optimistic client
+        // must not fabricate phantom ones that would vanish on the next hydrate.
+        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now, { generateEmergency: !live, recordAudit: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
       requireEdit: (requestID, id) =>
-        applyAndMirror((s) => backend.requireEdit(s, requestID, id), (m) => m.mirrorRequireEdit(requestID)),
+        // auditNow: demo writes the §21 `request_edit_requested` entry with the session clock; live
+        // passes undefined so the requireEdit Cloud Function + hydrate own the durable entry.
+        applyAndMirror((s) => backend.requireEdit(s, requestID, id, live ? undefined : now), (m) => m.mirrorRequireEdit(requestID)),
       resubmitRequest: (input) =>
         applyAndMirror(
           (s) => backend.resubmitRequest(s, input),
@@ -598,14 +602,19 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           catch (e) { setLastSyncError(String(e)); }
         })();
       },
-      adminAccessAudit: () => backend.adminAccessAuditEntries(state),
-      recordAdminAccess: (patient, identity) =>
-        // TODO(§21): mirror to a durable Firestore adminAccessAudit collection. Until the
-        // platform Audit Log lands this is an in-session record (demo + live) — a real write to
-        // state, not a silent no-op; it just isn't yet persisted across a live refresh.
+      auditLog: () => backend.auditLogEntries(state),
+      recordAdminAccess: (patient, identity) => {
         // Uses a live clock (not the frozen session `now`) so each access gets its true time —
-        // per-event accuracy is the whole point of an audit trail.
-        setState((s) => backend.recordAdminPatientAccess(s, identity, patient, Date.now())),
+        // per-event accuracy is the whole point of an audit trail. Demo → in-session state write;
+        // live → also mirror to the durable `auditLog` collection via the superAdmin-only callable
+        // (§21). Only a superAdmin's access is logged (the callable + the backend apply agree);
+        // the apply is a no-op for anyone else, so the mirror is skipped too.
+        const at = Date.now();
+        applyAndMirror(
+          (s) => backend.recordAdminPatientAccess(s, identity, patient, at),
+          (m) => identity.role === "superAdmin" ? m.mirrorRecordAdminAccess(patient.id, fullName(patient)) : Promise.resolve(),
+        );
+      },
       createUser: async (input) => {
         if (!live) throw new backend.BackendError("User creation is live-only in the demo.");
         // Server-authoritative (like bookAuthSlot): no optimistic write — the Function

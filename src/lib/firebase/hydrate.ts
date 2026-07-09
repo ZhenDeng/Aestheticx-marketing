@@ -4,7 +4,7 @@ import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry } from "./mappers";
 import type { DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
@@ -34,6 +34,8 @@ export interface HydrationRows {
   emergencyAuthorisations?: Row[];
   cooperationRelationships?: Row[];
   relationshipAudit?: Row[];
+  /** auditLog rows — super-admin hydration only (rules gate the read to that role). */
+  auditLog?: Row[];
   currentUserID: string;
 }
 
@@ -107,11 +109,15 @@ export function assembleState(rows: HydrationRows): DemoState {
   const relationshipAuditByID: DemoState["relationshipAuditByID"] = {};
   for (const r of rows.relationshipAudit ?? []) relationshipAuditByID[r.id] = mapRelationshipAudit(r.id, r.data);
 
+  // Platform audit log (§21): durable Firestore `auditLog` collection, read + decoded only in
+  // the super-admin hydration path (rules gate the read to that role) — {} for everyone else.
+  const auditLogByID: DemoState["auditLogByID"] = {};
+  for (const r of rows.auditLog ?? []) auditLogByID[r.id] = mapAuditLogEntry(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
-  // address in profileByUser. adminAccessAuditByID: durable Firestore persistence lands with the
-  // platform Audit Log (§21); until then admin patient-access records are in-session only.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, adminAccessAuditByID: {} };
+  // address in profileByUser.
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -227,6 +233,9 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
       cooperationRelationships: await runQuerySafe("cooperationRelationships"),
       relationshipAudit: await runQuerySafe("relationshipAudit"),
+      // Platform audit log (§21): superAdmin-read only. Deploy-order-safe via runQuerySafe —
+      // a not-yet-deployed read rule degrades to "none" instead of failing the whole hydrate.
+      auditLog: await runQuerySafe("auditLog"),
       currentUserID: uid,
     });
   }

@@ -38,7 +38,8 @@ import type {
   RelationshipStatus,
   RelationshipAuditEntry,
   RelationshipAction,
-  AdminAccessAuditEntry,
+  AuditLogEntry,
+  AuditAction,
 } from "./types";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
@@ -81,7 +82,7 @@ export function emptyState(): DemoState {
     emergencyAuthorisationsByID: {},
     cooperationRelationshipsByID: {},
     relationshipAuditByID: {},
-    adminAccessAuditByID: {},
+    auditLogByID: {},
   };
 }
 
@@ -380,7 +381,7 @@ export function approveRequest(
   requestID: string,
   identity: Identity,
   now: number,
-  options: { generateEmergency?: boolean } = {},
+  options: { generateEmergency?: boolean; recordAudit?: boolean } = {},
 ): { state: DemoState; granted: Authorisation[] } {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
@@ -440,10 +441,34 @@ export function approveRequest(
     },
     request.patientID,
   );
-  return { state: approvedState, granted };
+
+  // Demo audit write (constitution §21) — representative parity with the backend's approveRequest
+  // Cloud Function, which writes the durable `request_approved` entry in live. Gated by
+  // `recordAudit: !live` (like generateEmergency) so the optimistic client never fabricates a
+  // live entry that would vanish on the next hydrate; the server + hydrate own it there.
+  const recordAudit = options.recordAudit ?? true;
+  if (!recordAudit) return { state: approvedState, granted };
+  const patientName = patient ? fullName(patient) : (request.patientSummary?.fullName ?? "patient");
+  const kinds = emergencyKindsFor(request.items);
+  const audited = appendAuditEntry(
+    approvedState,
+    {
+      actor: identity,
+      action: "request_approved",
+      targetType: "request",
+      targetID: requestID,
+      summary: `approved for ${patientName}${kinds.length ? ` · emergency: ${kinds.join(", ")}` : ""}`,
+    },
+    now,
+  );
+  return { state: audited, granted };
 }
 
-export function requireEdit(state: DemoState, requestID: string, identity: Identity): DemoState {
+// `auditNow` (epoch ms) opts into a demo audit write (constitution §21): when provided a
+// `request_edit_requested` entry is appended with that timestamp; omit it to skip the write.
+// The store passes the session `now` in demo and `undefined` in live, where the requireEdit
+// Cloud Function writes the durable entry and hydrate reads it (no optimistic client fabrication).
+export function requireEdit(state: DemoState, requestID: string, identity: Identity, auditNow?: number): DemoState {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
   // Only a pending request may be returned for edit. Guarding the status stops a doctor from
@@ -453,7 +478,15 @@ export function requireEdit(state: DemoState, requestID: string, identity: Ident
   if (identity.role !== "doctor" || identity.user.id !== request.doctorID || request.status !== "pending") {
     throw new BackendError("notPermitted");
   }
-  return { ...state, requests: { ...state.requests, [requestID]: { ...request, status: "needsEdit" } } };
+  const next: DemoState = { ...state, requests: { ...state.requests, [requestID]: { ...request, status: "needsEdit" } } };
+  if (auditNow === undefined) return next;
+  const patient = state.patients[request.patientID];
+  const patientName = patient ? fullName(patient) : (request.patientSummary?.fullName ?? "patient");
+  return appendAuditEntry(
+    next,
+    { actor: identity, action: "request_edit_requested", targetType: "request", targetID: requestID, summary: `returned for edit · ${patientName}` },
+    auditNow,
+  );
 }
 
 export interface ResubmitRequestInput {
@@ -1665,26 +1698,48 @@ export function removeCooperationRelationship(state: DemoState, id: string, acto
   };
 }
 
-// --- Platform-admin patient-access audit (constitution §16/§21) ---
+// --- Platform audit log (constitution §21) ---
 
-// Records a Platform Admin opening a patient file. A no-op for any non-superAdmin identity
-// (only admin access is audit-logged here) — returns state unchanged so callers can fire it
-// unconditionally. Each open is its own append-only event (no dedup).
-export function recordAdminPatientAccess(state: DemoState, actor: Identity, patient: Patient, now: number): DemoState {
-  if (actor.role !== "superAdmin") return state;
-  const entry: AdminAccessAuditEntry = {
-    id: makeID("adminaccess"),
-    actorID: actor.user.id,
-    actorName: actor.user.name,
-    patientID: patient.id,
-    patientName: fullName(patient),
-    at: now,
-  };
-  return { ...state, adminAccessAuditByID: { ...state.adminAccessAuditByID, [entry.id]: entry } };
+export interface AuditEntryInput {
+  actor: Identity;
+  action: AuditAction;
+  targetType?: string | null;
+  targetID?: string | null;
+  summary: string;
 }
 
-export function adminAccessAuditEntries(state: DemoState): AdminAccessAuditEntry[] {
-  return Object.values(state.adminAccessAuditByID).sort((a, b) => b.at - a.at);
+// Appends one entry to the platform audit log, denormalising the acting identity (actorRole =
+// actor.role) and a human-readable summary so the log renders standalone. Append-only — each
+// call is its own event (no dedup). Mirrors the backend `auditLog` writer.
+export function appendAuditEntry(state: DemoState, input: AuditEntryInput, now: number): DemoState {
+  const entry: AuditLogEntry = {
+    id: makeID("audit"),
+    actorID: input.actor.user.id,
+    actorName: input.actor.user.name,
+    actorRole: input.actor.role,
+    action: input.action,
+    targetType: input.targetType ?? null,
+    targetID: input.targetID ?? null,
+    summary: input.summary,
+    at: now,
+  };
+  return { ...state, auditLogByID: { ...state.auditLogByID, [entry.id]: entry } };
+}
+
+// Records a Platform Admin opening a patient file (constitution §16/§21) as an
+// `admin_patient_access` audit entry. A no-op for any non-superAdmin identity (only admin
+// access is audit-logged here) — returns state unchanged so callers can fire it unconditionally.
+export function recordAdminPatientAccess(state: DemoState, actor: Identity, patient: Patient, now: number): DemoState {
+  if (actor.role !== "superAdmin") return state;
+  return appendAuditEntry(
+    state,
+    { actor, action: "admin_patient_access", targetType: "patient", targetID: patient.id, summary: `opened ${fullName(patient)}` },
+    now,
+  );
+}
+
+export function auditLogEntries(state: DemoState): AuditLogEntry[] {
+  return Object.values(state.auditLogByID).sort((a, b) => b.at - a.at);
 }
 
 export interface BillableAuthorisation {
@@ -1752,5 +1807,14 @@ export function generateInvoice(
   const invoicedIDs = new Set(rows.map((r) => r.id));
   const authorisations = { ...state.authorisations };
   for (const id of invoicedIDs) authorisations[id] = { ...authorisations[id], invoiced: true };
-  return { state: { ...state, authorisations, invoices: [...state.invoices, invoice] }, invoice };
+  // Demo audit write (constitution §21): representative parity with the backend's invoice path,
+  // which writes the durable `invoice_generated` entry in live. Only reached in demo — the store
+  // routes live invoicing through the deployed callable + hydrate, never this function.
+  const priced = { ...state, authorisations, invoices: [...state.invoices, invoice] };
+  const audited = appendAuditEntry(
+    priced,
+    { actor: identity, action: "invoice_generated", targetType: "invoice", targetID: invoice.id, summary: `invoice ${input.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}` },
+    now,
+  );
+  return { state: audited, invoice };
 }

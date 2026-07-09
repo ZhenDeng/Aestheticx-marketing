@@ -366,15 +366,32 @@ export interface RelationshipAuditEntry {
   at: number;
 }
 
-// One entry recording a Platform Admin opening a patient file (constitution §16 "audit
-// patient access … should be logged"; §21 "Patient file access by Platform Admin"). Written
-// only when the acting identity is superAdmin. Append-only — each open is its own event.
-export interface AdminAccessAuditEntry {
+// The platform audit log's action verbs (constitution §21). Matches the backend `auditLog`
+// doc's `action` field one-for-one — keep in sync with the writer (separate backend repo).
+export type AuditAction =
+  | "request_created"
+  | "request_resubmitted"
+  | "request_withdrawn"
+  | "request_edit_requested"
+  | "request_approved"
+  | "invoice_generated"
+  | "user_created"
+  | "user_deleted"
+  | "admin_patient_access";
+
+// One durable platform-audit-log entry (constitution §21). Mirrors the backend `auditLog`
+// collection doc: the acting identity + a human-readable summary are denormalised so the log
+// renders standalone. Append-only — each action is its own event. Supersedes the old
+// admin-access-only entry: admin patient-file access is now one action among many.
+export interface AuditLogEntry {
   id: string;
-  actorID: string;   // the acting super admin
-  actorName: string;
-  patientID: string;
-  patientName: string; // denormalised at access for display
+  actorID: string;
+  actorName: string;      // denormalised at write for display
+  actorRole: string;      // the acting identity's role at the time
+  action: AuditAction;
+  targetType: string | null; // e.g. "patient" | "request" | "invoice"
+  targetID: string | null;
+  summary: string;        // human-readable, e.g. "opened Danni Wang"
   at: number;
 }
 
@@ -432,9 +449,10 @@ export interface DemoState {
   // and their append-only change audit.
   cooperationRelationshipsByID: Record<string, CooperationRelationship>;
   relationshipAuditByID: Record<string, RelationshipAuditEntry>;
-  // Platform-admin patient-file access log (constitution §16/§21). Append-only; in-session
-  // in both modes (live durable persistence lands with the platform Audit Log, §21).
-  adminAccessAuditByID: Record<string, AdminAccessAuditEntry>;
+  // Platform audit log (constitution §21). Append-only; durable in live (hydrated from the
+  // Firestore `auditLog` collection, superAdmin-read only) and in-session in demo. Admin
+  // patient-file access (constitution §16) is one action among many recorded here.
+  auditLogByID: Record<string, AuditLogEntry>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---
