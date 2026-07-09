@@ -320,6 +320,7 @@ export function mapAppointment(id: string, data: Doc): Appointment {
     id,
     type,
     ownerID: str(data.ownerId),
+    ...(typeof data.bookedById === "string" && data.bookedById ? { bookedByID: data.bookedById } : {}),
     dateISO: str(data.dateISO),
     startMinute: intValue(data.startMinute),
     endMinute: intValue(data.endMinute),

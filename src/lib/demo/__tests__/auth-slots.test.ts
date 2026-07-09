@@ -3,11 +3,15 @@ import {
   emptyState, slotsForWindow, publishAvailability, availabilityWindowsForDoctor,
   doctorsWithAvailability, isSlotTaken, openSlotsForDoctorOnDay, withdrawAvailability,
   bookAuthSlot, requestAdHocAuth, BackendError, setDoctorStatus,
+  appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentOwnerScope,
+  canRescheduleAppointment, rescheduleAppointment,
 } from "@/lib/demo/backend";
+import { LUMIERE } from "@/lib/demo/accounts";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
 const voss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
 const sarah: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
+const sarahClinic: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "clinic", clinic: LUMIERE } };
 
 const DAY = "2026-06-26";
 function withWindow(): DemoState {
@@ -127,5 +131,51 @@ describe("withdrawAvailability", () => {
     const s = withWindow();
     const id = Object.keys(s.availabilityWindows)[0];
     expect(() => withdrawAvailability(s, id, sarah)).toThrow(BackendError);
+  });
+});
+
+// Tier-2: a booked auth slot must also appear on the BOOKING nurse's / clinic's calendar, not just
+// the doctor's — via a bookedByID participant field. Mutation stays owner-only (read-only for the nurse).
+describe("auth slot calendar visibility (bookedByID)", () => {
+  it("appointmentOwnerScope resolves clinic context to the clinic id, else the user id", () => {
+    expect(appointmentOwnerScope(sarah)).toBe("u-sarah");
+    expect(appointmentOwnerScope(sarahClinic)).toBe(LUMIERE.id);
+  });
+
+  it("bookAuthSlot stamps bookedByID with the nurse's scope (independent → user id)", () => {
+    const { appt } = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah });
+    expect(appt.ownerID).toBe("u-voss");
+    expect(appt.bookedByID).toBe("u-sarah");
+  });
+
+  it("bookAuthSlot stamps bookedByID with the clinic id when booked in a clinic context", () => {
+    const { appt } = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarahClinic });
+    expect(appt.bookedByID).toBe(LUMIERE.id);
+  });
+
+  it("requestAdHocAuth stamps bookedByID with the booker's scope", () => {
+    const s = setDoctorStatus(emptyState(), "u-voss", { online: true });
+    const { appt } = requestAdHocAuth(s, { doctorID: "u-voss", dateISO: DAY, atMinute: 600, patientID: "p1", patientName: "A", identity: sarah });
+    expect(appt.bookedByID).toBe("u-sarah");
+  });
+
+  it("shows the auth slot on the doctor's AND the booking nurse's calendar, not an unrelated viewer's", () => {
+    const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah }).state;
+    expect(appointmentsForOwnerOnDay(s, "u-voss", DAY)).toHaveLength(1);   // doctor (owner)
+    expect(appointmentsForOwnerOnDay(s, "u-sarah", DAY)).toHaveLength(1);  // booking nurse (booker)
+    expect(appointmentsForOwnerOnDay(s, "u-other", DAY)).toHaveLength(0);  // unrelated viewer
+    expect(appointmentsForOwnerInRange(s, "u-sarah", DAY, DAY)).toHaveLength(1);
+  });
+
+  it("is reschedulable only by the owner — the booking nurse sees it read-only", () => {
+    const { appt } = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah });
+    expect(canRescheduleAppointment(appt, "u-voss")).toBe(true);   // doctor owns it
+    expect(canRescheduleAppointment(appt, "u-sarah")).toBe(false); // nurse only booked it
+  });
+
+  it("rejects the booking nurse rescheduling the doctor's auth slot", () => {
+    const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah }).state;
+    const id = Object.keys(s.appointments)[0];
+    expect(() => rescheduleAppointment(s, id, DAY, 560, 10, sarah)).toThrow(BackendError);
   });
 });
