@@ -34,7 +34,7 @@ const requests: Record<string, AuthorisationRequest[]> = {
 };
 let mode: keyof typeof requests = "needs";
 
-vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: nurse }) }));
+vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: nurse, availableIdentities: [nurse] }) }));
 vi.mock("@/components/app/ConsultCall", () => ({ useConsultCall: () => ({ start: vi.fn(), active: false }) }));
 vi.mock("@/lib/demo/store", () => ({
   useDemoStore: () => ({

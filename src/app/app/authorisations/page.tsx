@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
+import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { useConsultCall } from "@/components/app/ConsultCall";
-import type { AuthorisationRequest } from "@/lib/demo/types";
+import type { AuthorisationRequest, Identity } from "@/lib/demo/types";
 
 // While a request is open the addressed doctor gets read-only access to the patient's full
 // file (spec 2026-07-07 reviewer-file-access), so the name links straight to it. Allergies
@@ -31,68 +32,54 @@ function PatientReviewCard({ request }: { request: AuthorisationRequest }) {
   );
 }
 
-export default function AuthorisationsPage() {
-  const { identity } = useDemoAuth();
-  const store = useDemoStore();
-  const consult = useConsultCall();
-  if (!identity) return null;
-  if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
-  if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
+type Store = ReturnType<typeof useDemoStore>;
+type Consult = ReturnType<typeof useConsultCall>;
 
-  if (identity.role === "doctor") {
-    const pending = store.pendingRequestsForDoctor(identity.user.id);
-    return (
-      <div>
-        <h1 className="font-display text-3xl text-ink">Review requests</h1>
-        <p className="mt-2 text-ink-soft">Approve to issue per-medication authorisations (5 repeats, 6-month expiry), or send back for edits. There is no flat reject.</p>
-        <ul className="mt-6 flex flex-col gap-4">
-          {pending.map((r) => (
-            <li key={r.id} className="rounded-card border border-line bg-card p-5 shadow-card">
-              <PatientReviewCard request={r} />
-              <ul className="mt-3 flex flex-col gap-1 text-sm text-ink">
-                {r.items.map((it, i) => (
-                  <li key={i}>{it.name} · {it.dosage} {it.unit} · {it.areas.join(", ")}</li>
-                ))}
-              </ul>
-              <div className="mt-4 flex gap-3">
-                <button onClick={() => store.approveRequest(r.id, identity)} className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
-                  Approve
-                </button>
-                <button onClick={() => store.requireEdit(r.id, identity)} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint">
-                  Require edit
-                </button>
-                <button onClick={() => consult.start(r.id, r.patientSummary?.fullName)} disabled={consult.active}
-                  className="rounded-btn border border-line px-4 py-2 text-sm text-ink hover:border-tint disabled:opacity-50">
-                  Start consult
-                </button>
-              </div>
-            </li>
-          ))}
-          {pending.length === 0 && <li className="text-sm text-ink-soft">No pending requests. Sign in as Sarah Chen to raise one.</li>}
-        </ul>
-      </div>
-    );
-  }
+// The doctor's approval inbox. Rendered whenever the account HOLDS a doctor identity and driven by
+// that identity — never the currently-selected one — so prescribing is always-on across workspaces
+// (a doctor+clinicAdmin keeps this inbox in the clinicAdmin workspace). Passing the doctor identity
+// to approve/require-edit also satisfies the backend's role gate unchanged.
+function DoctorReviewInbox({ doctor, store, consult }: { doctor: Identity; store: Store; consult: Consult }) {
+  const pending = store.pendingRequestsForDoctor(doctor.user.id);
+  return (
+    <div>
+      <h1 className="font-display text-3xl text-ink">Review requests</h1>
+      <p className="mt-2 text-ink-soft">Approve to issue per-medication authorisations (5 repeats, 6-month expiry), or send back for edits. There is no flat reject.</p>
+      <ul className="mt-6 flex flex-col gap-4">
+        {pending.map((r) => (
+          <li key={r.id} className="rounded-card border border-line bg-card p-5 shadow-card">
+            <PatientReviewCard request={r} />
+            <ul className="mt-3 flex flex-col gap-1 text-sm text-ink">
+              {r.items.map((it, i) => (
+                <li key={i}>{it.name} · {it.dosage} {it.unit} · {it.areas.join(", ")}</li>
+              ))}
+            </ul>
+            <div className="mt-4 flex gap-3">
+              <button onClick={() => store.approveRequest(r.id, doctor)} className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                Approve
+              </button>
+              <button onClick={() => store.requireEdit(r.id, doctor)} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint">
+                Require edit
+              </button>
+              <button onClick={() => consult.start(r.id, r.patientSummary?.fullName)} disabled={consult.active}
+                className="rounded-btn border border-line px-4 py-2 text-sm text-ink hover:border-tint disabled:opacity-50">
+                Start consult
+              </button>
+            </div>
+          </li>
+        ))}
+        {pending.length === 0 && <li className="text-sm text-ink-soft">No pending requests. Sign in as Sarah Chen to raise one.</li>}
+      </ul>
+    </div>
+  );
+}
 
-  // Clinic admins don't raise authorisation requests.
-  if (identity.role === "clinicAdmin" || identity.role === "superAdmin") {
-    return (
-      <div>
-        <h1 className="font-display text-3xl text-ink">Authorisation requests</h1>
-        <p className="mt-2 text-ink-soft">
-          Admins don&apos;t raise authorisation requests — that&apos;s the injecting nurse&apos;s job.
-          Sign in as a nurse to raise one, or as Dr Voss to review.
-        </p>
-      </div>
-    );
-  }
-
-  // Nurse view: surface own open requests across visible patients.
+// The nurse's own open requests across their visible patients.
+function NurseRequests({ identity, store, consult }: { identity: Identity; store: Store; consult: Consult }) {
   const patients = store.searchPatients("", identity);
   const rows = patients.flatMap((p) =>
     store.openRequestsForPatient(p.id, identity.user.id).map((r) => ({ patient: p, request: r })),
   );
-
   return (
     <div>
       <h1 className="font-display text-3xl text-ink">Your authorisation requests</h1>
@@ -129,6 +116,41 @@ export default function AuthorisationsPage() {
         ))}
         {rows.length === 0 && <li className="text-sm text-ink-soft">No open requests. Open a patient file to raise one.</li>}
       </ul>
+    </div>
+  );
+}
+
+function AdminNoRequests() {
+  return (
+    <div>
+      <h1 className="font-display text-3xl text-ink">Authorisation requests</h1>
+      <p className="mt-2 text-ink-soft">
+        Admins don&apos;t raise authorisation requests — that&apos;s the injecting nurse&apos;s job.
+        Sign in as a nurse to raise one, or as Dr Voss to review.
+      </p>
+    </div>
+  );
+}
+
+export default function AuthorisationsPage() {
+  const { identity, availableIdentities } = useDemoAuth();
+  const store = useDemoStore();
+  const consult = useConsultCall();
+  if (!identity) return null;
+  if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
+  if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
+
+  // Prescribing is always-on: resolve the account's doctor identity from the HELD set, not the
+  // active one, so the inbox and its actions survive a switch to a non-doctor workspace.
+  const asDoctor = prescriberIdentity(heldIdentities(identity, availableIdentities));
+  const showNurse = identity.role === "nurse";
+  const showAdminMessage = !asDoctor && (identity.role === "clinicAdmin" || identity.role === "superAdmin");
+
+  return (
+    <div className="flex flex-col gap-12">
+      {asDoctor && <DoctorReviewInbox doctor={asDoctor} store={store} consult={consult} />}
+      {showNurse && <NurseRequests identity={identity} store={store} consult={consult} />}
+      {showAdminMessage && <AdminNoRequests />}
     </div>
   );
 }
