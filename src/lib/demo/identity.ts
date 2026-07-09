@@ -8,6 +8,9 @@ import type { Identity } from "./types";
  * from the ID-token claims (`availableIdentities`); demo mode leaves that empty, so we recover the
  * account's identities from DEMO_ACCOUNTS by matching the active identity's user id (falling back
  * to just the active identity). Mirrors the resolution the profile switcher uses.
+ *
+ * The demo-fallback assumes DEMO_ACCOUNTS user ids are unique across accounts (they are — see
+ * accounts.ts); the live path is uid-safe regardless (claims are server-verified per user).
  */
 export function heldIdentities(active: Identity, available: Identity[]): Identity[] {
   if (available.length) return available;

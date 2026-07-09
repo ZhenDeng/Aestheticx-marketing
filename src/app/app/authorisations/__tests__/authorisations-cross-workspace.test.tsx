@@ -13,6 +13,9 @@ const doctorIdentity: Identity = {
 const clinicAdminIdentity: Identity = {
   user: { id: "u-1", name: "Dr Nadia" }, role: "clinicAdmin", context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière" } },
 };
+const nurseIdentity: Identity = {
+  user: { id: "u-1", name: "Dr Nadia" }, role: "nurse", context: { kind: "independent" },
+};
 
 const request: AuthorisationRequest = {
   id: "req-1",
@@ -71,6 +74,15 @@ describe("Authorisations — cross-workspace prescribing", () => {
     expect(approveRequest).toHaveBeenCalledWith("req-1", doctorIdentity);
     fireEvent.click(screen.getByRole("button", { name: /Require edit/i }));
     expect(requireEdit).toHaveBeenCalledWith("req-1", doctorIdentity);
+  });
+
+  it("stacks the doctor inbox and the nurse's own requests for a doctor+nurse acting as nurse", () => {
+    authState.identity = nurseIdentity;
+    authState.availableIdentities = [doctorIdentity, nurseIdentity];
+    render(<AuthorisationsPage />);
+    // Prescribing (doctor) is always-on AND the nurse's own-requests view still shows.
+    expect(screen.getByText(/Review requests/i)).toBeInTheDocument();
+    expect(screen.getByText(/Your authorisation requests/i)).toBeInTheDocument();
   });
 
   it("still shows the admin 'don't raise requests' message for a clinicAdmin-only account", () => {
