@@ -49,6 +49,9 @@ describe("redirectForRole", () => {
     expect(redirectForRole("superAdmin", "/app/calendar")).toBe("/app/admin");
     expect(redirectForRole("superAdmin", "/app/patients")).toBe("/app/admin"); // clinical list
     expect(redirectForRole("superAdmin", "/app/billing")).toBe("/app/admin");
+    // The clinical sibling routes are NOT patient files — they must redirect too.
+    expect(redirectForRole("superAdmin", "/app/patients/new")).toBe("/app/admin");
+    expect(redirectForRole("superAdmin", "/app/patients/other")).toBe("/app/admin");
   });
 
   it("lets Platform Admin use the admin area, profile, and an individual patient file (audit access)", () => {

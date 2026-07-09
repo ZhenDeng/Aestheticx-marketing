@@ -59,20 +59,21 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
-  // open; the ref dedupes React's StrictMode double-effect so it stays a single event, and keys
-  // on the file id so opening another patient logs a fresh access.
+  // open; the ref dedupes React's StrictMode double-effect + repeat renders so it stays a single
+  // event per file. `patientForLog` is a dependency (not read inside only) so that when a live
+  // deep-link mounts before hydration finishes — patient still undefined — the effect re-fires
+  // once the record arrives, rather than silently never logging while the banner claims it did.
   const loggedAccessRef = useRef<string | null>(null);
+  const patientForLog = store.state.patients[id];
   useEffect(() => {
     if (identity?.role !== "superAdmin") return;
-    if (loggedAccessRef.current === id) return;
-    const p = store.state.patients[id];
-    if (!p) return;
+    if (!patientForLog || loggedAccessRef.current === id) return;
     loggedAccessRef.current = id;
-    store.recordAdminAccess(p, identity);
-    // `store` is recreated each render; deliberately keyed on the file + admin identity so this
-    // fires once per open, not on every state change.
+    store.recordAdminAccess(patientForLog, identity);
+    // `store` is recreated each render; keyed on file + admin identity + the resolved patient so
+    // it fires once the patient is present, not on every unrelated state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, identity]);
+  }, [id, identity, patientForLog]);
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;

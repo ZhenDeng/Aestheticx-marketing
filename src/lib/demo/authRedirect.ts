@@ -35,9 +35,12 @@ export function landingFor(role: Role): string {
 }
 
 // A specific patient file (or its subpages) — the admin's audit-access target, allowed even
-// though the clinical /app/patients list is not. `/app/patients` alone (the list) is excluded.
+// though the clinical /app/patients list is not. Only a real id segment counts: the list
+// (`/app/patients`) and the clinical sibling routes `/app/patients/new` (create form) and
+// `/app/patients/other` (doctor's grouped list) are NOT patient files and stay redirected.
 function isPatientFilePath(path: string): boolean {
-  return path.startsWith("/app/patients/");
+  const m = /^\/app\/patients\/([^/]+)(\/.*)?$/.exec(path);
+  return m !== null && m[1] !== "new" && m[1] !== "other";
 }
 
 /**

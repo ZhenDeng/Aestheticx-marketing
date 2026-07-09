@@ -603,7 +603,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         // TODO(§21): mirror to a durable Firestore adminAccessAudit collection. Until the
         // platform Audit Log lands this is an in-session record (demo + live) — a real write to
         // state, not a silent no-op; it just isn't yet persisted across a live refresh.
-        setState((s) => backend.recordAdminPatientAccess(s, identity, patient, now)),
+        // Uses a live clock (not the frozen session `now`) so each access gets its true time —
+        // per-event accuracy is the whole point of an audit trail.
+        setState((s) => backend.recordAdminPatientAccess(s, identity, patient, Date.now())),
       createUser: async (input) => {
         if (!live) throw new backend.BackendError("User creation is live-only in the demo.");
         // Server-authoritative (like bookAuthSlot): no optimistic write — the Function
