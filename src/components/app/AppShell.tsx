@@ -6,26 +6,19 @@ import type { ReactNode } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { identityBadge } from "@/lib/demo/types";
+import { navItemsFor, activeNavHref } from "@/lib/demo/nav";
 import { tintStyle } from "@/lib/demo/tint";
-
-// iOS parity: Billing is reached from Profile (ProfileView's "Approvals & invoices" /
-// "Authorised scripts" row), not a top-level tab — /app/billing still routes.
-const NAV = [
-  { href: "/app/dashboard", label: "Dashboard" },
-  { href: "/app/patients", label: "Patients" },
-  { href: "/app/authorisations", label: "Authorisations" },
-  { href: "/app/calendar", label: "Calendar" },
-  { href: "/app/availability", label: "Availability" },
-  { href: "/app/templates", label: "Templates" },
-  { href: "/app/bookings", label: "Bookings" },
-  { href: "/app/profile", label: "Profile" },
-];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { identity, signOut } = useDemoAuth();
   const { status, lastSyncError } = useDemoStore();
   const pathname = usePathname();
   if (!identity) return null;
+
+  // Role-aware primary nav — Platform Admin gets the admin modules, not the clinical shell
+  // (constitution §16/Rule 7).
+  const nav = navItemsFor(identity.role);
+  const activeHref = activeNavHref(nav, pathname);
 
   return (
     <div style={tintStyle(identity)} className="flex min-h-screen flex-col bg-card text-ink">
@@ -48,8 +41,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-5 sm:px-8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
+          {nav.map((item) => {
+            const active = item.href === activeHref;
             return (
               <Link
                 key={item.href}

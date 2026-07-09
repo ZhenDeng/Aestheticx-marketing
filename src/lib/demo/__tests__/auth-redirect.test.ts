@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeNextPath, loginUrlFor } from "@/lib/demo/authRedirect";
+import { safeNextPath, loginUrlFor, landingFor, redirectForRole } from "@/lib/demo/authRedirect";
 
 describe("safeNextPath", () => {
   it("accepts in-app paths, with query strings intact", () => {
@@ -31,5 +31,40 @@ describe("loginUrlFor", () => {
   it("returns a plain login URL for non-app paths", () => {
     expect(loginUrlFor("/", "")).toBe("/login");
     expect(loginUrlFor("/login", "?next=%2Fapp")).toBe("/login");
+  });
+});
+
+describe("landingFor", () => {
+  it("sends Platform Admin to the admin shell and everyone else to the dashboard", () => {
+    expect(landingFor("superAdmin")).toBe("/app/admin");
+    expect(landingFor("doctor")).toBe("/app/dashboard");
+    expect(landingFor("nurse")).toBe("/app/dashboard");
+    expect(landingFor("clinicAdmin")).toBe("/app/dashboard");
+  });
+});
+
+describe("redirectForRole", () => {
+  it("keeps Platform Admin out of clinical surfaces (→ admin home)", () => {
+    expect(redirectForRole("superAdmin", "/app/dashboard")).toBe("/app/admin");
+    expect(redirectForRole("superAdmin", "/app/calendar")).toBe("/app/admin");
+    expect(redirectForRole("superAdmin", "/app/patients")).toBe("/app/admin"); // clinical list
+    expect(redirectForRole("superAdmin", "/app/billing")).toBe("/app/admin");
+  });
+
+  it("lets Platform Admin use the admin area, profile, and an individual patient file (audit access)", () => {
+    expect(redirectForRole("superAdmin", "/app/admin")).toBeNull();
+    expect(redirectForRole("superAdmin", "/app/admin/patients")).toBeNull();
+    expect(redirectForRole("superAdmin", "/app/admin/audit")).toBeNull();
+    expect(redirectForRole("superAdmin", "/app/profile")).toBeNull();
+    expect(redirectForRole("superAdmin", "/app/patients/p-1")).toBeNull();
+    expect(redirectForRole("superAdmin", "/app/patients/p-1/forms/f-2")).toBeNull();
+  });
+
+  it("bounces clinical roles out of the admin area, but leaves clinical routes alone", () => {
+    expect(redirectForRole("doctor", "/app/admin")).toBe("/app/dashboard");
+    expect(redirectForRole("doctor", "/app/admin/audit")).toBe("/app/dashboard");
+    expect(redirectForRole("nurse", "/app/admin")).toBe("/app/dashboard");
+    expect(redirectForRole("doctor", "/app/calendar")).toBeNull();
+    expect(redirectForRole("clinicAdmin", "/app/patients")).toBeNull();
   });
 });

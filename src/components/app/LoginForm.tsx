@@ -3,15 +3,17 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
-import { safeNextPath } from "@/lib/demo/authRedirect";
+import { safeNextPath, redirectForRole } from "@/lib/demo/authRedirect";
 import { rememberedEmail, saveLoginPrefs } from "@/lib/demo/loginPrefs";
-import { identityBadge } from "@/lib/demo/types";
+import { identityBadge, type Role } from "@/lib/demo/types";
 
-// The post-login destination: the guarded page that sent us here (?next=), or the
-// dashboard. Read from window.location at call time — useSearchParams would force a
-// Suspense boundary and drop the login page out of static prerender.
-function nextDestination(): string {
-  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+// The post-login destination: the guarded page that sent us here (?next=), or the role's home.
+// Read from window.location at call time — useSearchParams would force a Suspense boundary and
+// drop the login page out of static prerender. A ?next disallowed for the role (e.g. an admin
+// aimed at a clinical page, or vice-versa) is corrected to the role's own home (§16/Rule 7).
+function nextDestination(role: Role): string {
+  const target = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+  return redirectForRole(role, target) ?? target;
 }
 
 export function LoginForm() {
@@ -39,7 +41,7 @@ function LiveLogin() {
   // bounce back to /login. This also forwards an already-signed-in user, honouring
   // the ?next= target the AuthGuard carried over.
   useEffect(() => {
-    if (identity) router.replace(nextDestination());
+    if (identity) router.replace(nextDestination(identity.role));
   }, [identity, router]);
 
   async function submit(e: React.FormEvent) {
@@ -97,8 +99,9 @@ function DemoLogin() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    signIn(accounts[selected].identities[0]);
-    router.push(nextDestination());
+    const chosen = accounts[selected].identities[0];
+    signIn(chosen);
+    router.push(nextDestination(chosen.role));
   }
 
   return (

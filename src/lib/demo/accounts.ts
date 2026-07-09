@@ -7,6 +7,7 @@ const sarah: UserRef = { id: "u-sarah", name: "Sarah Chen" };
 const ruby: UserRef = { id: "u-ruby", name: "Ruby Walsh" };
 const voss: UserRef = { id: "u-voss", name: "Dr Elena Voss" };
 const ava: UserRef = { id: "u-ava", name: "Ava Lim" };
+const priya: UserRef = { id: "u-admin", name: "Priya Nair" };
 
 export interface DemoAccount {
   label: string;
@@ -33,6 +34,12 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     label: "Ava Lim — Clinic Admin",
     identities: [{ user: ava, role: "clinicAdmin", context: { kind: "clinic", clinic: LUMIERE } }],
+  },
+  {
+    // Platform admin — a non-clinical role with its own admin shell (constitution §16/Rule 7).
+    // Lets the demo exercise the admin separation; user administration stays live-only.
+    label: "Priya Nair — Platform Admin",
+    identities: [{ user: priya, role: "superAdmin", context: { kind: "independent" } }],
   },
 ];
 

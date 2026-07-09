@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
@@ -58,6 +58,21 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showHistory, setShowHistory] = useState(false);
   // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
+  // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
+  // open; the ref dedupes React's StrictMode double-effect so it stays a single event, and keys
+  // on the file id so opening another patient logs a fresh access.
+  const loggedAccessRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (identity?.role !== "superAdmin") return;
+    if (loggedAccessRef.current === id) return;
+    const p = store.state.patients[id];
+    if (!p) return;
+    loggedAccessRef.current = id;
+    store.recordAdminAccess(p, identity);
+    // `store` is recreated each render; deliberately keyed on the file + admin identity so this
+    // fires once per open, not on every state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, identity]);
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
@@ -68,6 +83,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
     return <p className="text-ink-soft">This patient is not in your view.</p>;
   }
   const perms = patientPermissions(identity, patient);
+  const isAdminViewer = me.role === "superAdmin";
   // As this viewer sees it: a prescriber-only doctor gets treatment notes only.
   const notes = store.visibleNotesForPatient(id, identity);
   const openRequests = identity.role === "nurse" ? store.openRequestsForPatient(id, identity.user.id) : [];
@@ -110,7 +126,15 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   return (
     <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
       <div>
-        <Link href="/app/patients" className="text-sm text-ink-soft hover:text-ink">← All patients</Link>
+        <Link href={isAdminViewer ? "/app/admin/patients" : "/app/patients"} className="text-sm text-ink-soft hover:text-ink">
+          ← {isAdminViewer ? "Patient lookup" : "All patients"}
+        </Link>
+        {isAdminViewer && (
+          <div className="mt-3 rounded-inner border-l-4 px-4 py-3" style={{ borderColor: "var(--color-sage)", background: "var(--color-sage-soft)" }}>
+            <p className="micro" style={{ color: "var(--color-sage)" }}>Audit access — recorded</p>
+            <p className="mt-1 text-sm text-ink">You are viewing this file as Platform Admin. This access is logged in the audit trail.</p>
+          </div>
+        )}
         <div className="mt-3 flex items-center gap-4">
           {/* iOS: 72pt avatar on the file header; tap-to-upload when details are editable. */}
           <PatientAvatarPicker patient={patient} identity={me} canEdit={perms.canEditDetails} size={72} />

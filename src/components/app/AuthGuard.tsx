@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
-import { loginUrlFor } from "@/lib/demo/authRedirect";
+import { loginUrlFor, redirectForRole } from "@/lib/demo/authRedirect";
 import { FirstLoginPassword } from "./FirstLoginPassword";
 
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { identity, resolved, mustChangePassword } = useDemoAuth();
   const router = useRouter();
+  // usePathname is safe here: AuthGuard wraps only the /app area (all client-rendered), not the
+  // statically-prerendered /login page, and pathname alone needs no Suspense boundary.
+  const pathname = usePathname();
 
   useEffect(() => {
     // Wait for the first auth resolution before redirecting — on a full page load of a
@@ -22,9 +25,18 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     }
   }, [resolved, identity, router]);
 
+  // Role-based route separation (constitution §16/Rule 7): keep Platform Admin in the admin
+  // shell and clinical roles out of it. Only once signed in and past the first-login gate.
+  const roleRedirect = identity && !mustChangePassword ? redirectForRole(identity.role, pathname) : null;
+  useEffect(() => {
+    if (roleRedirect) router.replace(roleRedirect);
+  }, [roleRedirect, router]);
+
   if (!identity) return null;
   // Live first-login gate (iOS parity): a super-admin-created account must replace its
   // temporary password before anything else renders. Never set in demo mode.
   if (mustChangePassword) return <FirstLoginPassword />;
+  // Don't flash a disallowed screen while the role redirect above is in flight.
+  if (roleRedirect) return null;
   return <>{children}</>;
 }

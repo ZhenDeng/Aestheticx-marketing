@@ -38,6 +38,7 @@ import type {
   RelationshipStatus,
   RelationshipAuditEntry,
   RelationshipAction,
+  AdminAccessAuditEntry,
 } from "./types";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
@@ -80,6 +81,7 @@ export function emptyState(): DemoState {
     emergencyAuthorisationsByID: {},
     cooperationRelationshipsByID: {},
     relationshipAuditByID: {},
+    adminAccessAuditByID: {},
   };
 }
 
@@ -1661,6 +1663,28 @@ export function removeCooperationRelationship(state: DemoState, id: string, acto
     cooperationRelationshipsByID: { ...state.cooperationRelationshipsByID, [id]: rel },
     relationshipAuditByID: { ...state.relationshipAuditByID, [audit.id]: audit },
   };
+}
+
+// --- Platform-admin patient-access audit (constitution §16/§21) ---
+
+// Records a Platform Admin opening a patient file. A no-op for any non-superAdmin identity
+// (only admin access is audit-logged here) — returns state unchanged so callers can fire it
+// unconditionally. Each open is its own append-only event (no dedup).
+export function recordAdminPatientAccess(state: DemoState, actor: Identity, patient: Patient, now: number): DemoState {
+  if (actor.role !== "superAdmin") return state;
+  const entry: AdminAccessAuditEntry = {
+    id: makeID("adminaccess"),
+    actorID: actor.user.id,
+    actorName: actor.user.name,
+    patientID: patient.id,
+    patientName: fullName(patient),
+    at: now,
+  };
+  return { ...state, adminAccessAuditByID: { ...state.adminAccessAuditByID, [entry.id]: entry } };
+}
+
+export function adminAccessAuditEntries(state: DemoState): AdminAccessAuditEntry[] {
+  return Object.values(state.adminAccessAuditByID).sort((a, b) => b.at - a.at);
 }
 
 export interface BillableAuthorisation {
