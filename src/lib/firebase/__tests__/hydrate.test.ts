@@ -61,6 +61,20 @@ describe("assembleState", () => {
     });
   });
 
+  it("maps auditLog rows into auditLogByID (empty when the super-admin path didn't read it)", () => {
+    expect(assembleState(rows).auditLogByID).toEqual({});
+    const state = assembleState({
+      ...rows,
+      auditLog: [
+        { id: "au1", data: { actorId: "u-admin", actorName: "Priya Nair", actorRole: "superAdmin", action: "admin_patient_access", targetType: "patient", targetId: "p1", summary: "opened Amara Boyd", at: 1700 } },
+      ],
+    });
+    expect(state.auditLogByID.au1).toMatchObject({
+      actorID: "u-admin", actorName: "Priya Nair", actorRole: "superAdmin",
+      action: "admin_patient_access", targetType: "patient", targetID: "p1", summary: "opened Amara Boyd", at: 1700,
+    });
+  });
+
   it("omits follow-up settings + booking token when the user doc carries neither", () => {
     const state = assembleState({ ...rows, followUpSettings: null, bookingToken: null });
     expect(state.followUpSettingsByUser).toEqual({});

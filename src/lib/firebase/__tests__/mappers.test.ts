@@ -4,6 +4,7 @@ import {
   mapNote,
   mapAuthorisation,
   mapEmergencyAuthorisation,
+  mapAuditLogEntry,
   mapAuthRequest,
   mapAppointment,
   mapExternalBusy,
@@ -44,6 +45,30 @@ describe("mapEmergencyAuthorisation", () => {
     expect(rec.kind).toBe("adrenaline");
     expect(rec.doctorName).toBe("Doctor");
     expect(rec.sourceAuthorisationIDs).toEqual([]);
+  });
+});
+
+describe("mapAuditLogEntry", () => {
+  it("maps fields, converts the timestamp, and keeps a known action", () => {
+    const rec = mapAuditLogEntry("au1", {
+      actorId: "u-admin", actorName: "Priya Nair", actorRole: "superAdmin",
+      action: "admin_patient_access", targetType: "patient", targetId: "p-1",
+      summary: "opened Danni Wang", at: { toMillis: () => 1700 },
+    });
+    expect(rec).toEqual({
+      id: "au1", actorID: "u-admin", actorName: "Priya Nair", actorRole: "superAdmin",
+      action: "admin_patient_access", targetType: "patient", targetID: "p-1",
+      summary: "opened Danni Wang", at: 1700,
+    });
+  });
+  it("tolerates missing fields — null targets, empty strings, a fallback action + name", () => {
+    const rec = mapAuditLogEntry("au2", { action: "not_a_real_action" });
+    expect(rec.action).toBe("admin_patient_access"); // unknown → safe fallback
+    expect(rec.actorName).toBe("Admin");
+    expect(rec.actorRole).toBe("");
+    expect(rec.targetType).toBeNull();
+    expect(rec.targetID).toBeNull();
+    expect(rec.at).toBe(0);
   });
 });
 

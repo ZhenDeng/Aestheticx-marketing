@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Identity, Patient } from "@/lib/demo/types";
-import { emptyState, recordAdminPatientAccess, adminAccessAuditEntries } from "@/lib/demo/backend";
+import { emptyState, appendAuditEntry, recordAdminPatientAccess, auditLogEntries } from "@/lib/demo/backend";
 import { DEMO_ACCOUNTS, demoDoctorRefs } from "@/lib/demo/accounts";
 
 const admin: Identity = { user: { id: "u-admin", name: "Priya Nair" }, role: "superAdmin", context: { kind: "independent" } };
@@ -18,12 +18,14 @@ function patient(over: Partial<Patient> = {}): Patient {
 }
 
 describe("recordAdminPatientAccess", () => {
-  it("logs a denormalised entry when a super admin opens a file", () => {
+  it("logs a denormalised admin_patient_access entry when a super admin opens a file", () => {
     const s = recordAdminPatientAccess(emptyState(), admin, patient(), NOW);
-    const entries = adminAccessAuditEntries(s);
+    const entries = auditLogEntries(s);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      actorID: "u-admin", actorName: "Priya Nair", patientID: "p-1", patientName: "Danni Wang", at: NOW,
+      actorID: "u-admin", actorName: "Priya Nair", actorRole: "superAdmin",
+      action: "admin_patient_access", targetType: "patient", targetID: "p-1",
+      summary: "opened Danni Wang", at: NOW,
     });
   });
 
@@ -31,19 +33,36 @@ describe("recordAdminPatientAccess", () => {
     const s0 = emptyState();
     const s1 = recordAdminPatientAccess(s0, nurse, patient(), NOW);
     expect(s1).toBe(s0); // unchanged reference
-    expect(adminAccessAuditEntries(s1)).toEqual([]);
+    expect(auditLogEntries(s1)).toEqual([]);
   });
 
   it("appends one event per open (no dedup) and sorts newest-first", () => {
     let s = recordAdminPatientAccess(emptyState(), admin, patient({ id: "p-1" }), NOW);
     s = recordAdminPatientAccess(s, admin, patient({ id: "p-2", givenName: "Zoe", lastName: "Lee" }), NOW + 1000);
-    const entries = adminAccessAuditEntries(s);
+    const entries = auditLogEntries(s);
     expect(entries).toHaveLength(2);
-    expect(entries.map((e) => e.patientID)).toEqual(["p-2", "p-1"]); // desc by `at`
+    expect(entries.map((e) => e.targetID)).toEqual(["p-2", "p-1"]); // desc by `at`
   });
 
   it("empty state has no audit entries", () => {
-    expect(adminAccessAuditEntries(emptyState())).toEqual([]);
+    expect(auditLogEntries(emptyState())).toEqual([]);
+  });
+});
+
+describe("appendAuditEntry", () => {
+  it("denormalises the acting identity + summary and defaults absent targets to null", () => {
+    const s = appendAuditEntry(emptyState(), { actor: admin, action: "user_deleted", summary: "removed Sam" }, NOW);
+    const entries = auditLogEntries(s);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      actorID: "u-admin", actorName: "Priya Nair", actorRole: "superAdmin",
+      action: "user_deleted", targetType: null, targetID: null, summary: "removed Sam", at: NOW,
+    });
+  });
+
+  it("records the actor's actual role (not just superAdmin)", () => {
+    const s = appendAuditEntry(emptyState(), { actor: nurse, action: "request_created", targetType: "request", targetID: "r-1", summary: "raised for Danni Wang" }, NOW);
+    expect(auditLogEntries(s)[0]).toMatchObject({ actorRole: "nurse", action: "request_created", targetID: "r-1" });
   });
 });
 
