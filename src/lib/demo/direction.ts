@@ -4,29 +4,42 @@
 // is assembled on demand from the patient/authorisation and clinician-captured
 // fields — it is never persisted. Wording pending practitioner/legal sign-off.
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
-import { unitSuffix } from "./catalog";
-import type { MedicationItem } from "./types";
+import { categoryDisplayName, unitSuffix } from "./catalog";
+import type { DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem } from "./types";
 
 export interface DirectionAdministration {
   substanceAndForm: string;
+  category: string;
   bodySite: string;
   route: string;
   quantity: string;
 }
 
+/** A reference to an auto-generated emergency standing authorisation on the direction. */
+export interface DirectionEmergencyRef {
+  label: string;  // e.g. "Adrenaline — anaphylaxis"
+  detail: string; // e.g. "standing order · expires 8 Jul 2027"
+}
+
 export interface DirectionContent {
   directionId: string;
   patientName: string;
+  patientDateOfBirth: string; // "12/3/1991" (derived from the patient)
+  patientAllergies: string;   // "Penicillin" | "None recorded" (derived from the patient)
   patientAddress: string;
   prescriberName: string;
   prescriberPhone: string;
   prescriberPrincipalPlace: string;
   premisesOfAdministration: string;
   responsibleProvider: string;
+  authorisationStatus: string;  // "Approved 17 Jun 2026" (an Authorisation exists ⇒ approved)
+  authorisationExpires: string; // the real Authorisation.expiresAt, formatted
   patientReviewedISO: string;
   directionPeriod: string;
   administrationCountAndIntervals: string;
   administrations: DirectionAdministration[];
+  prescriberAttestation: string;               // "Electronically authorised by Dr …"
+  emergencyAuthorisations: DirectionEmergencyRef[]; // [] when the prescriber has none on file
 }
 
 /** Canonical Clause 68C field labels, in document order (backend CLAUSE_68C_FIELDS). */
@@ -104,6 +117,34 @@ function medicationQuantity(medication: MedicationItem): string {
   return `${medication.dosage} ${unitSuffix(medication.unit)}`.trim();
 }
 
+const DOC_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** Patient DOB as d/m/yyyy, no zero-padding — the app's display convention (PatientRow). */
+export function formatDob(dob: DateOfBirth): string {
+  return `${dob.day}/${dob.month}/${dob.year}`;
+}
+
+/**
+ * A document date as "17 Jun 2026" with fixed month names, read in the jurisdiction's
+ * timezone (NSW / Australia/Sydney). The inputs are real wall-clock instants
+ * (Authorisation.createdAt/expiresAt, emergency expiry), and Sydney is always ahead of
+ * UTC — so reading UTC components would mis-date ~10–11h of every day to the previous
+ * calendar day (e.g. an 08:00 Sydney approval → 22:00 UTC the day before). Using a FIXED
+ * timezone keeps the document deterministic across exporters AND jurisdiction-correct.
+ */
+export function formatDocDate(epochMs: number): string {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney", day: "numeric", month: "numeric", year: "numeric",
+  }).formatToParts(new Date(epochMs));
+  const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return `${part("day")} ${DOC_MONTHS[part("month") - 1]} ${part("year")}`;
+}
+
+/** Emergency-kind display label — the single source shared with the patient-file panel. */
+export function emergencyKindLabel(kind: EmergencyKind): string {
+  return kind === "adrenaline" ? "Adrenaline — anaphylaxis" : "Hyaluronidase / Hylase";
+}
+
 /**
  * Assembles a Clause 68C direction from the derivable patient/prescriber data plus
  * the clinician-captured fields (port of iOS DirectionBuilder.draft). The resulting
@@ -113,29 +154,44 @@ export function buildDirectionDraft(input: {
   directionId: string;
   patientName: string;
   patientAddress: string;
+  patientDob: DateOfBirth;
+  allergies: string;
   prescriberName: string;
   responsibleProvider: string;
   medications: MedicationItem[];
+  expiresAt: number; // Authorisation.expiresAt — the real expiry
+  approvedAt: number; // Authorisation.createdAt — when the doctor approved
+  emergencies: EmergencyAuthorisation[]; // caller filters to this direction's prescriber
   captured: CapturedDirectionFields;
 }): DirectionContent {
   const { captured } = input;
   return {
     directionId: input.directionId,
     patientName: input.patientName,
+    patientDateOfBirth: formatDob(input.patientDob),
+    patientAllergies: input.allergies.trim() === "" ? "None recorded" : input.allergies.trim(),
     patientAddress: input.patientAddress,
     prescriberName: input.prescriberName,
     prescriberPhone: captured.prescriberPhone,
     prescriberPrincipalPlace: captured.prescriberPrincipalPlace,
     premisesOfAdministration: captured.premisesOfAdministration,
     responsibleProvider: input.responsibleProvider,
+    authorisationStatus: `Approved ${formatDocDate(input.approvedAt)}`,
+    authorisationExpires: formatDocDate(input.expiresAt),
     patientReviewedISO: captured.patientReviewedISO,
     directionPeriod: captured.directionPeriod,
     administrationCountAndIntervals: captured.administrationCountAndIntervals,
     administrations: input.medications.map((m) => ({
       substanceAndForm: m.name,
+      category: categoryDisplayName(m.category),
       bodySite: m.areas.join(", "),
       route: captured.route,
       quantity: medicationQuantity(m),
+    })),
+    prescriberAttestation: `Electronically authorised by ${input.prescriberName}`,
+    emergencyAuthorisations: input.emergencies.map((e) => ({
+      label: emergencyKindLabel(e.kind),
+      detail: `standing order · expires ${formatDocDate(e.expiresAt)}`,
     })),
   };
 }

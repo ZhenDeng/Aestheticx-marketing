@@ -14,7 +14,8 @@ import { useConsultCall } from "@/components/app/ConsultCall";
 import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
-import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment, type EmergencyKind } from "@/lib/demo/types";
+import { emergencyKindLabel } from "@/lib/demo/direction";
+import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
 
 const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
 function deliveryColor(s: DeliveryStatus): string {
@@ -37,10 +38,6 @@ function apptTime(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
-const EMERGENCY_LABEL: Record<EmergencyKind, string> = {
-  adrenaline: "Adrenaline — anaphylaxis",
-  hyaluronidase: "Hyaluronidase / Hylase",
-};
 
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -323,7 +320,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               <ul className="mt-2 flex flex-col gap-2">
                 {emergencies.map((e) => (
                   <li key={e.id} className="text-sm">
-                    <span className="text-ink">{EMERGENCY_LABEL[e.kind]}</span>
+                    <span className="text-ink">{emergencyKindLabel(e.kind)}</span>
                     <span className="micro block text-ink-soft">
                       {e.doctorName} · refreshed {new Date(e.refreshedAt).toLocaleDateString()} · expires {new Date(e.expiresAt).toLocaleDateString()}
                     </span>
@@ -442,7 +439,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
       {directionFor && (() => {
         const authorisation = active.find((a) => a.id === directionFor);
         return authorisation
-          ? <DirectionDialog authorisation={authorisation} patient={patient} onClose={() => setDirectionFor(null)} />
+          ? <DirectionDialog authorisation={authorisation} patient={patient} emergencies={emergencies} onClose={() => setDirectionFor(null)} />
           : null;
       })()}
     </div>

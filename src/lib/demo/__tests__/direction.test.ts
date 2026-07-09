@@ -7,26 +7,37 @@ import {
   buildDirectionDraft,
   directionPrescriberName,
   directionResponsibleProvider,
+  emergencyKindLabel,
+  formatDob,
+  formatDocDate,
   missingDirectionFields,
   type DirectionContent,
 } from "@/lib/demo/direction";
 import { LUMIERE } from "@/lib/demo/accounts";
-import type { MedicationItem } from "@/lib/demo/types";
+import type { EmergencyAuthorisation, MedicationItem } from "@/lib/demo/types";
 
 const complete: DirectionContent = {
   directionId: "AUTH-7G2K-09",
   patientName: "Amara Boyd",
+  patientDateOfBirth: "12/3/1991",
+  patientAllergies: "None recorded",
   patientAddress: "14 Marra St, Bondi NSW 2026",
   prescriberName: "Dr Adrian Voss",
   prescriberPhone: "02 9388 4410",
   prescriberPrincipalPlace: "A. Voss Medical, 88 Oxford St, Paddington NSW 2021",
   premisesOfAdministration: "Lumière Aesthetics, 12 Hall St, Bondi Beach NSW 2026",
   responsibleProvider: "RN Sarah Chen",
+  authorisationStatus: "Approved 17 Jun 2026",
+  authorisationExpires: "17 Dec 2026",
   patientReviewedISO: "2026-06-17",
   directionPeriod: "6 months",
   administrationCountAndIntervals: "Up to 5, at intervals of at least 4 weeks",
   administrations: [
-    { substanceAndForm: "Botulinum toxin type A, injection", bodySite: "Glabella", route: "IM", quantity: "20 units" },
+    { substanceAndForm: "Botulinum toxin type A, injection", category: "Neurotoxin", bodySite: "Glabella", route: "IM", quantity: "20 units" },
+  ],
+  prescriberAttestation: "Electronically authorised by Dr Adrian Voss",
+  emergencyAuthorisations: [
+    { label: "Adrenaline — anaphylaxis", detail: "standing order · expires 8 Jul 2027" },
   ],
 };
 
@@ -36,6 +47,18 @@ const letybo: MedicationItem = {
   category: "neurotoxin",
   unit: "units",
   areas: ["Forehead", "Glabella"],
+};
+
+const adrenalineRec: EmergencyAuthorisation = {
+  id: "p1_u-voss_adrenaline",
+  patientID: "p1",
+  doctorID: "u-voss",
+  doctorName: "Dr Elena Voss",
+  kind: "adrenaline",
+  createdAt: Date.UTC(2026, 6, 8),
+  refreshedAt: Date.UTC(2026, 6, 8),
+  expiresAt: Date.UTC(2027, 6, 8), // 8 Jul 2027
+  sourceAuthorisationIDs: ["auth-1"],
 };
 
 describe("Clause 68C required fields", () => {
@@ -69,7 +92,7 @@ describe("Clause 68C required fields", () => {
   it("flags an administration missing its body site", () => {
     const incomplete: DirectionContent = {
       ...complete,
-      administrations: [{ substanceAndForm: "Botox, inj", bodySite: "", route: "IM", quantity: "20 U" }],
+      administrations: [{ substanceAndForm: "Botox, inj", category: "Neurotoxin", bodySite: "", route: "IM", quantity: "20 U" }],
     };
     expect(missingDirectionFields(incomplete)).toContain("Body site");
   });
@@ -77,7 +100,7 @@ describe("Clause 68C required fields", () => {
   it("flags an administration missing its quantity", () => {
     const incomplete: DirectionContent = {
       ...complete,
-      administrations: [{ substanceAndForm: "Botox, inj", bodySite: "Glabella", route: "IM", quantity: "" }],
+      administrations: [{ substanceAndForm: "Botox, inj", category: "Neurotoxin", bodySite: "Glabella", route: "IM", quantity: "" }],
     };
     expect(missingDirectionFields(incomplete)).toContain("Quantity");
   });
@@ -86,17 +109,52 @@ describe("Clause 68C required fields", () => {
     expect(missingDirectionFields({ ...complete, administrations: [] }))
       .toContain("Number and intervals of administration");
   });
+
+  it("does not gate export on the derived fields (empty allergies / no emergencies are valid)", () => {
+    const derived: DirectionContent = { ...complete, patientAllergies: "None recorded", emergencyAuthorisations: [] };
+    expect(missingDirectionFields(derived)).toEqual([]);
+  });
+});
+
+describe("direction document formatting helpers", () => {
+  it("formats DOB as d/m/yyyy without zero-padding (app convention)", () => {
+    expect(formatDob({ year: 1991, month: 3, day: 12 })).toBe("12/3/1991");
+    expect(formatDob({ year: 2004, month: 11, day: 5 })).toBe("5/11/2004");
+  });
+
+  it("formats a document date with fixed month names, read in Australia/Sydney", () => {
+    expect(formatDocDate(Date.UTC(2026, 5, 17))).toBe("17 Jun 2026");
+    expect(formatDocDate(Date.UTC(2027, 6, 8))).toBe("8 Jul 2027");
+    expect(formatDocDate(Date.UTC(2026, 11, 17))).toBe("17 Dec 2026");
+  });
+
+  it("uses the jurisdiction (Australia/Sydney) calendar date, not UTC", () => {
+    // 22:00 UTC on 17 Jun is already 08:00 on 18 Jun in Sydney (UTC+10) — a real approval time.
+    expect(formatDocDate(Date.UTC(2026, 5, 17, 22, 0))).toBe("18 Jun 2026");
+    // 13:00 UTC on 31 Dec is 00:00 on 1 Jan in Sydney (UTC+11, AEDT) — year rolls over too.
+    expect(formatDocDate(Date.UTC(2026, 11, 31, 13, 0))).toBe("1 Jan 2027");
+  });
+
+  it("labels emergency kinds to match the patient-file panel", () => {
+    expect(emergencyKindLabel("adrenaline")).toBe("Adrenaline — anaphylaxis");
+    expect(emergencyKindLabel("hyaluronidase")).toBe("Hyaluronidase / Hylase");
+  });
 });
 
 describe("direction builder (§3.2 capture → complete direction)", () => {
-  it("assembles a complete direction from patient data plus captured fields", () => {
-    const direction = buildDirectionDraft({
+  function draft(overrides: Partial<Parameters<typeof buildDirectionDraft>[0]> = {}) {
+    return buildDirectionDraft({
       directionId: "auth-1",
       patientName: "Amara Boyd",
       patientAddress: "14 Marra St",
+      patientDob: { year: 1991, month: 3, day: 12 },
+      allergies: "Penicillin",
       prescriberName: "Dr Voss",
       responsibleProvider: "RN Chen",
       medications: [letybo],
+      expiresAt: Date.UTC(2026, 11, 17), // 17 Dec 2026
+      approvedAt: Date.UTC(2026, 5, 17), // 17 Jun 2026
+      emergencies: [adrenalineRec],
       captured: {
         prescriberPhone: "02 9388 4410",
         prescriberPrincipalPlace: "88 Oxford St",
@@ -106,7 +164,12 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
         administrationCountAndIntervals: "Up to 5, ≥4 wks",
         route: "IM",
       },
+      ...overrides,
     });
+  }
+
+  it("assembles a complete direction from patient data plus captured fields", () => {
+    const direction = draft();
     expect(missingDirectionFields(direction)).toEqual([]);
     expect(direction.administrations).toHaveLength(1);
     expect(direction.administrations[0].substanceAndForm).toBe("Letybo");
@@ -115,16 +178,32 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
     expect(direction.administrations[0].quantity).toBe("16 U");
   });
 
+  it("derives the patient DOB, allergies, category, expiry, approval and attestation", () => {
+    const direction = draft();
+    expect(direction.patientDateOfBirth).toBe("12/3/1991");
+    expect(direction.patientAllergies).toBe("Penicillin");
+    expect(direction.administrations[0].category).toBe("Neurotoxin");
+    expect(direction.authorisationExpires).toBe("17 Dec 2026");
+    expect(direction.authorisationStatus).toBe("Approved 17 Jun 2026");
+    expect(direction.prescriberAttestation).toBe("Electronically authorised by Dr Voss");
+  });
+
+  it("renders blank allergies as 'None recorded'", () => {
+    expect(draft({ allergies: "   " }).patientAllergies).toBe("None recorded");
+  });
+
+  it("maps the prescriber's active emergency standing authorisations", () => {
+    expect(draft().emergencyAuthorisations).toEqual([
+      { label: "Adrenaline — anaphylaxis", detail: "standing order · expires 8 Jul 2027" },
+    ]);
+  });
+
+  it("carries no emergency refs when the prescriber has none", () => {
+    expect(draft({ emergencies: [] }).emergencyAuthorisations).toEqual([]);
+  });
+
   it("surfaces a missing captured field through missingDirectionFields", () => {
-    const direction = buildDirectionDraft({
-      directionId: "auth-1",
-      patientName: "A",
-      patientAddress: "B",
-      prescriberName: "C",
-      responsibleProvider: "D",
-      medications: [letybo],
-      captured: { ...DEFAULT_CAPTURED_FIELDS, prescriberPhone: "" },
-    });
+    const direction = draft({ captured: { ...DEFAULT_CAPTURED_FIELDS, prescriberPhone: "" } });
     expect(missingDirectionFields(direction)).toContain("Prescriber phone");
   });
 

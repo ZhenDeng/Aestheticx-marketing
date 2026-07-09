@@ -6,7 +6,7 @@
 // once — every required field is present (missingDirectionFields gates both steps).
 // Like iOS, nothing here persists: the direction is assembled on demand.
 import { useState } from "react";
-import type { Authorisation, Patient } from "@/lib/demo/types";
+import type { Authorisation, EmergencyAuthorisation, Patient } from "@/lib/demo/types";
 import { fullName } from "@/lib/demo/types";
 import {
   DEFAULT_CAPTURED_FIELDS,
@@ -18,9 +18,10 @@ import {
 } from "@/lib/demo/direction";
 import { directionPdfFilename, renderDirectionPdf } from "@/lib/demo/directionPdf";
 
-export function DirectionDialog({ authorisation, patient, onClose }: {
+export function DirectionDialog({ authorisation, patient, emergencies, onClose }: {
   authorisation: Authorisation;
   patient: Patient;
+  emergencies: EmergencyAuthorisation[];
   onClose: () => void;
 }) {
   const [captured, setCaptured] = useState<CapturedDirectionFields>(DEFAULT_CAPTURED_FIELDS);
@@ -31,9 +32,15 @@ export function DirectionDialog({ authorisation, patient, onClose }: {
     directionId: authorisation.id,
     patientName: fullName(patient),
     patientAddress: patient.address,
+    patientDob: patient.dateOfBirth,
+    allergies: patient.allergies,
     prescriberName: directionPrescriberName(authorisation.doctorID),
     responsibleProvider: directionResponsibleProvider(authorisation.nurseID, authorisation.clinicID),
     medications: [authorisation.medication],
+    expiresAt: authorisation.expiresAt,
+    approvedAt: authorisation.createdAt,
+    // The direction is this prescriber's; reference only their emergency standing orders.
+    emergencies: emergencies.filter((e) => e.doctorID === authorisation.doctorID),
     captured,
   });
   const missing = missingDirectionFields(direction);
@@ -111,11 +118,15 @@ export function DirectionDialog({ authorisation, patient, onClose }: {
 
             <dl className="mt-3 rounded-inner border border-line">
               <Row label="Patient" value={direction.patientName} />
+              <Row label="Date of birth" value={direction.patientDateOfBirth} />
+              <Row label="Allergies" value={direction.patientAllergies} />
               <Row label="Patient address" value={direction.patientAddress} />
               <Row label="Prescriber" value={`${direction.prescriberName} · ${direction.prescriberPhone}`} />
               <Row label="Principal place of practice" value={direction.prescriberPrincipalPlace} />
               <Row label="Premises of administration" value={direction.premisesOfAdministration} />
               <Row label="Responsible provider" value={direction.responsibleProvider} />
+              <Row label="Authorisation status" value={direction.authorisationStatus} />
+              <Row label="Authorisation expires" value={direction.authorisationExpires} />
               <Row label="Patient reviewed" value={direction.patientReviewedISO} />
               <Row label="Direction effective" value={direction.directionPeriod} />
               <Row label="Administrations" value={direction.administrationCountAndIntervals} />
@@ -127,10 +138,30 @@ export function DirectionDialog({ authorisation, patient, onClose }: {
                 // Index key is safe: render-only list derived from the authorisation.
                 <li key={i} className="py-2">
                   <p className="text-sm font-medium text-ink">{a.substanceAndForm}</p>
-                  <p className="text-xs text-ink-soft">{a.bodySite} · {a.route} · {a.quantity}</p>
+                  <p className="text-xs text-ink-soft">{a.category} · {a.bodySite} · {a.route} · {a.quantity}</p>
                 </li>
               ))}
             </ul>
+
+            <p className="micro mt-4">Emergency standing authorisations</p>
+            {direction.emergencyAuthorisations.length === 0 ? (
+              <p className="mt-1 text-sm text-ink-soft">None on file.</p>
+            ) : (
+              <ul className="mt-1 rounded-inner border border-line px-4">
+                {direction.emergencyAuthorisations.map((e) => (
+                  <li key={e.label} className="py-2">
+                    <p className="text-sm font-medium text-ink">{e.label}</p>
+                    <p className="text-xs text-ink-soft">{e.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="micro mt-4">Prescriber authorisation</p>
+            <div className="mt-1 rounded-inner border border-line px-4 py-2">
+              <p className="text-sm text-ink">{direction.prescriberAttestation}</p>
+              <p className="micro text-ink-soft">{direction.authorisationStatus} · Authorisation {direction.directionId}</p>
+            </div>
 
             {missing.length === 0 ? (
               <button type="button" onClick={downloadPdf}
