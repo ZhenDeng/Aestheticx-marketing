@@ -159,15 +159,24 @@ Component/RTL (jsdom):
 
 ## Tasks (source of truth for "done")
 
-- [ ] T1 — Demo superAdmin account (`accounts.ts`) + tests
-- [ ] T2 — `AdminAccessAuditEntry` model + `emptyState` slice (`types.ts`)
-- [ ] T3 — `nav.ts` `navItemsFor` (+ tests) and wire `AppShell`
-- [ ] T4 — `authRedirect.ts` `landingFor` + `redirectForRole` (+ tests)
-- [ ] T5 — `backend.ts` `recordAdminPatientAccess` + `adminAccessAuditEntries` (+ tests)
-- [ ] T6 — `store.tsx` `recordAdminAccess` action + `adminAccessAudit` selector
-- [ ] T7 — Extract `AdminConsole` → `src/components/admin/AdminConsole.tsx`; remove from Profile
-- [ ] T8 — `/app/admin` home + `/app/admin/patients` lookup + `/app/admin/audit` view
-- [ ] T9 — `AuthGuard` role redirect + `LoginForm`/identity-switch use `landingFor`
-- [ ] T10 — Patient-file access logging + audit banner (superAdmin only)
-- [ ] T11 — Component/regression tests (AppShell nav, access logging, profile no-console)
-- [ ] T12 — Full test suite + `next build` green; QA; review fixes
+- [x] T1 — Demo superAdmin account (`accounts.ts`) + tests
+- [x] T2 — `AdminAccessAuditEntry` model + `emptyState` slice (`types.ts`)
+- [x] T3 — `nav.ts` `navItemsFor` (+ tests) and wire `AppShell`
+- [x] T4 — `authRedirect.ts` `landingFor` + `redirectForRole` (+ tests)
+- [x] T5 — `backend.ts` `recordAdminPatientAccess` + `adminAccessAuditEntries` (+ tests)
+- [x] T6 — `store.tsx` `recordAdminAccess` action + `adminAccessAudit` selector
+- [x] T7 — Extract `AdminConsole` → `src/components/admin/AdminConsole.tsx`; remove from Profile
+- [x] T8 — `/app/admin` home + `/app/admin/patients` lookup + `/app/admin/audit` view
+- [x] T9 — `AuthGuard` role redirect + `LoginForm`/identity-switch use `landingFor`
+- [x] T10 — Patient-file access logging + audit banner (superAdmin only)
+- [x] T11 — Component/regression tests (AppShell nav, access logging, profile no-console)
+- [x] T12 — Full test suite (633) + `next build` + lint green; browser QA; review fixes applied
+
+## Review
+
+`ecc:typescript-reviewer` (2026-07-09) — 1 CRITICAL (audit-log hydration race), 1 HIGH
+(route-guard matched `/app/patients/new`+`/other`), 1 MEDIUM (frozen audit timestamps), 1 LOW
+(missing AuthGuard role-redirect test). All fixed in commit `b636e40` with regression tests; the
+MEDIUM was additionally verified in-browser; a re-review confirmed all three fixes correct with no
+new CRITICAL/HIGH. Confirmed non-issues: AdminConsole move is behaviour-identical to the original;
+clinical nav/landing/profile unchanged; no hooks-rules violations; `patientPermissions` untouched.

@@ -87,6 +87,8 @@ describe("patient file — platform-admin audit access", () => {
         <PatientFilePage params={Promise.resolve({ id: "p-1" })} />
       </Suspense>
     );
+    // (The initial render suspends on the params promise; RTL emits a benign "suspended inside
+    // act" console warning here — cosmetic, doesn't affect the assertions.)
     const { rerender } = render(element);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     // Nothing to log yet — and crucially, the ref must not be "used up" on this empty pass.
