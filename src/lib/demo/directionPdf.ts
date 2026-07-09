@@ -193,11 +193,15 @@ export function renderDirectionPdf(content: DirectionContent): Uint8Array {
   writer.moveDown(1);
 
   field(writer, "Patient", content.patientName);
+  field(writer, "Date of birth", content.patientDateOfBirth);
+  field(writer, "Allergies", content.patientAllergies);
   field(writer, "Patient address", content.patientAddress);
   field(writer, "Prescriber", `${content.prescriberName} · ${content.prescriberPhone}`);
   field(writer, "Principal place of practice", content.prescriberPrincipalPlace);
   field(writer, "Premises of administration", content.premisesOfAdministration);
   field(writer, "Responsible provider", content.responsibleProvider);
+  field(writer, "Authorisation status", content.authorisationStatus);
+  field(writer, "Authorisation expires", content.authorisationExpires);
   field(writer, "Patient reviewed", content.patientReviewedISO);
   field(writer, "Direction effective for", content.directionPeriod);
   field(writer, "Administrations", content.administrationCountAndIntervals);
@@ -208,10 +212,31 @@ export function renderDirectionPdf(content: DirectionContent): Uint8Array {
   for (const a of content.administrations) {
     writer.runs([
       { text: a.substanceAndForm, size: 10.5, color: INK },
-      { text: `   ${a.bodySite} · ${a.route} · ${a.quantity}`, size: 9.5, color: SOFT },
+      { text: `   ${a.category} · ${a.bodySite} · ${a.route} · ${a.quantity}`, size: 9.5, color: SOFT },
     ]);
     writer.moveDown(0.3);
   }
+
+  writer.moveDown(0.6);
+  writer.text("EMERGENCY STANDING AUTHORISATIONS", 9, GOLD, { charSpace: 1 });
+  writer.moveDown(0.3);
+  if (content.emergencyAuthorisations.length === 0) {
+    writer.text("None on file.", 10, SOFT);
+  } else {
+    for (const e of content.emergencyAuthorisations) {
+      writer.runs([
+        { text: e.label, size: 10.5, color: INK },
+        { text: `   ${e.detail}`, size: 9.5, color: SOFT },
+      ]);
+      writer.moveDown(0.3);
+    }
+  }
+
+  writer.moveDown(0.8);
+  writer.text("PRESCRIBER AUTHORISATION", 9, GOLD, { charSpace: 1 });
+  writer.moveDown(0.3);
+  writer.text(content.prescriberAttestation, 11.5, INK);
+  writer.text(`${content.authorisationStatus} · Authorisation ${content.directionId}`, 9, SOFT);
 
   writer.moveDown(1);
   writer.text(

@@ -9,17 +9,25 @@ import type { DirectionContent } from "@/lib/demo/direction";
 const complete: DirectionContent = {
   directionId: "AUTH-7G2K-09",
   patientName: "Amara Boyd",
+  patientDateOfBirth: "12/3/1991",
+  patientAllergies: "None recorded",
   patientAddress: "14 Marra St, Bondi NSW 2026",
   prescriberName: "Dr Adrian Voss",
   prescriberPhone: "02 9388 4410",
   prescriberPrincipalPlace: "A. Voss Medical, 88 Oxford St, Paddington NSW 2021",
   premisesOfAdministration: "Lumière Aesthetics, 12 Hall St, Bondi Beach NSW 2026",
   responsibleProvider: "RN Sarah Chen",
+  authorisationStatus: "Approved 17 Jun 2026",
+  authorisationExpires: "17 Dec 2026",
   patientReviewedISO: "2026-06-17",
   directionPeriod: "6 months",
   administrationCountAndIntervals: "Up to 5, at intervals of at least 4 weeks",
   administrations: [
-    { substanceAndForm: "Botulinum toxin type A, injection", bodySite: "Glabella", route: "IM", quantity: "20 units" },
+    { substanceAndForm: "Botulinum toxin type A, injection", category: "Neurotoxin", bodySite: "Glabella", route: "IM", quantity: "20 units" },
+  ],
+  prescriberAttestation: "Electronically authorised by Dr Adrian Voss",
+  emergencyAuthorisations: [
+    { label: "Adrenaline — anaphylaxis", detail: "standing order · expires 8 Jul 2027" },
   ],
 };
 
@@ -56,6 +64,29 @@ describe("direction PDF", () => {
     }
     expect(text).toContain("PER ADMINISTRATION");
     expect(text).toContain("For each administration the nurse must record");
+  });
+
+  it("prints the patient DOB, allergies, treatment category, and authorisation status/expiry", () => {
+    const text = ascii(renderDirectionPdf(complete));
+    for (const value of ["12/3/1991", "None recorded", "Neurotoxin", "Approved 17 Jun 2026", "17 Dec 2026"]) {
+      expect(text).toContain(value);
+    }
+  });
+
+  it("prints the prescriber authorisation attestation", () => {
+    const text = ascii(renderDirectionPdf(complete));
+    expect(text).toContain("PRESCRIBER AUTHORISATION");
+    expect(text).toContain("Electronically authorised by Dr Adrian Voss");
+  });
+
+  it("lists emergency standing authorisations, and 'None on file.' when there are none", () => {
+    const withEmergencies = ascii(renderDirectionPdf(complete));
+    expect(withEmergencies).toContain("EMERGENCY STANDING AUTHORISATIONS");
+    expect(withEmergencies).toContain("Adrenaline"); // em-dash label prefix (dash is WinAnsi-encoded)
+    expect(withEmergencies).toContain("expires 8 Jul 2027");
+
+    const none = ascii(renderDirectionPdf({ ...complete, emergencyAuthorisations: [] }));
+    expect(none).toContain("None on file.");
   });
 
   it("draws an em-dash placeholder for a blank value instead of failing", () => {
