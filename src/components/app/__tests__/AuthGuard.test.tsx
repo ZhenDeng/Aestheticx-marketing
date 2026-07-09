@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }), usePathname: () => "/app/dashboard" }));
 
 import { DemoAuthProvider } from "@/lib/demo/auth";
 import { AuthGuard } from "@/components/app/AuthGuard";

@@ -366,6 +366,18 @@ export interface RelationshipAuditEntry {
   at: number;
 }
 
+// One entry recording a Platform Admin opening a patient file (constitution §16 "audit
+// patient access … should be logged"; §21 "Patient file access by Platform Admin"). Written
+// only when the acting identity is superAdmin. Append-only — each open is its own event.
+export interface AdminAccessAuditEntry {
+  id: string;
+  actorID: string;   // the acting super admin
+  actorName: string;
+  patientID: string;
+  patientName: string; // denormalised at access for display
+  at: number;
+}
+
 export type EmergencyKind = "adrenaline" | "hyaluronidase";
 
 // An automatically-generated emergency standing authorisation (spec 2026-07-08 emergency-
@@ -420,6 +432,9 @@ export interface DemoState {
   // and their append-only change audit.
   cooperationRelationshipsByID: Record<string, CooperationRelationship>;
   relationshipAuditByID: Record<string, RelationshipAuditEntry>;
+  // Platform-admin patient-file access log (constitution §16/§21). Append-only; in-session
+  // in both modes (live durable persistence lands with the platform Audit Log, §21).
+  adminAccessAuditByID: Record<string, AdminAccessAuditEntry>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

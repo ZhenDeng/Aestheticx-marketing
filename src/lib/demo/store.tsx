@@ -78,6 +78,10 @@ interface StoreValue {
   relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
   setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
   removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
+  // Platform-admin patient-file access audit (constitution §16/§21). In-session in both modes;
+  // durable live persistence lands with the platform Audit Log (§21).
+  adminAccessAudit: () => ReturnType<typeof backend.adminAccessAuditEntries>;
+  recordAdminAccess: (patient: import("./types").Patient, identity: Identity) => void;
   listDoctorOpenSlots: (doctorID: string, dateISO: string) => Promise<number[]>;
   publishAvailability: (input: import("./backend").PublishAvailabilityInput, identity: Identity) => void;
   withdrawAvailability: (windowID: string, identity: Identity) => void;
@@ -594,6 +598,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           catch (e) { setLastSyncError(String(e)); }
         })();
       },
+      adminAccessAudit: () => backend.adminAccessAuditEntries(state),
+      recordAdminAccess: (patient, identity) =>
+        // TODO(§21): mirror to a durable Firestore adminAccessAudit collection. Until the
+        // platform Audit Log lands this is an in-session record (demo + live) — a real write to
+        // state, not a silent no-op; it just isn't yet persisted across a live refresh.
+        // Uses a live clock (not the frozen session `now`) so each access gets its true time —
+        // per-event accuracy is the whole point of an audit trail.
+        setState((s) => backend.recordAdminPatientAccess(s, identity, patient, Date.now())),
       createUser: async (input) => {
         if (!live) throw new backend.BackendError("User creation is live-only in the demo.");
         // Server-authoritative (like bookAuthSlot): no optimistic write — the Function
