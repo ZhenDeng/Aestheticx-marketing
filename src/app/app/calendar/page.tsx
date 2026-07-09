@@ -1018,6 +1018,10 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
   const store = useDemoStore();
   const [creating, setCreating] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  // Only the owner may resolve a lead (create/link a patient). A booking nurse viewing the doctor's
+  // auth slot sees it read-only — linkAppointmentPatient is owner-gated, so offering it here would
+  // only ever error (and could strand an orphan patient on create-from-lead).
+  const isOwner = appt.ownerID === appointmentOwnerScope(me);
   const lead = isLeadAppointment(appt);
   // Client contact (spec: DOB/phone/email on the calendar) — lead fields, patient-record fallback.
   const contact = appointmentContact(appt, appt.patientID ? store.state.patients[appt.patientID] : undefined);
@@ -1072,7 +1076,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       {contactLine && <p className="micro mt-0.5">{contactLine}</p>}
       {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
 
-      {lead && !creating && canCreatePatient(me) && (
+      {lead && !creating && isOwner && canCreatePatient(me) && (
         <div className="mt-2 flex flex-col gap-2">
           {leadMatches.length > 0 && (
             <div className="rounded-inner border border-line px-3 py-2"

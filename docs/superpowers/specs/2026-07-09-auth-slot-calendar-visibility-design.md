@@ -69,6 +69,10 @@ never sees a control that would just error.)
   `runQuerySafe("appointments", where("bookedById","==",S))`, merged with the existing `ownerId`
   query. **`runQuerySafe`** (not `runQuery`) so the query degrades to empty until the backend rule
   ships — the web PR is safe to deploy before the backend (same pattern as emergencyAuthorisations).
+- **Write path is also deploy-order-safe:** the deployed `bookAuthSlot`/`requestAdHocAuth` callables
+  read named fields off `event.data` with no strict validation (verified in `appointmentsFn.ts`), so
+  the new `bookedById` field is simply ignored until the backend companion reads it. Sending it
+  web-first cannot break live booking.
 
 ### Backend companion (separate PR in `~/Documents/AestheticX`)
 - `bookSlotTx` + `adHocAuthTx` write `bookedById`, **validated**: `=== callerUid` (independent nurse)
