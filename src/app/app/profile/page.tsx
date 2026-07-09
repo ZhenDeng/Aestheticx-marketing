@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
-import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
+import { heldIdentities } from "@/lib/demo/identity";
 import { identityBadge, type Identity, type Role, type UserProfile } from "@/lib/demo/types";
 import { identityKey } from "@/lib/demo/identityPrefs";
 import { landingFor } from "@/lib/demo/authRedirect";
@@ -63,11 +63,8 @@ export default function ProfilePage() {
   const profile = store.profileForUser(me.user.id);
   const isSuperAdmin = me.role === "superAdmin";
   const isClinician = me.role === "doctor" || me.role === "nurse";
-  // Live: identities resolved from claims. Demo: the signed-in account's identity list
-  // (iOS demo sign-in hands SessionState the whole account).
-  const identities = availableIdentities.length
-    ? availableIdentities
-    : DEMO_ACCOUNTS.find((a) => a.identities.some((i) => i.user.id === me.user.id))?.identities ?? [me];
+  // The account's full identity set, cross-mode (live claims, else the demo account).
+  const identities = heldIdentities(me, availableIdentities);
   // AHPRA belongs to the ACCOUNT (a practitioner registration), not the active identity —
   // a super admin who also holds a clinician role sees it without switching identities.
   // Accounts with no clinical role (pure admins) still hide it.

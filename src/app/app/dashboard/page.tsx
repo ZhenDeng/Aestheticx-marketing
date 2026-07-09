@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
+import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 
 export default function DashboardPage() {
-  const { identity } = useDemoAuth();
+  const { identity, availableIdentities } = useDemoAuth();
   const store = useDemoStore();
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading your data…</p>;
@@ -21,8 +22,10 @@ export default function DashboardPage() {
   }
 
   const patients = store.searchPatients("", identity);
-  const pending =
-    identity.role === "doctor" ? store.pendingRequestsForDoctor(identity.user.id) : [];
+  // Prescribing is always-on: the pending-approvals tile follows the account's held doctor identity,
+  // not the selected workspace, so a doctor+clinicAdmin keeps it while acting as the clinic admin.
+  const asDoctor = prescriberIdentity(heldIdentities(identity, availableIdentities));
+  const pending = asDoctor ? store.pendingRequestsForDoctor(asDoctor.user.id) : [];
 
   return (
     <div>
@@ -38,7 +41,7 @@ export default function DashboardPage() {
           <p className="font-display text-3xl text-ink">{patients.length}</p>
           <p className="mt-1 text-sm text-ink-soft">Patients you can see</p>
         </Link>
-        {identity.role === "doctor" && (
+        {asDoctor && (
           <Link href="/app/authorisations" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
             <p className="font-display text-3xl text-ink">{pending.length}</p>
             <p className="mt-1 text-sm text-ink-soft">Requests awaiting your review</p>

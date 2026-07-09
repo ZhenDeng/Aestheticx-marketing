@@ -32,7 +32,7 @@ const request: AuthorisationRequest = {
 
 const consult = { start: vi.fn(), active: false };
 
-vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: doctorIdentity }) }));
+vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: doctorIdentity, availableIdentities: [doctorIdentity] }) }));
 vi.mock("@/components/app/ConsultCall", () => ({ useConsultCall: () => consult }));
 vi.mock("@/lib/demo/store", () => ({
   useDemoStore: () => ({
