@@ -229,6 +229,16 @@ describe("mapAppointment", () => {
     expect(a.startMinute).toBe(540);
     expect(a.patientName).toBe("Mara Boyd");
     expect(a.lead).toBeUndefined();
+    expect(a.bookedByID).toBeUndefined();
+  });
+
+  it("maps bookedById so the auth slot shows on the booker's calendar", () => {
+    const a = mapAppointment("ap4", {
+      type: "authorisation", ownerId: "u-voss", bookedById: "clinic-lumiere", dateISO: "2026-06-26",
+      startMinute: 540, endMinute: 550, status: "confirmed", patientId: "p1",
+    });
+    expect(a.ownerID).toBe("u-voss");
+    expect(a.bookedByID).toBe("clinic-lumiere");
   });
 
   it("maps a new-patient lead, keeping only its string fields", () => {

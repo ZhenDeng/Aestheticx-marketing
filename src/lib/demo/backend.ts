@@ -673,8 +673,16 @@ export function setFollowUpStatus(state: DemoState, id: string, status: FollowUp
 // --- Patient self-booking (link/QR + pending-bookings inbox) ---
 
 // Owner of a calendar/appointment scope: the active clinic in a clinic context, else the user.
-function appointmentOwnerScope(identity: Identity): string {
+// Shared by booking (bookedByID), the calendar viewer, and mutation-ownership gates.
+export function appointmentOwnerScope(identity: Identity): string {
   return identity.context.kind === "clinic" ? identity.context.clinic.id : identity.user.id;
+}
+
+// Whether the viewer (at `ownerScope`) may reschedule/resize/mutate the appointment: only its
+// owner can, and only while it is still live. A booking nurse viewing the doctor's auth slot on
+// their own calendar sees it read-only (a.ownerID is the doctor, not the nurse's scope).
+export function canRescheduleAppointment(a: Appointment, ownerScope: string): boolean {
+  return a.ownerID === ownerScope && (a.status === "awaitingConfirmation" || a.status === "confirmed");
 }
 
 export function bookingTokenForUser(state: DemoState, userID: string): string | undefined {
@@ -777,7 +785,7 @@ export function markAppointment(
 
 export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dateISO: string): Appointment[] {
   return Object.values(state.appointments)
-    .filter((a) => a.ownerID === ownerID && a.dateISO === dateISO && a.status !== "cancelled")
+    .filter((a) => (a.ownerID === ownerID || a.bookedByID === ownerID) && a.dateISO === dateISO && a.status !== "cancelled")
     .sort((a, b) => a.startMinute - b.startMinute);
 }
 
@@ -889,7 +897,8 @@ export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { stat
   // Overlap, not just exact-slot: an off-grid ad-hoc appointment also blocks (deployed parity).
   if (hasAuthOverlap(state, input.doctorID, input.dateISO, input.startMinute, input.startMinute + SLOT_MINUTES)) throw new BackendError("slotTaken");
   const appt: Appointment = {
-    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
+    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, bookedByID: appointmentOwnerScope(input.identity),
+    dateISO: input.dateISO,
     startMinute: input.startMinute, endMinute: input.startMinute + SLOT_MINUTES, status: "confirmed",
     patientID: input.patientID, patientName: input.patientName, lead: input.lead,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
@@ -912,7 +921,8 @@ export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput)
   if (!status.online && !status.alwaysAcceptAuth) throw new BackendError("notAccepting");
   if (hasAuthOverlap(state, input.doctorID, input.dateISO, input.atMinute, input.atMinute + SLOT_MINUTES)) throw new BackendError("slotTaken");
   const appt: Appointment = {
-    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, dateISO: input.dateISO,
+    id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, bookedByID: appointmentOwnerScope(input.identity),
+    dateISO: input.dateISO,
     startMinute: input.atMinute, endMinute: input.atMinute + SLOT_MINUTES, status: "confirmed",
     patientID: input.patientID, patientName: input.patientName, lead: input.lead,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
@@ -1183,7 +1193,7 @@ export function appointmentsForOwnerInRange(
   state: DemoState, ownerID: string, startISO: string, endISO: string,
 ): Appointment[] {
   return Object.values(state.appointments)
-    .filter((a) => a.ownerID === ownerID && a.status !== "cancelled" && a.dateISO >= startISO && a.dateISO <= endISO)
+    .filter((a) => (a.ownerID === ownerID || a.bookedByID === ownerID) && a.status !== "cancelled" && a.dateISO >= startISO && a.dateISO <= endISO)
     .sort((a, b) => (a.dateISO === b.dateISO ? a.startMinute - b.startMinute : a.dateISO < b.dateISO ? -1 : 1));
 }
 

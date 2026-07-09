@@ -209,6 +209,11 @@ export interface Appointment {
   id: string;
   type: AppointmentType;
   ownerID: string;
+  // The booker's calendar scope for an auth slot (appointmentOwnerScope of the booking nurse:
+  // their user id, or the clinic id when booked in a clinic context). Lets the booked auth also
+  // show on the nurse's/clinic's calendar — not just the doctor-owner's. Unset for self-booked
+  // treatment appointments. Mutation stays owner-only (a non-owner sees it read-only).
+  bookedByID?: string;
   dateISO: string; // yyyy-mm-dd
   startMinute: number;
   endMinute: number;

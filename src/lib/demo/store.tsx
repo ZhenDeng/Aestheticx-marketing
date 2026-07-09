@@ -520,6 +520,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         await m.mirrorBookAuthSlot({
           doctorID: input.doctorID, dateISO: input.dateISO, slotMinute: input.startMinute,
           patientID: input.patientID, lead: input.lead, counterpartyName: input.identity.user.name,
+          bookedById: backend.appointmentOwnerScope(input.identity),
         });
       },
       requestAdHocAuth: async (input) => {
@@ -534,6 +535,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         await m.mirrorRequestAdHocAuth({
           doctorID: input.doctorID, dateISO: input.dateISO, atMinute: input.atMinute,
           patientID: input.patientID, lead: input.lead, counterpartyName: input.identity.user.name,
+          bookedById: backend.appointmentOwnerScope(input.identity),
         });
         setRefreshTick((t) => t + 1);
       },

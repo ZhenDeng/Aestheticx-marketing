@@ -298,20 +298,26 @@ export async function mirrorSetOnlineStatus(status: import("@/lib/demo/types").D
 export async function mirrorBookAuthSlot(p: {
   doctorID: string; dateISO: string; slotMinute: number;
   patientID?: string; lead?: import("@/lib/demo/types").AppointmentLead; counterpartyName: string;
+  // The booker's calendar scope (nurse uid or clinic id) so the auth appears on their calendar too.
+  // The backend validates it (== caller uid, or the caller is a member of the clinic).
+  bookedById: string;
 }): Promise<void> {
   await httpsCallable(functions(), "bookAuthSlot")({
     doctorId: p.doctorID, dateISO: p.dateISO, slotMinute: p.slotMinute,
     patientId: p.patientID ?? null, lead: p.lead ?? null, counterpartyName: p.counterpartyName,
+    bookedById: p.bookedById,
   });
 }
 
 export async function mirrorRequestAdHocAuth(p: {
   doctorID: string; dateISO: string; atMinute: number;
   patientID?: string; lead?: import("@/lib/demo/types").AppointmentLead; counterpartyName: string;
+  bookedById: string;
 }): Promise<void> {
   await httpsCallable(functions(), "requestAdHocAuth")({
     doctorId: p.doctorID, dateISO: p.dateISO, atMinute: p.atMinute,
     patientId: p.patientID ?? null, lead: p.lead ?? null, counterpartyName: p.counterpartyName,
+    bookedById: p.bookedById,
   });
 }
 

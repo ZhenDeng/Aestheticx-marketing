@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentTitle, appointmentContact, draftFromLead, canCreatePatient, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
@@ -223,9 +223,6 @@ const MIN_DURATION = 15;    // an appointment can't be resized shorter than this
 const SLOT_STEP = 15;       // tap-to-create snaps the start to 15-minute steps
 const HOURS_IN = Array.from({ length: (WIN_END - WIN_START) / 60 + 1 }, (_, i) => WIN_START / 60 + i);
 
-function canReschedule(a: Appointment): boolean {
-  return a.status === "awaitingConfirmation" || a.status === "confirmed";
-}
 
 // Full-width day timeline: hour rail + time-positioned blocks. Overlapping appointments
 // lay out side-by-side (via layoutDay); a block can be dragged to reschedule its start,
@@ -322,7 +319,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const topResize = useRef<{ startY: number; dy: number } | null>(null);
   const scrollLoop = useRef<number | null>(null);
-  const draggable = canReschedule(appt);
+  const draggable = canRescheduleAppointment(appt, appointmentOwnerScope(me));
 
   const stopScrollLoop = useCallback(() => {
     if (scrollLoop.current !== null) { cancelAnimationFrame(scrollLoop.current); scrollLoop.current = null; }
@@ -540,7 +537,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const topResize = useRef<{ startY: number; dy: number } | null>(null);
   const scrollLoop = useRef<number | null>(null);
-  const draggable = canReschedule(appt);
+  const draggable = canRescheduleAppointment(appt, appointmentOwnerScope(me));
 
   const stopScrollLoop = useCallback(() => {
     if (scrollLoop.current !== null) { cancelAnimationFrame(scrollLoop.current); scrollLoop.current = null; }
@@ -842,7 +839,7 @@ function MonthChip({ appt, me, selected, onError }: {
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
   const drag = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
   const movedRef = useRef(false);
-  const draggable = canReschedule(appt);
+  const draggable = canRescheduleAppointment(appt, appointmentOwnerScope(me));
 
   function onPointerDown(e: React.PointerEvent) {
     if (!draggable) return;
@@ -1127,6 +1124,8 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  // Only the owner can mutate. A booking nurse viewing the doctor's auth slot sees it read-only.
+  const isOwner = appt.ownerID === appointmentOwnerScope(me);
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
 
   // Status actions can race (the appointment may have just been actioned elsewhere); the
@@ -1143,7 +1142,9 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
 
   return (
     <div className="mt-2 border-t border-line pt-2">
-      {canMark ? (
+      {!isOwner ? (
+        <p className="text-sm text-ink-soft">This appointment is managed on its owner&apos;s calendar — view only.</p>
+      ) : canMark ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-field border border-line px-2 py-1 text-sm text-ink" />

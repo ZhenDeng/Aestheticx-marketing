@@ -283,11 +283,15 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     for (const row of await runQuerySafe("emergencyAuthorisations", ...constraints)) emergencyById.set(row.id, row);
   }
 
-  // Appointments owned by the user or their clinics.
+  // Appointments owned by the user or their clinics, plus auth slots they (or their clinic) booked
+  // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`. The
+  // bookedById query is best-effort (runQuerySafe): it degrades to empty until the backend's
+  // appointments read rule for bookedById deploys, so the web side is safe to deploy first.
   const apptOwners = [uid, ...clinicIds];
   const apptsById = new Map<string, Row>();
   for (const owner of apptOwners) {
     for (const row of await runQuery("appointments", where("ownerId", "==", owner))) apptsById.set(row.id, row);
+    for (const row of await runQuerySafe("appointments", where("bookedById", "==", owner))) apptsById.set(row.id, row);
   }
 
   // Invoices scoped to this user (rules: doctor, counterparty nurse, or clinic member);
