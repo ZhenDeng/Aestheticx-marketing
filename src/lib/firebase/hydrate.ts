@@ -137,6 +137,17 @@ async function runQuerySafe(path: string, ...constraints: QueryConstraint[]): Pr
   }
 }
 
+// Like runQuerySafe, but distinguishes "denied" (null) from "genuinely empty" ([]) so a
+// caller can fall back to narrower, provably-safe queries only when the wide read is
+// actually rejected by rules ("rules are not filters").
+async function runQueryOrDenied(path: string, ...constraints: QueryConstraint[]): Promise<Row[] | null> {
+  try {
+    return await runQuery(path, ...constraints);
+  } catch {
+    return null;
+  }
+}
+
 // availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
 // caller's own + any clinics they belong to; a missing doc means "not configured" → the
 // default schedule applies client-side. Doc id == ownerId, matching mapTreatmentAvailability.
@@ -258,9 +269,26 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const patients = [...patientsById.values()];
 
   // Each patient's notes subcollection is independent — fetch them concurrently.
+  // "Rules are not filters": an unconstrained list is provable only for full-note-access
+  // viewers (owner/clinic staff). For prescriber/reviewer/clinic-doctor visibility the
+  // read rule depends on per-doc fields (kind/authorId), so Firestore rejects the WHOLE
+  // unconstrained list — previously that denial threw and broke the entire hydrate for a
+  // doctor with any non-owned patient in view. Fall back to the provably-safe union of
+  // kind=='treatment' plus authorId==me (each via runQuerySafe: the authorId grant ships
+  // with a later rules deploy, so it degrades to empty until then — deploy-order-safe).
   const notesByPatient: Record<string, Row[]> = {};
   await Promise.all(
-    patients.map(async (p) => { notesByPatient[p.id] = await runQuery(`patients/${p.id}/notes`); }),
+    patients.map(async (p) => {
+      const full = await runQueryOrDenied(`patients/${p.id}/notes`);
+      if (full) { notesByPatient[p.id] = full; return; }
+      const [treatment, own] = await Promise.all([
+        runQuerySafe(`patients/${p.id}/notes`, where("kind", "==", "treatment")),
+        runQuerySafe(`patients/${p.id}/notes`, where("authorId", "==", uid)),
+      ]);
+      const byId = new Map(treatment.map((r) => [r.id, r] as const));
+      for (const r of own) byId.set(r.id, r);
+      notesByPatient[p.id] = [...byId.values()];
+    }),
   );
 
   const formsByPatient: Record<string, Row[]> = {};
