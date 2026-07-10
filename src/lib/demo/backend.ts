@@ -205,11 +205,12 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
           case "nurse":
             return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
           case "doctor":
-            // A clinic doctor is a doctor like any other: treatment + full-general access
-            // only via the prescribing relationship (rules 2/3). Non-prescribers keep the
-            // file, editing and forms, but see only general notes they authored themselves.
+            // Owner decision 2026-07-10: a clinic-employee doctor sees the clinic patient's
+            // treatment record even without a prescribing relationship (clinical safety), but
+            // WRITING treatment notes stays tied to prescribing, and general/aftercare notes
+            // stay hidden except their own (the prescriber/reviewer note pattern).
             if (isPrescriber) return perms({ ...PRESCRIBING_DOCTOR, canEditDetails: true, canSendForms: true });
-            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canSendForms: true });
+            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canSendForms: true, canViewTreatmentNotes: true });
           default:
             return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
         }
