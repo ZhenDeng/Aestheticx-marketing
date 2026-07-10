@@ -214,16 +214,18 @@ describe("note-kind access rules", () => {
       .toEqual(["n-gen-mine", "n-trt"]);
   });
 
-  // Rule 2 — a clinic doctor who is NOT a prescriber of this patient loses treatment-note
-  // access; they still see the file and their own general notes.
-  it("hides treatment notes from a non-prescribing clinic doctor", () => {
+  // Owner decision 2026-07-10 (reverses the earlier full blinding): a clinic-employee doctor
+  // sees the clinic patient's TREATMENT record even without a prescribing relationship, but
+  // general/aftercare notes stay hidden (the same note pattern as the prescriber/reviewer
+  // grants). Writing treatment notes remains tied to prescribing.
+  it("shows treatment notes (read-only) to a non-prescribing clinic doctor; general notes stay hidden", () => {
     const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
     const perms = patientPermissions(clinicDoctor, p);
     expect(perms.canView).toBe(true);
-    expect(perms.canViewTreatmentNotes).toBe(false);
+    expect(perms.canViewTreatmentNotes).toBe(true);
     expect(perms.canWriteTreatmentNote).toBe(false);
     expect(perms.canViewGeneralNotes).toBe(false);
-    expect(visibleNotesForPatient(stateWithNotes(p), "p1", clinicDoctor)).toEqual([]);
+    expect(visibleNotesForPatient(stateWithNotes(p), "p1", clinicDoctor).map((n) => n.id)).toEqual(["n-trt"]);
   });
 
   // Rule 2 — the record nurse, clinic admin and super admin all view treatment notes.
