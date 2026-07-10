@@ -3,6 +3,7 @@
 import {
   collection, query, where, getDocs, doc, getDoc, type QueryConstraint,
 } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
 import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry } from "./mappers";
 import type { DemoState, UserProfile } from "@/lib/demo/types";
@@ -137,15 +138,41 @@ async function runQuerySafe(path: string, ...constraints: QueryConstraint[]): Pr
   }
 }
 
-// Like runQuerySafe, but distinguishes "denied" (null) from "genuinely empty" ([]) so a
-// caller can fall back to narrower, provably-safe queries only when the wide read is
-// actually rejected by rules ("rules are not filters").
-async function runQueryOrDenied(path: string, ...constraints: QueryConstraint[]): Promise<Row[] | null> {
+const isPermissionDenied = (e: unknown): boolean =>
+  e instanceof FirebaseError && e.code === "permission-denied";
+
+/**
+ * A patient's notes, with a provably-safe fallback ("rules are not filters"). The unconstrained
+ * list is provable only for full-note-access viewers (owner/clinic staff); for prescriber /
+ * reviewer / clinic-doctor visibility the read rule depends on per-doc fields, so Firestore
+ * rejects the WHOLE list. On DENIAL (not a transient error — those rethrow so a full-access viewer
+ * fails loudly and retries), fall back to the union of treatment notes (provable for anyone who
+ * can see the patient) and the viewer's own authored notes (a grant that ships with a later rules
+ * deploy: denied → [] until then, deploy-order-safe).
+ *
+ * Exported for testing. `q` mirrors runQuery: no filter = the wide list; a filter = a constrained
+ * query. It must throw a permission-denied FirebaseError when a read is rejected by rules.
+ */
+export async function notesRowsForPatient(
+  notesPath: string,
+  uid: string,
+  q: (path: string, filter?: { field: string; value: string }) => Promise<Row[]>,
+): Promise<Row[]> {
   try {
-    return await runQuery(path, ...constraints);
-  } catch {
-    return null;
+    return await q(notesPath);
+  } catch (e) {
+    if (!isPermissionDenied(e)) throw e;
   }
+  const treatment = await q(notesPath, { field: "kind", value: "treatment" });
+  let own: Row[] = [];
+  try {
+    own = await q(notesPath, { field: "authorId", value: uid });
+  } catch (e) {
+    if (!isPermissionDenied(e)) throw e; // authorId grant not deployed yet → [] ; real outage → loud
+  }
+  const byId = new Map(treatment.map((r) => [r.id, r] as const));
+  for (const r of own) byId.set(r.id, r);
+  return [...byId.values()];
 }
 
 // availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
@@ -268,26 +295,15 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   }
   const patients = [...patientsById.values()];
 
-  // Each patient's notes subcollection is independent — fetch them concurrently.
-  // "Rules are not filters": an unconstrained list is provable only for full-note-access
-  // viewers (owner/clinic staff). For prescriber/reviewer/clinic-doctor visibility the
-  // read rule depends on per-doc fields (kind/authorId), so Firestore rejects the WHOLE
-  // unconstrained list — previously that denial threw and broke the entire hydrate for a
-  // doctor with any non-owned patient in view. Fall back to the provably-safe union of
-  // kind=='treatment' plus authorId==me (each via runQuerySafe: the authorId grant ships
-  // with a later rules deploy, so it degrades to empty until then — deploy-order-safe).
+  // Each patient's notes subcollection is independent — fetch them concurrently, each with the
+  // provably-safe fallback (see notesRowsForPatient).
   const notesByPatient: Record<string, Row[]> = {};
   await Promise.all(
     patients.map(async (p) => {
-      const full = await runQueryOrDenied(`patients/${p.id}/notes`);
-      if (full) { notesByPatient[p.id] = full; return; }
-      const [treatment, own] = await Promise.all([
-        runQuerySafe(`patients/${p.id}/notes`, where("kind", "==", "treatment")),
-        runQuerySafe(`patients/${p.id}/notes`, where("authorId", "==", uid)),
-      ]);
-      const byId = new Map(treatment.map((r) => [r.id, r] as const));
-      for (const r of own) byId.set(r.id, r);
-      notesByPatient[p.id] = [...byId.values()];
+      notesByPatient[p.id] = await notesRowsForPatient(
+        `patients/${p.id}/notes`, uid,
+        (path, filter) => (filter ? runQuery(path, where(filter.field, "==", filter.value)) : runQuery(path)),
+      );
     }),
   );
 
