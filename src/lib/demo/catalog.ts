@@ -65,9 +65,9 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
 
 // The catalog the app should actually use (Tier 3 #5B): the hydrated / admin-edited products when the
 // store holds any, else the built-in static list. The fallback keeps selection working before the
-// Firestore `products` collection is seeded (live, deploy-order-safe) and gives the demo admin editor a
-// real dataset (demo seeds productsByID from PRODUCT_CATALOG). Pass the result as the `catalog` arg to
-// productsInCategory/searchProducts/etc.
+// Firestore `products` collection is seeded (live, deploy-order-safe) and in demo, where productsByID
+// is currently empty (the upcoming admin-editor slice will seed it). Pass the result as the `catalog`
+// arg to productsInCategory/searchProducts/etc.
 export function effectiveCatalog(productsByID: Record<string, CatalogProduct>): CatalogProduct[] {
   const hydrated = Object.values(productsByID);
   return hydrated.length > 0 ? hydrated : PRODUCT_CATALOG;

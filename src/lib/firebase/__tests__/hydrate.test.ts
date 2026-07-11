@@ -77,6 +77,19 @@ describe("assembleState", () => {
     });
   });
 
+  it("maps products rows into productsByID (empty when the catalog wasn't read) (Tier 3 #5B)", () => {
+    expect(assembleState(rows).productsByID).toEqual({});
+    const state = assembleState({
+      ...rows,
+      products: [
+        { id: "hafiller-juvederm-voluma", data: { category: "haFiller", brand: "Juvederm", name: "Voluma", unit: "millilitres", isActive: true } },
+      ],
+    });
+    expect(state.productsByID["hafiller-juvederm-voluma"]).toEqual({
+      id: "hafiller-juvederm-voluma", category: "haFiller", brand: "Juvederm", name: "Voluma", unit: "millilitres", isActive: true,
+    });
+  });
+
   it("omits follow-up settings + booking token when the user doc carries neither", () => {
     const state = assembleState({ ...rows, followUpSettings: null, appointmentReminderLead: null, bookingToken: null });
     expect(state.followUpSettingsByUser).toEqual({});

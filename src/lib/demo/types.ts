@@ -474,9 +474,9 @@ export interface DemoState {
   // patient-file access (constitution §16) is one action among many recorded here.
   auditLogByID: Record<string, AuditLogEntry>;
   // Admin-editable prescribing catalog (Tier 3 #5B), keyed by product slug. Live: hydrated from the
-  // Firestore `products` collection. Demo: seeded from the static PRODUCT_CATALOG so the demo admin
-  // editor has real data. Selection falls back to the built-in list when this is empty (see
-  // `effectiveCatalog`), keeping the app safe before the store is seeded.
+  // Firestore `products` collection. Demo: currently empty (like live pre-hydrate); selection falls
+  // back to the built-in PRODUCT_CATALOG via `effectiveCatalog`. The upcoming super-admin editor slice
+  // will seed this from PRODUCT_CATALOG in demo so demo edits have a dataset to act on.
   productsByID: Record<string, import("./catalog").CatalogProduct>;
 }
 
