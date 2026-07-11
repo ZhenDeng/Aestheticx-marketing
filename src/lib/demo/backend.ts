@@ -50,6 +50,7 @@ import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
+import { PRODUCT_CATEGORIES } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyKindsFor } from "./emergency";
@@ -704,15 +705,19 @@ export function followUpSettingsForUser(state: DemoState, userID: string): Follo
   return state.followUpSettingsByUser[userID] ?? { enabled: false, preset: "2wk", intervalDays: 14 };
 }
 
+// Canonical normalisation used by BOTH the reducer and the store's live mirror (so Firestore's
+// back-compat `followUpIntervalDays` never goes stale on a preset/custom change): recompute
+// `intervalDays` from the GLOBAL preset, and drop `customDays` unless the preset is `custom`.
+export function normalizeFollowUpSettings(settings: FollowUpSettings): FollowUpSettings {
+  const customDays = settings.preset === "custom" ? clampCustomDays(settings.customDays) : undefined;
+  return { ...settings, customDays, intervalDays: presetDays(settings.preset, customDays) };
+}
+
 export function setFollowUpSettings(state: DemoState, settings: FollowUpSettings, identity: Identity): DemoState {
-  // Normalise the back-compat `intervalDays` to the GLOBAL preset so iOS / un-migrated readers of
-  // `followUpIntervalDays` always get the clinician's global interval.
-  const normalized: FollowUpSettings = { ...settings, intervalDays: presetDays(settings.preset, settings.customDays) };
-  return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: normalized } };
+  return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: normalizeFollowUpSettings(settings) } };
 }
 
 const FOLLOW_UP_PRESETS: FollowUpPreset[] = ["2wk", "2mo", "4mo", "6mo", "custom"];
-const PRODUCT_CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];
 
 function decodePerTreatment(raw: unknown): Partial<Record<ProductCategory, FollowUpNamedPreset>> | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;

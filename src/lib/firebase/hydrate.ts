@@ -201,9 +201,8 @@ async function readExternalBusy(ownerIds: string[]): Promise<Row[]> {
 }
 
 // The user's own profile doc carries follow-up settings, their booking token, and their
-// online/always-accept-auth status (one read). intervalDays is clamped to the UI's valid
-// range [1,90] so a corrupt/out-of-range stored value (0, negative, NaN) can't silently
-// schedule everything as overdue or in the past.
+// online/always-accept-auth status (one read). Follow-up settings (preset model + legacy
+// migration + custom-day clamp) are decoded by `readFollowUpSettings` (backend.ts).
 async function readUserProfile(uid: string): Promise<{
   followUpSettings: FollowUpSettings | null;
   appointmentReminderLead: AppointmentReminderLead | null;

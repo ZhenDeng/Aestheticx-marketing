@@ -14,11 +14,8 @@ import {
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
   layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, edgeScrollVelocity, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
-import type { Appointment, AppointmentReminderLead, AppointmentStatus, FollowUpNamedPreset, FollowUpPreset, Identity, ProductCategory } from "@/lib/demo/types";
-import { categoryDisplayName } from "@/lib/demo/catalog";
-
-// Treatment categories offered for a per-treatment follow-up override (Tier 3 #2).
-const FOLLOW_UP_CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];
+import type { Appointment, AppointmentReminderLead, AppointmentStatus, FollowUpNamedPreset, FollowUpPreset, Identity } from "@/lib/demo/types";
+import { categoryDisplayName, PRODUCT_CATEGORIES } from "@/lib/demo/catalog";
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
@@ -228,10 +225,10 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
               <summary className="cursor-pointer text-ink-soft">Per-treatment interval (optional)</summary>
               <p className="mt-1 text-xs text-ink-faint">Overrides the default for a treatment type; the earliest applies when a note spans several.</p>
               <ul className="mt-2 flex flex-col gap-1.5">
-                {FOLLOW_UP_CATEGORIES.map((cat) => (
+                {PRODUCT_CATEGORIES.map((cat) => (
                   <li key={cat} className="flex items-center justify-between gap-2">
-                    <span className="text-ink">{categoryDisplayName(cat)}</span>
-                    <select value={settings.perTreatment?.[cat] ?? ""}
+                    <span id={`fu-cat-${cat}`} className="text-ink">{categoryDisplayName(cat)}</span>
+                    <select aria-labelledby={`fu-cat-${cat}`} value={settings.perTreatment?.[cat] ?? ""}
                       onChange={(e) => {
                         const next = { ...(settings.perTreatment ?? {}) };
                         if (e.target.value === "") delete next[cat];

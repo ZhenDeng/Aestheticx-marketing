@@ -63,6 +63,10 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   ...NEUROTOXINS, ...HA_FILLERS, ...SKIN_BOOSTERS, ...COLLAGEN_STIMULATORS, ...PRP_PRF,
 ];
 
+// The six product categories, in display order — the single source for iterating categories
+// (per-treatment follow-up overrides, etc.) so a future category change is made in one place.
+export const PRODUCT_CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];
+
 export function categoryDisplayName(category: ProductCategory): string {
   switch (category) {
     case "neurotoxin": return "Neurotoxin";

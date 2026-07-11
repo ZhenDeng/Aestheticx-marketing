@@ -355,11 +355,15 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         ),
       followUpSettingsForUser: (userID) => backend.followUpSettingsForUser(state, userID),
       followUpTasksForOwnerOn: (ownerID, dateISO) => backend.followUpTasksForOwnerOn(state, ownerID, dateISO),
-      setFollowUpSettings: (settings, identity) =>
+      setFollowUpSettings: (settings, identity) => {
+        // Mirror the NORMALISED settings (not the raw UI object) so Firestore's back-compat
+        // followUpIntervalDays reflects the new preset, not the stale one the UI spread from.
+        const normalized = backend.normalizeFollowUpSettings(settings);
         applyAndMirror(
-          (s) => backend.setFollowUpSettings(s, settings, identity),
-          (m) => m.mirrorSetFollowUpSettings(identity.user.id, settings),
-        ),
+          (s) => backend.setFollowUpSettings(s, normalized, identity),
+          (m) => m.mirrorSetFollowUpSettings(identity.user.id, normalized),
+        );
+      },
       appointmentReminderForUser: (userID) => backend.appointmentReminderForUser(state, userID),
       setAppointmentReminder: (lead, identity) =>
         applyAndMirror(

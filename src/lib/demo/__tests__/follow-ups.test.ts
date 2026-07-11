@@ -4,7 +4,7 @@ import {
   followUpTasksForOwnerOn, setFollowUpStatus, BackendError,
   saveTreatmentNote, setFollowUpSettings as setFU,
   appointmentReminderForUser, setAppointmentReminder,
-  presetDays, followUpIntervalForCategories, readFollowUpSettings,
+  presetDays, followUpIntervalForCategories, readFollowUpSettings, normalizeFollowUpSettings,
 } from "@/lib/demo/backend";
 import { encodeFollowUpTask, mapFollowUpTask } from "@/lib/firebase/mappers";
 import type { Authorisation, DemoState, FollowUpTask, Identity, Patient, ProductCategory } from "@/lib/demo/types";
@@ -77,6 +77,23 @@ describe("readFollowUpSettings — migration + decode (Tier 3 #2)", () => {
   });
   it("returns null when the doc carries no follow-up fields", () => {
     expect(readFollowUpSettings({ someOther: 1 })).toBeNull();
+  });
+});
+
+describe("normalizeFollowUpSettings — mirror never persists a stale intervalDays (review HIGH)", () => {
+  it("recomputes intervalDays from the global preset and clears customDays for a named preset", () => {
+    // The UI spreads a stale object (was 2wk=14, custom leftover) when switching to 2mo.
+    expect(normalizeFollowUpSettings({ enabled: true, preset: "2mo", customDays: 7, intervalDays: 14 }))
+      .toEqual({ enabled: true, preset: "2mo", customDays: undefined, intervalDays: 60 });
+  });
+  it("keeps + clamps customDays for a custom preset", () => {
+    expect(normalizeFollowUpSettings({ enabled: true, preset: "custom", customDays: 999, intervalDays: 14 }))
+      .toEqual({ enabled: true, preset: "custom", customDays: 90, intervalDays: 90 });
+  });
+  it("preserves the per-treatment override map", () => {
+    const r = normalizeFollowUpSettings({ enabled: true, preset: "2wk", perTreatment: { haFiller: "6mo" }, intervalDays: 0 });
+    expect(r.perTreatment).toEqual({ haFiller: "6mo" });
+    expect(r.intervalDays).toBe(14);
   });
 });
 
