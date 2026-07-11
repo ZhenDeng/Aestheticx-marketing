@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { AuthorisationRequest, Identity, Patient } from "@/lib/demo/types";
 
-// A doctor-returned (needsEdit) request must give the nurse a way to edit and resubmit it;
-// a still-pending request must not. The link targets the request builder in edit mode.
+// A doctor-returned (needsEdit) request gives the nurse an "Edit & resubmit" link; an untouched
+// pending request gives a plain "Edit" link (edit in place, Tier 3 #7). Both target the request
+// builder in edit mode; the copy differs because resubmit re-opens review and edit-in-place does not.
 
 const nurse: Identity = {
   user: { id: "nurse-1", name: "Zhexia" },
@@ -57,9 +58,12 @@ describe("Authorisations nurse view — edit & resubmit", () => {
     expect(link).toHaveAttribute("href", "/app/patients/pat-1/request?edit=req-needs");
   });
 
-  it("does not offer an edit link while the request is still pending", () => {
+  it("offers a plain Edit link (edit in place) while the request is still pending (Tier 3 #7)", () => {
     mode = "pending";
     render(<AuthorisationsPage />);
+    const link = screen.getByRole("link", { name: "Edit" });
+    expect(link).toHaveAttribute("href", "/app/patients/pat-1/request?edit=req-pending");
+    // A pending request is edited in place, not resubmitted.
     expect(screen.queryByRole("link", { name: /Edit & resubmit/i })).not.toBeInTheDocument();
   });
 });

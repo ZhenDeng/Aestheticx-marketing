@@ -31,6 +31,7 @@ interface StoreValue {
   approveRequest: (requestID: string, identity: Identity) => void;
   requireEdit: (requestID: string, identity: Identity) => void;
   resubmitRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity }) => void;
+  editPendingRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity }) => void;
   withdrawRequest: (requestID: string, identity: Identity) => void;
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
@@ -252,6 +253,14 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.resubmitRequest(s, input),
           (m) => m.mirrorResubmitRequest(input.requestID, input.items),
+        ),
+      // Amend an untouched pending request in place — items only, status stays pending
+      // (Tier 3 #7). Eager-validate is inside backend.editPendingRequest; the live mirror is an
+      // items-only updateDoc the widened rule permits while the request is still pending.
+      editPendingRequest: (input) =>
+        applyAndMirror(
+          (s) => backend.editPendingRequest(s, input),
+          (m) => m.mirrorEditPendingRequest(input.requestID, input.items),
         ),
       withdrawRequest: (requestID, id) =>
         applyAndMirror((s) => backend.withdrawRequest(s, requestID, id), (m) => m.mirrorWithdrawRequest(requestID)),

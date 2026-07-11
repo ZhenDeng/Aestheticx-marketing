@@ -19,6 +19,7 @@ import {
   approveRequest,
   requireEdit,
   resubmitRequest,
+  editPendingRequest,
   withdrawRequest,
   recordAftercareSend,
   mergePatients,
@@ -300,6 +301,49 @@ describe("requireEdit", () => {
     );
     const approved = approveRequest(submitted.state, submitted.request.id, voss, NOW);
     expect(() => requireEdit(approved.state, submitted.request.id, voss)).toThrow();
+  });
+});
+
+describe("editPendingRequest — amend an untouched pending request in place (Tier 3 #7)", () => {
+  function submitted() {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    return submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+  }
+
+  it("updates the items and KEEPS status pending (no re-open, unlike resubmit)", () => {
+    const s = submitted();
+    const next = editPendingRequest(s.state, { requestID: s.request.id, items: [botoxItem], identity: sarahIndependent });
+    expect(next.requests[s.request.id].status).toBe("pending");
+    expect(next.requests[s.request.id].items).toEqual([botoxItem]);
+    // doctor / nurse / createdAt are untouched
+    expect(next.requests[s.request.id].doctorID).toBe("u-voss");
+    expect(next.requests[s.request.id].nurse.id).toBe("u-sarah");
+    expect(next.requests[s.request.id].createdAt).toBe(s.request.createdAt);
+  });
+
+  it("refuses a nurse who does not own the request", () => {
+    const s = submitted();
+    const otherNurse: Identity = { ...sarahIndependent, user: { id: "u-other", name: "Nurse Other" } };
+    expect(() => editPendingRequest(s.state, { requestID: s.request.id, items: [botoxItem], identity: otherNurse })).toThrow();
+  });
+
+  it("refuses a doctor (only the raising nurse may edit)", () => {
+    const s = submitted();
+    expect(() => editPendingRequest(s.state, { requestID: s.request.id, items: [botoxItem], identity: voss })).toThrow();
+  });
+
+  it("refuses once the doctor has approved (status no longer pending)", () => {
+    const s = submitted();
+    const approved = approveRequest(s.state, s.request.id, voss, NOW);
+    expect(() => editPendingRequest(approved.state, { requestID: s.request.id, items: [botoxItem], identity: sarahIndependent })).toThrow();
+  });
+
+  it("refuses a needsEdit request (that path is resubmit, which re-opens review)", () => {
+    const s = submitted();
+    const returned = requireEdit(s.state, s.request.id, voss);
+    expect(() => editPendingRequest(returned, { requestID: s.request.id, items: [botoxItem], identity: sarahIndependent })).toThrow();
   });
 });
 

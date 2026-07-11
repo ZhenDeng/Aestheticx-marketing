@@ -220,8 +220,13 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   if (identity.role !== "nurse") {
     return <p className="text-ink-soft">Only a nurse can raise an authorisation request.</p>;
   }
-  // Once loaded, a resubmit target must exist, belong to this nurse, and still be returned.
-  if (editId && (!editRequest || editRequest.nurse.id !== identity.user.id || editRequest.status !== "needsEdit")) {
+  // Once loaded, an edit target must exist, belong to this nurse, and still be editable: a
+  // doctor-returned request (needsEdit → resubmit) OR an untouched pending one (edit in place,
+  // Tier 3 #7). Any other status ("no longer editable") means the doctor has acted.
+  const editableTarget =
+    !!editRequest && editRequest.nurse.id === identity.user.id &&
+    (editRequest.status === "needsEdit" || editRequest.status === "pending");
+  if (editId && !editableTarget) {
     return (
       <div className="max-w-3xl">
         <Link href={`/app/patients/${id}`} className="text-sm text-ink-soft hover:text-ink">← Back to patient</Link>
@@ -230,6 +235,8 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     );
   }
   const editing = !!editId;
+  // A pending edit is items-only and keeps the request pending; a needsEdit edit resubmits it.
+  const editingPending = editing && editRequest?.status === "pending";
   const me = identity;
 
   // Default to the last-requested doctor, else the patient's prescribing doctor, else the
@@ -267,10 +274,16 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
   function submit() {
     if (!canSubmit) return;
+    const items = lines.map((l) => l.item);
     if (editing && editRequest) {
-      store.resubmitRequest({ requestID: editRequest.id, items: lines.map((l) => l.item), identity: me });
+      // Pending → edit in place (status stays pending); needsEdit → resubmit (re-opens review).
+      if (editRequest.status === "pending") {
+        store.editPendingRequest({ requestID: editRequest.id, items, identity: me });
+      } else {
+        store.resubmitRequest({ requestID: editRequest.id, items, identity: me });
+      }
     } else {
-      store.submitRequest({ patientID: id, doctorID: chosenDoctor, items: lines.map((l) => l.item), identity: me });
+      store.submitRequest({ patientID: id, doctorID: chosenDoctor, items, identity: me });
     }
     router.push(`/app/patients/${id}`);
   }
@@ -279,7 +292,13 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     <div className="max-w-3xl">
       <Link href={`/app/patients/${id}`} className="text-sm text-ink-soft hover:text-ink">← Back to patient</Link>
       <h1 className="mt-3 font-display text-3xl text-ink">{editing ? "Edit authorisation request" : "Raise authorisation request"}</h1>
-      {editing && <p className="mt-1 text-sm text-ink-soft">The doctor asked for a change. Update the items and resubmit for review.</p>}
+      {editing && (
+        <p className="mt-1 text-sm text-ink-soft">
+          {editingPending
+            ? "Update the items before the doctor reviews this request."
+            : "The doctor asked for a change. Update the items and resubmit for review."}
+        </p>
+      )}
 
       <h2 className="mt-6 font-display text-xl text-ink">Add products</h2>
       <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all products…"

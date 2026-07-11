@@ -353,6 +353,12 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                           Edit &amp; resubmit
                         </Link>
                       )}
+                      {r.status === "pending" && (
+                        <Link href={`/app/patients/${id}/request?edit=${r.id}`}
+                          className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint">
+                          Edit
+                        </Link>
+                      )}
                       <button onClick={() => consult.start(r.id, fullName(patient))} disabled={consult.active}
                         className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
                         Start consult

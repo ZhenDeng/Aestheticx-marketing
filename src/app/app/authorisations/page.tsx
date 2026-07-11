@@ -97,6 +97,12 @@ function NurseRequests({ identity, store, consult }: { identity: Identity; store
                   Edit &amp; resubmit
                 </Link>
               )}
+              {request.status === "pending" && (
+                <Link href={`/app/patients/${patient.id}/request?edit=${request.id}`}
+                  className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint">
+                  Edit
+                </Link>
+              )}
               <button onClick={() => consult.start(request.id, `${patient.givenName} ${patient.lastName}`)} disabled={consult.active}
                 className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint disabled:opacity-50">
                 Start consult
