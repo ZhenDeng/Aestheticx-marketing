@@ -102,4 +102,14 @@ describe("markInvoicePaid (Tier 3 #6)", () => {
   it("throws for an unknown invoice", () => {
     expect(() => markInvoicePaid(emptyState(), "nope", voss, NOW)).toThrow();
   });
+
+  it("is idempotent — re-marking an already-paid invoice is a no-op (no overwrite, no duplicate audit)", () => {
+    const { state, invoiceID } = withInvoice();
+    const once = markInvoicePaid(state, invoiceID, voss, NOW + 1000);
+    const twice = markInvoicePaid(once, invoiceID, voss, NOW + 9999);
+    expect(twice).toBe(once); // same reference — untouched
+    const inv = twice.invoices.find((i) => i.id === invoiceID)!;
+    expect(inv.paidAt).toBe(NOW + 1000); // NOT overwritten by the second call
+    expect(Object.values(twice.auditLogByID).filter((e) => e.action === "invoice_marked_paid" && e.targetID === invoiceID)).toHaveLength(1);
+  });
 });

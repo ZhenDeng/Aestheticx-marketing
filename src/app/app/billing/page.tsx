@@ -13,6 +13,7 @@ export default function BillingPage() {
   const store = useDemoStore();
   const [openPanel, setOpenPanel] = useState<string | null>(null); // `${monthKey}:${counterpartyID}`
   const [priceInput, setPriceInput] = useState<string>("");
+  const [marking, setMarking] = useState<string | null>(null); // invoice id being marked paid (in flight)
 
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
@@ -108,9 +109,10 @@ export default function BillingPage() {
               </span>
               <span className="flex items-center gap-3">
                 {isDoctor && !inv.paid && (
-                  <button type="button" onClick={() => store.markInvoicePaid(inv.id, me)}
-                    className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
-                    Mark paid
+                  <button type="button" disabled={marking === inv.id}
+                    onClick={() => { setMarking(inv.id); store.markInvoicePaid(inv.id, me); }}
+                    className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint disabled:opacity-50">
+                    {marking === inv.id ? "Marking…" : "Mark paid"}
                   </button>
                 )}
                 <InvoiceDownload pdfFileId={inv.pdfFileId} isLive={isLive} />

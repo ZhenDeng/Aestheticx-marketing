@@ -1869,12 +1869,14 @@ export function generateInvoice(
 }
 
 // The issuing doctor marks an invoice paid once the counterparty settles (Tier 3 #6). Doctor-only
-// (matches issuance), idempotent-friendly (records paidAt/markedBy). Writes a §21 audit entry.
-// Live routes through the markInvoicePaid callable (invoices are Function-only Firestore docs).
+// (matches issuance); records paidAt/markedBy and writes a §21 audit entry. Idempotent — marking an
+// already-paid invoice is a no-op (no overwritten timestamp, no duplicate audit), mirroring the
+// backend markInvoicePaid callable. Live routes through that callable (invoices are Function-only).
 export function markInvoicePaid(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
   const invoice = state.invoices.find((i) => i.id === invoiceID);
   if (!invoice) throw new BackendError("notFound");
   if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
+  if (invoice.paid) return state; // already paid — no-op (idempotent, matches the backend)
   const invoices = state.invoices.map((i) =>
     i.id === invoiceID ? { ...i, paid: true, paidAt: now, markedBy: identity.user.id } : i,
   );
