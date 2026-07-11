@@ -181,9 +181,18 @@ export interface FollowUpTask {
   sourceNoteID?: string;
 }
 
+// Follow-up interval presets (Tier 3 #2). Named presets replace the old free 1–90 day number;
+// `custom` falls back to `customDays`. `perTreatment` optionally overrides the interval per product
+// category (of the consumed authorisations). `intervalDays` is KEPT as a derived mirror of the global
+// preset for back-compat (iOS + any un-migrated reader still read the single `followUpIntervalDays`).
+export type FollowUpNamedPreset = "2wk" | "2mo" | "4mo" | "6mo";
+export type FollowUpPreset = FollowUpNamedPreset | "custom";
 export interface FollowUpSettings {
   enabled: boolean;
-  intervalDays: number;
+  preset: FollowUpPreset;
+  customDays?: number; // used only when preset === "custom" (clamped 1–90)
+  perTreatment?: Partial<Record<ProductCategory, FollowUpNamedPreset>>;
+  intervalDays: number; // derived from the GLOBAL preset — back-compat mirror field
 }
 
 // Per-clinician appointment-reminder lead time: email the patient this many days before the

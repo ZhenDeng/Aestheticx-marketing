@@ -4,9 +4,10 @@ import {
   followUpTasksForOwnerOn, setFollowUpStatus, BackendError,
   saveTreatmentNote, setFollowUpSettings as setFU,
   appointmentReminderForUser, setAppointmentReminder,
+  presetDays, followUpIntervalForCategories, readFollowUpSettings,
 } from "@/lib/demo/backend";
 import { encodeFollowUpTask, mapFollowUpTask } from "@/lib/firebase/mappers";
-import type { DemoState, FollowUpTask, Identity, Patient } from "@/lib/demo/types";
+import type { Authorisation, DemoState, FollowUpTask, Identity, Patient, ProductCategory } from "@/lib/demo/types";
 
 const voss: Identity = { user: { id: "u-voss", name: "Voss" }, role: "doctor", context: { kind: "independent" } };
 const sarah: Identity = { user: { id: "u-sarah", name: "Sarah" }, role: "nurse", context: { kind: "independent" } };
@@ -25,13 +26,57 @@ describe("isoDay", () => {
 });
 
 describe("follow-up settings", () => {
-  it("defaults to disabled / 14 days", () => {
-    expect(followUpSettingsForUser(emptyState(), "u-voss")).toEqual({ enabled: false, intervalDays: 14 });
+  it("defaults to disabled / 2-week preset", () => {
+    expect(followUpSettingsForUser(emptyState(), "u-voss")).toEqual({ enabled: false, preset: "2wk", intervalDays: 14 });
   });
-  it("stores per-user settings", () => {
-    const s = setFollowUpSettings(emptyState(), { enabled: true, intervalDays: 7 }, voss);
-    expect(followUpSettingsForUser(s, "u-voss")).toEqual({ enabled: true, intervalDays: 7 });
-    expect(followUpSettingsForUser(s, "u-sarah")).toEqual({ enabled: false, intervalDays: 14 });
+  it("stores per-user settings and normalises intervalDays to the global preset (Tier 3 #2)", () => {
+    const s = setFollowUpSettings(emptyState(), { enabled: true, preset: "2mo", intervalDays: 0 }, voss);
+    expect(followUpSettingsForUser(s, "u-voss")).toEqual({ enabled: true, preset: "2mo", intervalDays: 60 }); // 0 → derived 60
+    expect(followUpSettingsForUser(s, "u-sarah")).toEqual({ enabled: false, preset: "2wk", intervalDays: 14 });
+  });
+  it("derives intervalDays from a custom day count (clamped 1–90)", () => {
+    const s = setFollowUpSettings(emptyState(), { enabled: true, preset: "custom", customDays: 200, intervalDays: 0 }, voss);
+    expect(followUpSettingsForUser(s, "u-voss").intervalDays).toBe(90); // clamped
+  });
+});
+
+describe("follow-up interval presets + per-treatment (Tier 3 #2)", () => {
+  it("maps named presets to days; custom clamps 1–90", () => {
+    expect(presetDays("2wk")).toBe(14);
+    expect(presetDays("2mo")).toBe(60);
+    expect(presetDays("4mo")).toBe(120);
+    expect(presetDays("6mo")).toBe(180);
+    expect(presetDays("custom", 30)).toBe(30);
+    expect(presetDays("custom", 0)).toBe(1);
+    expect(presetDays("custom", 999)).toBe(90);
+  });
+  it("resolves a per-treatment override, else the global preset", () => {
+    const s = { enabled: true, preset: "2wk" as const, perTreatment: { haFiller: "6mo" as const }, intervalDays: 14 };
+    expect(followUpIntervalForCategories(s, [])).toBe(14); // no ticked auth → global
+    expect(followUpIntervalForCategories(s, ["haFiller"])).toBe(180); // override
+    expect(followUpIntervalForCategories(s, ["neurotoxin"])).toBe(14); // no override → global
+  });
+  it("takes the SHORTEST interval across multiple categories (earliest follow-up)", () => {
+    const s = { enabled: true, preset: "6mo" as const, perTreatment: { neurotoxin: "2wk" as const, haFiller: "4mo" as const }, intervalDays: 180 };
+    expect(followUpIntervalForCategories(s, ["haFiller", "neurotoxin"])).toBe(14); // min(120, 14)
+  });
+});
+
+describe("readFollowUpSettings — migration + decode (Tier 3 #2)", () => {
+  it("decodes a new-model doc", () => {
+    expect(readFollowUpSettings({ followUpEnabled: true, followUpPreset: "4mo", followUpPerTreatment: { neurotoxin: "2wk", junk: "x", haFiller: "bad" } }))
+      .toEqual({ enabled: true, preset: "4mo", customDays: undefined, perTreatment: { neurotoxin: "2wk" }, intervalDays: 120 });
+  });
+  it("migrates a legacy followUpIntervalDays-only doc to a preset", () => {
+    expect(readFollowUpSettings({ followUpEnabled: true, followUpIntervalDays: 14 }))
+      .toMatchObject({ enabled: true, preset: "2wk", intervalDays: 14 });
+    expect(readFollowUpSettings({ followUpEnabled: true, followUpIntervalDays: 60 }))
+      .toMatchObject({ preset: "2mo", intervalDays: 60 });
+    expect(readFollowUpSettings({ followUpEnabled: true, followUpIntervalDays: 21 }))
+      .toMatchObject({ preset: "custom", customDays: 21, intervalDays: 21 }); // non-preset → custom
+  });
+  it("returns null when the doc carries no follow-up fields", () => {
+    expect(readFollowUpSettings({ someOther: 1 })).toBeNull();
   });
 });
 
@@ -89,15 +134,29 @@ function patientState(): DemoState {
 
 describe("saveTreatmentNote follow-up generation", () => {
   const NOW = Date.UTC(2026, 5, 26);
-  it("schedules a follow-up at now+interval when enabled", () => {
+  const auth = (id: string, category: ProductCategory): Authorisation => ({
+    id, requestID: "r", patientID: "p1", doctorID: "u-voss", nurseID: "u-voss", clinicID: null,
+    medication: { name: "X", dosage: "1", category, unit: "millilitres", areas: [] },
+    repeatsRemaining: 5, expiresAt: NOW + 9_999_999_999, createdAt: NOW, invoiced: false,
+  });
+
+  it("schedules a follow-up at now + the global preset when enabled (no ticked auth)", () => {
     let state = patientState();
-    state = setFU(state, { enabled: true, intervalDays: 14 }, voss);
+    state = setFU(state, { enabled: true, preset: "2wk", intervalDays: 14 }, voss);
     const r = saveTreatmentNote(state, { patientID: "p1", tickedIDs: [], title: "", body: "Tx", medications: [], identity: voss }, NOW);
     expect(r.followUp).toBeDefined();
-    expect(r.followUp!.dueDateISO).toBe("2026-07-10"); // 26 Jun + 14 days
+    expect(r.followUp!.dueDateISO).toBe("2026-07-10"); // 26 Jun + 14 days (2wk)
     expect(r.followUp!.sourceNoteID).toBe(r.note.id);
-    expect(r.followUp!.ownerID).toBe("u-voss");
     expect(followUpTasksForOwnerOn(r.state, "u-voss", "2026-07-10").map((t) => t.id)).toEqual([r.followUp!.id]);
+  });
+
+  it("uses the per-treatment interval keyed on the consumed authorisation's category", () => {
+    let state = patientState();
+    state = { ...state, authorisations: { a1: auth("a1", "haFiller") } };
+    state = setFU(state, { enabled: true, preset: "2wk", perTreatment: { haFiller: "6mo" }, intervalDays: 14 }, voss);
+    const r = saveTreatmentNote(state, { patientID: "p1", tickedIDs: ["a1"], title: "", body: "Tx", medications: [], identity: voss }, NOW);
+    // haFiller → 6mo (180d) overrides the 2-week global. 26 Jun 2026 + 180 = 23 Dec 2026.
+    expect(r.followUp!.dueDateISO).toBe("2026-12-23");
   });
   it("schedules nothing when disabled", () => {
     const state = patientState();

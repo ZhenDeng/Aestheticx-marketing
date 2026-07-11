@@ -21,7 +21,7 @@ const rows: HydrationRows = {
   scriptPricing: [{ id: "u-voss_clinic-lumiere", data: { doctorId: "u-voss", counterpartyId: "clinic-lumiere", priceCents: 3000 } }],
   noteTemplates: [{ id: "tpl1", data: { ownerId: "u-voss", name: "Std", body: "Body", aftercareCategories: ["antiwrinkle"] } }],
   followUpTasks: [{ id: "fu1", data: { patientId: "p1", patientName: "Pat", dueDateISO: "2026-07-10", status: "pending" } }],
-  followUpSettings: { enabled: true, intervalDays: 7 },
+  followUpSettings: { enabled: true, preset: "custom", customDays: 7, intervalDays: 7 },
   appointmentReminderLead: null,
   bookingToken: "bk-voss",
   doctorStatus: { online: false, alwaysAcceptAuth: false },
@@ -45,7 +45,7 @@ describe("assembleState", () => {
     expect(state.noteTemplatesByOwner["u-voss"]).toHaveLength(1);
     expect(state.noteTemplatesByOwner["u-voss"][0]).toMatchObject({ name: "Std", aftercareCategories: ["antiwrinkle"] });
     expect(state.followUpTasksByID.fu1).toMatchObject({ ownerID: "u-voss", dueDateISO: "2026-07-10", status: "pending" });
-    expect(state.followUpSettingsByUser["u-voss"]).toEqual({ enabled: true, intervalDays: 7 });
+    expect(state.followUpSettingsByUser["u-voss"]).toEqual({ enabled: true, preset: "custom", customDays: 7, intervalDays: 7 });
     expect(state.bookingTokensByUser["u-voss"]).toBe("bk-voss");
   });
 

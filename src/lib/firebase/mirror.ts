@@ -190,7 +190,15 @@ export async function mirrorSetFollowUpStatus(uid: string, id: string, status: F
   await updateDoc(doc(firestore(), `users/${uid}/followUpTasks`, id), { status });
 }
 export async function mirrorSetFollowUpSettings(uid: string, settings: FollowUpSettings): Promise<void> {
-  await updateDoc(doc(firestore(), "users", uid), { followUpEnabled: settings.enabled, followUpIntervalDays: settings.intervalDays });
+  // followUpIntervalDays is the derived GLOBAL preset — kept for iOS / un-migrated readers.
+  // undefined can't be written to Firestore, so customDays → null and perTreatment → {}.
+  await updateDoc(doc(firestore(), "users", uid), {
+    followUpEnabled: settings.enabled,
+    followUpPreset: settings.preset,
+    followUpCustomDays: settings.customDays ?? null,
+    followUpPerTreatment: settings.perTreatment ?? {},
+    followUpIntervalDays: settings.intervalDays,
+  });
 }
 // Per-clinician appointment-reminder lead time on the user's own profile doc (the scheduled
 // reminder Cloud Function reads it per owner). Rides the existing users/{uid} own-update rule.

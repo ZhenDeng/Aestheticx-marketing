@@ -15,6 +15,9 @@ import type {
   DoctorStatus,
   Identity,
   FollowUpSettings,
+  FollowUpPreset,
+  FollowUpNamedPreset,
+  ProductCategory,
   AppointmentReminderLead,
   FollowUpStatus,
   FollowUpTask,
@@ -677,12 +680,69 @@ export function defaultDoctorID(doctors: { doctorID: string }[], recentDoctorID:
   return doctors[0]?.doctorID ?? null;
 }
 
+// Follow-up interval presets (Tier 3 #2). Named preset → days; `custom` uses the clamped customDays.
+export const FOLLOW_UP_PRESET_DAYS: Record<FollowUpNamedPreset, number> = { "2wk": 14, "2mo": 60, "4mo": 120, "6mo": 180 };
+export function clampCustomDays(n: number | undefined): number {
+  return Math.min(90, Math.max(1, Math.round(Number.isFinite(n) ? (n as number) : 14)));
+}
+export function presetDays(preset: FollowUpPreset, customDays?: number): number {
+  return preset === "custom" ? clampCustomDays(customDays) : FOLLOW_UP_PRESET_DAYS[preset];
+}
+// The interval to schedule a follow-up for a treatment note, given the product categories of its
+// consumed authorisations: a per-treatment override wins per category, else the global preset;
+// across multiple categories take the SHORTEST (earliest follow-up); no categories → global preset.
+export function followUpIntervalForCategories(settings: FollowUpSettings, categories: ProductCategory[]): number {
+  const global = presetDays(settings.preset, settings.customDays);
+  if (categories.length === 0) return global;
+  return Math.min(...categories.map((c) => {
+    const override = settings.perTreatment?.[c];
+    return override ? FOLLOW_UP_PRESET_DAYS[override] : global;
+  }));
+}
+
 export function followUpSettingsForUser(state: DemoState, userID: string): FollowUpSettings {
-  return state.followUpSettingsByUser[userID] ?? { enabled: false, intervalDays: 14 };
+  return state.followUpSettingsByUser[userID] ?? { enabled: false, preset: "2wk", intervalDays: 14 };
 }
 
 export function setFollowUpSettings(state: DemoState, settings: FollowUpSettings, identity: Identity): DemoState {
-  return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: settings } };
+  // Normalise the back-compat `intervalDays` to the GLOBAL preset so iOS / un-migrated readers of
+  // `followUpIntervalDays` always get the clinician's global interval.
+  const normalized: FollowUpSettings = { ...settings, intervalDays: presetDays(settings.preset, settings.customDays) };
+  return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: normalized } };
+}
+
+const FOLLOW_UP_PRESETS: FollowUpPreset[] = ["2wk", "2mo", "4mo", "6mo", "custom"];
+const PRODUCT_CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];
+
+function decodePerTreatment(raw: unknown): Partial<Record<ProductCategory, FollowUpNamedPreset>> | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const named: FollowUpNamedPreset[] = ["2wk", "2mo", "4mo", "6mo"];
+  const out: Partial<Record<ProductCategory, FollowUpNamedPreset>> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if ((PRODUCT_CATEGORIES as string[]).includes(k) && typeof v === "string" && (named as string[]).includes(v)) {
+      out[k as ProductCategory] = v as FollowUpNamedPreset;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+// Decode a user doc's follow-up settings, MIGRATING a legacy `followUpIntervalDays`-only doc to a
+// preset (Tier 3 #2). New docs carry `followUpPreset`; legacy docs derive the preset from the old
+// int (exact preset-day match, else custom). Returns null when the doc carries no follow-up fields.
+export function readFollowUpSettings(d: Record<string, unknown>): FollowUpSettings | null {
+  const enabled = d.followUpEnabled === true;
+  const rawPreset = d.followUpPreset;
+  if (typeof rawPreset === "string" && (FOLLOW_UP_PRESETS as string[]).includes(rawPreset)) {
+    const preset = rawPreset as FollowUpPreset;
+    const customDays = preset === "custom" ? clampCustomDays(typeof d.followUpCustomDays === "number" ? d.followUpCustomDays : undefined) : undefined;
+    return { enabled, preset, customDays, perTreatment: decodePerTreatment(d.followUpPerTreatment), intervalDays: presetDays(preset, customDays) };
+  }
+  if (d.followUpEnabled === undefined && d.followUpIntervalDays === undefined) return null;
+  const legacy = typeof d.followUpIntervalDays === "number" && Number.isFinite(d.followUpIntervalDays) ? Math.round(d.followUpIntervalDays) : 14;
+  const named = (Object.keys(FOLLOW_UP_PRESET_DAYS) as FollowUpNamedPreset[]).find((p) => FOLLOW_UP_PRESET_DAYS[p] === legacy);
+  const preset: FollowUpPreset = named ?? "custom";
+  const customDays = named ? undefined : clampCustomDays(legacy);
+  return { enabled, preset, customDays, intervalDays: presetDays(preset, customDays) };
 }
 
 // Per-clinician appointment-reminder lead time (days before; 0 = none). Defaults to 0 (off).
@@ -1396,15 +1456,21 @@ export function saveTreatmentNote(state: DemoState, input: SaveTreatmentNoteInpu
   };
   const withNote = appendNote({ ...state, authorisations, usages }, note);
 
-  // Follow-up reminder (opt-in): schedule one intervalDays after the treatment.
+  // Follow-up reminder (opt-in): schedule after the treatment at the resolved interval (Tier 3 #2).
+  // The interval keys on the product categories of the CONSUMED authorisations (per-treatment
+  // override, else the global preset; shortest across categories; no ticked auth → global).
   const settings = followUpSettingsForUser(withNote.state, input.identity.user.id);
   if (!settings.enabled) return { state: withNote.state, note };
+  const categories = input.tickedIDs
+    .map((id) => state.authorisations[id]?.medication.category)
+    .filter((c): c is ProductCategory => c !== undefined);
+  const intervalDays = followUpIntervalForCategories(settings, categories);
   const followUp: FollowUpTask = {
     id: makeID("fu"),
     ownerID: input.identity.user.id,
     patientID: input.patientID,
     patientName: displayName(patient),
-    dueDateISO: isoDay(now + settings.intervalDays * DAY_MS),
+    dueDateISO: isoDay(now + intervalDays * DAY_MS),
     status: "pending",
     sourceNoteID: note.id,
   };

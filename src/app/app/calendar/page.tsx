@@ -14,7 +14,11 @@ import {
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
   layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, edgeScrollVelocity, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
-import type { Appointment, AppointmentReminderLead, AppointmentStatus, Identity } from "@/lib/demo/types";
+import type { Appointment, AppointmentReminderLead, AppointmentStatus, FollowUpNamedPreset, FollowUpPreset, Identity, ProductCategory } from "@/lib/demo/types";
+import { categoryDisplayName } from "@/lib/demo/catalog";
+
+// Treatment categories offered for a per-treatment follow-up override (Tier 3 #2).
+const FOLLOW_UP_CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
@@ -197,16 +201,55 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
           Remind me to follow up after a treatment
         </label>
         {settings.enabled && (
-          <label className="mt-2 flex items-center gap-2 text-sm text-ink-soft">
-            Interval
-            <input type="number" min={1} max={90} value={settings.intervalDays}
-              onChange={(e) => {
-                const n = Math.min(90, Math.max(1, Number(e.target.value) || 1));
-                store.setFollowUpSettings({ ...settings, intervalDays: n }, me);
-              }}
-              className="w-20 rounded-field border border-line px-2 py-1 text-sm text-ink" />
-            days after treatment
-          </label>
+          <>
+            <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+              Default interval
+              <select value={settings.preset}
+                onChange={(e) => store.setFollowUpSettings({ ...settings, preset: e.target.value as FollowUpPreset }, me)}
+                className="rounded-field border border-line px-2 py-1 text-sm text-ink">
+                <option value="2wk">2 weeks</option>
+                <option value="2mo">2 months</option>
+                <option value="4mo">4 months</option>
+                <option value="6mo">6 months</option>
+                <option value="custom">Custom…</option>
+              </select>
+              after treatment
+            </label>
+            {settings.preset === "custom" && (
+              <label className="mt-2 flex items-center gap-2 text-sm text-ink-soft">
+                Custom
+                <input type="number" min={1} max={90} value={settings.customDays ?? 14}
+                  onChange={(e) => store.setFollowUpSettings({ ...settings, customDays: Math.min(90, Math.max(1, Number(e.target.value) || 1)) }, me)}
+                  className="w-20 rounded-field border border-line px-2 py-1 text-sm text-ink" />
+                days
+              </label>
+            )}
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-ink-soft">Per-treatment interval (optional)</summary>
+              <p className="mt-1 text-xs text-ink-faint">Overrides the default for a treatment type; the earliest applies when a note spans several.</p>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {FOLLOW_UP_CATEGORIES.map((cat) => (
+                  <li key={cat} className="flex items-center justify-between gap-2">
+                    <span className="text-ink">{categoryDisplayName(cat)}</span>
+                    <select value={settings.perTreatment?.[cat] ?? ""}
+                      onChange={(e) => {
+                        const next = { ...(settings.perTreatment ?? {}) };
+                        if (e.target.value === "") delete next[cat];
+                        else next[cat] = e.target.value as FollowUpNamedPreset;
+                        store.setFollowUpSettings({ ...settings, perTreatment: Object.keys(next).length ? next : undefined }, me);
+                      }}
+                      className="rounded-field border border-line px-2 py-1 text-sm text-ink">
+                      <option value="">Use default</option>
+                      <option value="2wk">2 weeks</option>
+                      <option value="2mo">2 months</option>
+                      <option value="4mo">4 months</option>
+                      <option value="6mo">6 months</option>
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </>
         )}
       </div>
 
