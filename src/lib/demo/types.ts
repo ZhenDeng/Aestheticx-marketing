@@ -186,6 +186,10 @@ export interface FollowUpSettings {
   intervalDays: number;
 }
 
+// Per-clinician appointment-reminder lead time: email the patient this many days before the
+// appointment. 0 = no reminder. Deliberately a small enum (None / 1 day / 2 days).
+export type AppointmentReminderLead = 0 | 1 | 2;
+
 export type AppointmentType = "authSlot" | "treatment";
 export type AppointmentStatus =
   | "awaitingConfirmation"
@@ -432,6 +436,7 @@ export interface DemoState {
   noteTemplatesByOwner: Record<string, NoteTemplate[]>;
   followUpTasksByID: Record<string, FollowUpTask>;
   followUpSettingsByUser: Record<string, FollowUpSettings>;
+  appointmentReminderByUser: Record<string, AppointmentReminderLead>;
   bookingTokensByUser: Record<string, string>;
   availabilityWindows: Record<string, AvailabilityWindow>;
   treatmentAvailabilityByOwner: Record<string, TreatmentAvailability>;

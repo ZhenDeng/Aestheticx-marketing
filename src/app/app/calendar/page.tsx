@@ -14,7 +14,7 @@ import {
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
   layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, edgeScrollVelocity, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
-import type { Appointment, AppointmentStatus, Identity } from "@/lib/demo/types";
+import type { Appointment, AppointmentReminderLead, AppointmentStatus, Identity } from "@/lib/demo/types";
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
@@ -132,6 +132,7 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
   const store = useDemoStore();
   const dayAppts = store.appointmentsForOwnerOnDay(ownerID, dateISO);
   const settings = store.followUpSettingsForUser(me.user.id);
+  const reminderLead = store.appointmentReminderForUser(me.user.id);
   const followUps = store.followUpTasksForOwnerOn(me.user.id, dateISO);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [chooser, setChooser] = useState<number | null>(null); // tapped start minute
@@ -207,6 +208,21 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
             days after treatment
           </label>
         )}
+      </div>
+
+      <div className="mt-6 rounded-card border border-line bg-card p-5">
+        <h2 className="font-display text-lg text-ink">Appointment reminders</h2>
+        <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink">
+          Email the patient a reminder
+          <select value={reminderLead}
+            onChange={(e) => store.setAppointmentReminder(Number(e.target.value) as AppointmentReminderLead, me)}
+            className="rounded-field border border-line px-2 py-1 text-sm text-ink">
+            <option value={0}>None</option>
+            <option value={1}>1 day before</option>
+            <option value={2}>2 days before</option>
+          </select>
+          {reminderLead !== 0 && <span className="text-ink-soft">the appointment</span>}
+        </label>
       </div>
     </>
   );

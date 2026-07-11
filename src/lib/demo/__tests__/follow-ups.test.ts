@@ -3,6 +3,7 @@ import {
   emptyState, isoDay, followUpSettingsForUser, setFollowUpSettings,
   followUpTasksForOwnerOn, setFollowUpStatus, BackendError,
   saveTreatmentNote, setFollowUpSettings as setFU,
+  appointmentReminderForUser, setAppointmentReminder,
 } from "@/lib/demo/backend";
 import { encodeFollowUpTask, mapFollowUpTask } from "@/lib/firebase/mappers";
 import type { DemoState, FollowUpTask, Identity, Patient } from "@/lib/demo/types";
@@ -31,6 +32,23 @@ describe("follow-up settings", () => {
     const s = setFollowUpSettings(emptyState(), { enabled: true, intervalDays: 7 }, voss);
     expect(followUpSettingsForUser(s, "u-voss")).toEqual({ enabled: true, intervalDays: 7 });
     expect(followUpSettingsForUser(s, "u-sarah")).toEqual({ enabled: false, intervalDays: 14 });
+  });
+});
+
+describe("appointment reminder settings (Tier 3 #1)", () => {
+  it("defaults to 0 (no reminder)", () => {
+    expect(appointmentReminderForUser(emptyState(), "u-voss")).toBe(0);
+  });
+  it("stores the lead time per user", () => {
+    const s = setAppointmentReminder(emptyState(), 2, voss);
+    expect(appointmentReminderForUser(s, "u-voss")).toBe(2);
+    expect(appointmentReminderForUser(s, "u-sarah")).toBe(0); // untouched user still defaults
+  });
+  it("overwrites a prior lead time (immutably)", () => {
+    const s1 = setAppointmentReminder(emptyState(), 1, voss);
+    const s2 = setAppointmentReminder(s1, 0, voss);
+    expect(appointmentReminderForUser(s2, "u-voss")).toBe(0);
+    expect(appointmentReminderForUser(s1, "u-voss")).toBe(1); // s1 not mutated
   });
 });
 

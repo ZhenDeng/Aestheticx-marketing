@@ -5,7 +5,7 @@ import { assembleState, type HydrationRows } from "@/lib/firebase/hydrate";
 const emptyRows: HydrationRows = {
   patients: [], notesByPatient: {}, authorisations: [], requests: [], appointments: [],
   formsByPatient: {}, invoices: [], scriptPricing: [], noteTemplates: [], followUpTasks: [],
-  followUpSettings: null, bookingToken: null,
+  followUpSettings: null, appointmentReminderLead: null, bookingToken: null,
   doctorStatus: { online: false, alwaysAcceptAuth: false },
   currentUserID: "u-admin",
 };

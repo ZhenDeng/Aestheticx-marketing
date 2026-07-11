@@ -43,6 +43,8 @@ interface StoreValue {
   followUpSettingsForUser: (userID: string) => ReturnType<typeof backend.followUpSettingsForUser>;
   followUpTasksForOwnerOn: (ownerID: string, dateISO: string) => ReturnType<typeof backend.followUpTasksForOwnerOn>;
   setFollowUpSettings: (settings: import("./types").FollowUpSettings, identity: Identity) => void;
+  appointmentReminderForUser: (userID: string) => ReturnType<typeof backend.appointmentReminderForUser>;
+  setAppointmentReminder: (lead: import("./types").AppointmentReminderLead, identity: Identity) => void;
   setFollowUpStatus: (id: string, status: import("./types").FollowUpStatus, identity: Identity) => void;
   bookingTokenForUser: (userID: string) => ReturnType<typeof backend.bookingTokenForUser>;
   pendingBookings: (ownerID: string) => ReturnType<typeof backend.pendingBookings>;
@@ -344,6 +346,12 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(
           (s) => backend.setFollowUpSettings(s, settings, identity),
           (m) => m.mirrorSetFollowUpSettings(identity.user.id, settings),
+        ),
+      appointmentReminderForUser: (userID) => backend.appointmentReminderForUser(state, userID),
+      setAppointmentReminder: (lead, identity) =>
+        applyAndMirror(
+          (s) => backend.setAppointmentReminder(s, lead, identity),
+          (m) => m.mirrorSetAppointmentReminder(identity.user.id, lead),
         ),
       setFollowUpStatus: (id, status, identity) =>
         applyAndMirror(
