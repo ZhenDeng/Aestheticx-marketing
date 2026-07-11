@@ -255,13 +255,17 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorResubmitRequest(input.requestID, input.items),
         ),
       // Amend an untouched pending request in place — items only, status stays pending
-      // (Tier 3 #7). Eager-validate is inside backend.editPendingRequest; the live mirror is an
-      // items-only updateDoc the widened rule permits while the request is still pending.
-      editPendingRequest: (input) =>
+      // (Tier 3 #7). Eager-validate FIRST (like confirmAppointment): if the doctor approved/
+      // returned the request between opening the editor and submitting, backend.editPendingRequest
+      // throws `notPermitted` — doing it before applyAndMirror keeps that throw in the event
+      // handler, not inside the setState updater (a render-phase crash with no error boundary).
+      editPendingRequest: (input) => {
+        backend.editPendingRequest(state, input); // eager validate — throws synchronously if actioned elsewhere
         applyAndMirror(
           (s) => backend.editPendingRequest(s, input),
           (m) => m.mirrorEditPendingRequest(input.requestID, input.items),
-        ),
+        );
+      },
       withdrawRequest: (requestID, id) =>
         applyAndMirror((s) => backend.withdrawRequest(s, requestID, id), (m) => m.mirrorWithdrawRequest(requestID)),
       saveGeneralNote: (input) => {

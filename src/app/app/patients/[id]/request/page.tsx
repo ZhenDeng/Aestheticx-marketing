@@ -398,13 +398,13 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
             {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         )}
-        {editing && <span className="mt-1 block text-xs text-ink-faint">The addressed doctor can’t change on a resubmit.</span>}
+        {editing && <span className="mt-1 block text-xs text-ink-faint">The addressed doctor can’t change while editing.</span>}
       </label>
 
       <div className="mt-6 flex gap-3">
         <button type="button" onClick={submit} disabled={!canSubmit}
           className="rounded-btn px-5 py-2.5 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
-          {editing ? "Resubmit request" : "Submit request"}
+          {editingPending ? "Save changes" : editing ? "Resubmit request" : "Submit request"}
         </button>
         <Link href={`/app/patients/${id}`} className="rounded-btn border border-line px-5 py-2.5 text-sm text-ink-soft">Cancel</Link>
       </div>

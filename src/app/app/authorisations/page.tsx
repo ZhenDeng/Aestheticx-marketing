@@ -99,6 +99,7 @@ function NurseRequests({ identity, store, consult }: { identity: Identity; store
               )}
               {request.status === "pending" && (
                 <Link href={`/app/patients/${patient.id}/request?edit=${request.id}`}
+                  aria-label={`Edit pending request for ${patient.givenName} ${patient.lastName}`}
                   className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint">
                   Edit
                 </Link>

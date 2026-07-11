@@ -61,7 +61,9 @@ describe("Authorisations nurse view — edit & resubmit", () => {
   it("offers a plain Edit link (edit in place) while the request is still pending (Tier 3 #7)", () => {
     mode = "pending";
     render(<AuthorisationsPage />);
-    const link = screen.getByRole("link", { name: "Edit" });
+    // Visible text is "Edit"; the accessible name is contextualised via aria-label.
+    const link = screen.getByRole("link", { name: /Edit pending request/i });
+    expect(link).toHaveTextContent("Edit");
     expect(link).toHaveAttribute("href", "/app/patients/pat-1/request?edit=req-pending");
     // A pending request is edited in place, not resubmitted.
     expect(screen.queryByRole("link", { name: /Edit & resubmit/i })).not.toBeInTheDocument();
