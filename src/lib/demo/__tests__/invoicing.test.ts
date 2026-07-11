@@ -51,7 +51,7 @@ describe("invoicesFor", () => {
   const inv = (over: Partial<Invoice>): Invoice => ({
     id: "i", doctorID: "u-voss", counterpartyID: "clinic-lumiere", counterpartyType: "clinic",
     periodLabel: "June 2026", lines: [], subtotalCents: 2500, gstCents: 250, totalCents: 2750,
-    authorisationIDs: ["a"], createdAt: 1, ...over,
+    authorisationIDs: ["a"], createdAt: 1, paid: false, ...over,
   });
   const doctor: Identity = { user: { id: "u-voss", name: "V" }, role: "doctor", context: { kind: "independent" } };
   const admin: Identity = { user: { id: "u-ava", name: "A" }, role: "clinicAdmin", context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière" } } };

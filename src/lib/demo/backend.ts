@@ -1851,6 +1851,7 @@ export function generateInvoice(
     ...computed,
     authorisationIDs: rows.map((r) => r.id),
     createdAt: now,
+    paid: false,
   };
   const invoicedIDs = new Set(rows.map((r) => r.id));
   const authorisations = { ...state.authorisations };
@@ -1865,4 +1866,21 @@ export function generateInvoice(
     now,
   );
   return { state: audited, invoice };
+}
+
+// The issuing doctor marks an invoice paid once the counterparty settles (Tier 3 #6). Doctor-only
+// (matches issuance), idempotent-friendly (records paidAt/markedBy). Writes a §21 audit entry.
+// Live routes through the markInvoicePaid callable (invoices are Function-only Firestore docs).
+export function markInvoicePaid(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
+  const invoice = state.invoices.find((i) => i.id === invoiceID);
+  if (!invoice) throw new BackendError("notFound");
+  if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
+  const invoices = state.invoices.map((i) =>
+    i.id === invoiceID ? { ...i, paid: true, paidAt: now, markedBy: identity.user.id } : i,
+  );
+  return appendAuditEntry(
+    { ...state, invoices },
+    { actor: identity, action: "invoice_marked_paid", targetType: "invoice", targetID: invoiceID, summary: `marked paid · ${invoice.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}` },
+    now,
+  );
 }
