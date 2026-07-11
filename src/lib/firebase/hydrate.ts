@@ -6,7 +6,7 @@ import {
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
 import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry } from "./mappers";
-import type { DemoState, UserProfile } from "@/lib/demo/types";
+import type { AppointmentReminderLead, DemoState, UserProfile } from "@/lib/demo/types";
 import type { DemoClaims } from "./identity";
 
 export interface Row { id: string; data: Record<string, unknown> }
@@ -22,6 +22,7 @@ export interface HydrationRows {
   noteTemplates: Row[];
   followUpTasks: Row[];
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  appointmentReminderLead: AppointmentReminderLead | null;
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
   lastCalledDoctorId?: string | null;
@@ -79,6 +80,8 @@ export function assembleState(rows: HydrationRows): DemoState {
   for (const r of rows.followUpTasks) followUpTasksByID[r.id] = mapFollowUpTask(r.id, rows.currentUserID, r.data);
   const followUpSettingsByUser: DemoState["followUpSettingsByUser"] = {};
   if (rows.followUpSettings) followUpSettingsByUser[rows.currentUserID] = rows.followUpSettings;
+  const appointmentReminderByUser: DemoState["appointmentReminderByUser"] = {};
+  if (rows.appointmentReminderLead != null) appointmentReminderByUser[rows.currentUserID] = rows.appointmentReminderLead;
   const bookingTokensByUser: DemoState["bookingTokensByUser"] = {};
   if (rows.bookingToken) bookingTokensByUser[rows.currentUserID] = rows.bookingToken;
   const lastCalledDoctorByUser: DemoState["lastCalledDoctorByUser"] = {};
@@ -118,7 +121,7 @@ export function assembleState(rows: HydrationRows): DemoState {
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -202,19 +205,24 @@ async function readExternalBusy(ownerIds: string[]): Promise<Row[]> {
 // schedule everything as overdue or in the past.
 async function readUserProfile(uid: string): Promise<{
   followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  appointmentReminderLead: AppointmentReminderLead | null;
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
   lastCalledDoctorId: string | null;
   profile: UserProfile | null;
 }> {
   const snap = await getDoc(doc(firestore(), "users", uid));
-  if (!snap.exists()) return { followUpSettings: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null, profile: null };
+  if (!snap.exists()) return { followUpSettings: null, appointmentReminderLead: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null, profile: null };
   const d = snap.data();
   const hasFU = d.followUpEnabled !== undefined || d.followUpIntervalDays !== undefined;
   const raw = d.followUpIntervalDays;
   const followUpSettings = hasFU
     ? { enabled: d.followUpEnabled === true, intervalDays: typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14 }
     : null;
+  // Appointment-reminder lead time: coerce a stored value to the {0,1,2} enum (unknown → 0/off).
+  const rawLead = d.appointmentReminderLeadDays;
+  const appointmentReminderLead: AppointmentReminderLead | null =
+    rawLead === 1 ? 1 : rawLead === 2 ? 2 : rawLead === 0 ? 0 : null;
   const bookingToken = typeof d.bookingToken === "string" ? d.bookingToken : null;
   // onlineStatus is a "online"|"offline" string on the backend doc (the setOnlineStatus
   // callable's own schema); the client model is a plain boolean, hence the coercion here.
@@ -228,7 +236,7 @@ async function readUserProfile(uid: string): Promise<{
     ahpra: str(d.ahpra), abn: str(d.abn), phone: str(d.phone), address: str(d.address),
     ...(typeof d.avatarFileId === "string" && d.avatarFileId ? { avatarFileId: d.avatarFileId } : {}),
   };
-  return { followUpSettings, bookingToken, doctorStatus, lastCalledDoctorId, profile };
+  return { followUpSettings, appointmentReminderLead, bookingToken, doctorStatus, lastCalledDoctorId, profile };
 }
 
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
@@ -259,6 +267,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
       followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
       followUpSettings: profile.followUpSettings,
+      appointmentReminderLead: profile.appointmentReminderLead,
       bookingToken: profile.bookingToken,
       doctorStatus: profile.doctorStatus,
       lastCalledDoctorId: profile.lastCalledDoctorId,
@@ -378,6 +387,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
     followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
     followUpSettings: profile.followUpSettings,
+    appointmentReminderLead: profile.appointmentReminderLead,
     bookingToken: profile.bookingToken,
     doctorStatus: profile.doctorStatus,
     lastCalledDoctorId: profile.lastCalledDoctorId,

@@ -4,7 +4,7 @@ import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
 import { encodeAuthRequest, encodeMedication, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate, encodeFollowUpTask } from "./mappers";
-import type { AuthorisationRequest, MedicationItem, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
+import type { AppointmentReminderLead, AuthorisationRequest, MedicationItem, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -191,6 +191,11 @@ export async function mirrorSetFollowUpStatus(uid: string, id: string, status: F
 }
 export async function mirrorSetFollowUpSettings(uid: string, settings: FollowUpSettings): Promise<void> {
   await updateDoc(doc(firestore(), "users", uid), { followUpEnabled: settings.enabled, followUpIntervalDays: settings.intervalDays });
+}
+// Per-clinician appointment-reminder lead time on the user's own profile doc (the scheduled
+// reminder Cloud Function reads it per owner). Rides the existing users/{uid} own-update rule.
+export async function mirrorSetAppointmentReminder(uid: string, lead: AppointmentReminderLead): Promise<void> {
+  await updateDoc(doc(firestore(), "users", uid), { appointmentReminderLeadDays: lead });
 }
 
 // Own-profile edits are direct rules-checked writes on users/{uid} (setDoc merge so a

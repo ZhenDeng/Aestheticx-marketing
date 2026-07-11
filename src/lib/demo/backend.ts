@@ -15,6 +15,7 @@ import type {
   DoctorStatus,
   Identity,
   FollowUpSettings,
+  AppointmentReminderLead,
   FollowUpStatus,
   FollowUpTask,
   MedicationItem,
@@ -70,6 +71,7 @@ export function emptyState(): DemoState {
     noteTemplatesByOwner: {},
     followUpTasksByID: {},
     followUpSettingsByUser: {},
+    appointmentReminderByUser: {},
     bookingTokensByUser: {},
     availabilityWindows: {},
     treatmentAvailabilityByOwner: {},
@@ -681,6 +683,15 @@ export function followUpSettingsForUser(state: DemoState, userID: string): Follo
 
 export function setFollowUpSettings(state: DemoState, settings: FollowUpSettings, identity: Identity): DemoState {
   return { ...state, followUpSettingsByUser: { ...state.followUpSettingsByUser, [identity.user.id]: settings } };
+}
+
+// Per-clinician appointment-reminder lead time (days before; 0 = none). Defaults to 0 (off).
+export function appointmentReminderForUser(state: DemoState, userID: string): AppointmentReminderLead {
+  return state.appointmentReminderByUser[userID] ?? 0;
+}
+
+export function setAppointmentReminder(state: DemoState, lead: AppointmentReminderLead, identity: Identity): DemoState {
+  return { ...state, appointmentReminderByUser: { ...state.appointmentReminderByUser, [identity.user.id]: lead } };
 }
 
 // Pending tasks due on or before dateISO, oldest first (overdue keep showing until actioned).

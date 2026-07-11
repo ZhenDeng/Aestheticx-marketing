@@ -22,6 +22,7 @@ const rows: HydrationRows = {
   noteTemplates: [{ id: "tpl1", data: { ownerId: "u-voss", name: "Std", body: "Body", aftercareCategories: ["antiwrinkle"] } }],
   followUpTasks: [{ id: "fu1", data: { patientId: "p1", patientName: "Pat", dueDateISO: "2026-07-10", status: "pending" } }],
   followUpSettings: { enabled: true, intervalDays: 7 },
+  appointmentReminderLead: null,
   bookingToken: "bk-voss",
   doctorStatus: { online: false, alwaysAcceptAuth: false },
   profile: { ahpra: "MED0001234567", abn: "82 601 443 218", phone: "0412 884 209", address: "14 Acland St, St Kilda VIC", avatarFileId: "users/u-voss/avatar.jpg" },
@@ -77,9 +78,17 @@ describe("assembleState", () => {
   });
 
   it("omits follow-up settings + booking token when the user doc carries neither", () => {
-    const state = assembleState({ ...rows, followUpSettings: null, bookingToken: null });
+    const state = assembleState({ ...rows, followUpSettings: null, appointmentReminderLead: null, bookingToken: null });
     expect(state.followUpSettingsByUser).toEqual({});
     expect(state.bookingTokensByUser).toEqual({});
+    expect(state.appointmentReminderByUser).toEqual({});
+  });
+
+  it("keys the appointment-reminder lead time under the current user (Tier 3 #1)", () => {
+    const state = assembleState({ ...rows, appointmentReminderLead: 2 });
+    expect(state.appointmentReminderByUser).toEqual({ "u-voss": 2 });
+    // 0 (explicitly off) is still recorded, distinct from absent
+    expect(assembleState({ ...rows, appointmentReminderLead: 0 }).appointmentReminderByUser).toEqual({ "u-voss": 0 });
   });
 
   it("keys the users/{uid} profile fields under the current user", () => {
