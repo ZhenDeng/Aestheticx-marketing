@@ -5,6 +5,7 @@ import {
   mapAuthorisation,
   mapEmergencyAuthorisation,
   mapAuditLogEntry,
+  mapProduct,
   mapAuthRequest,
   mapAppointment,
   mapExternalBusy,
@@ -353,5 +354,25 @@ describe("form mappers", () => {
     expect(back.clauses).toEqual(["c1", "off-label"]);
     expect(back.answers[0].questionID).toBe("q");
     expect(back.signatureFileId).toBe("patients/p1/signatures/f1.png");
+  });
+});
+
+describe("mapProduct (Tier 3 #5B)", () => {
+  it("decodes a catalog product doc, keeping the slug id", () => {
+    const p = mapProduct("hafiller-juvederm-voluma", { category: "haFiller", brand: "Juvederm", name: "Voluma", unit: "millilitres", isActive: true });
+    expect(p).toEqual({ id: "hafiller-juvederm-voluma", category: "haFiller", brand: "Juvederm", name: "Voluma", unit: "millilitres", isActive: true });
+  });
+  it("defaults isActive true when absent, brand undefined when blank/missing", () => {
+    const p = mapProduct("neurotoxin-botox", { category: "neurotoxin", name: "Botox", unit: "units" });
+    expect(p.isActive).toBe(true);
+    expect(p.brand).toBeUndefined();
+  });
+  it("respects an explicit isActive:false", () => {
+    expect(mapProduct("x", { category: "other", name: "X", unit: "freeText", isActive: false }).isActive).toBe(false);
+  });
+  it("coerces an unknown category/unit to safe defaults", () => {
+    const p = mapProduct("x", { category: "bogus", name: "X", unit: "bogus" });
+    expect(p.category).toBe("other");
+    expect(p.unit).toBe("freeText");
   });
 });

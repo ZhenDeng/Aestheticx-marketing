@@ -89,6 +89,7 @@ export function emptyState(): DemoState {
     cooperationRelationshipsByID: {},
     relationshipAuditByID: {},
     auditLogByID: {},
+    productsByID: {}, // Tier 3 #5B: live hydrates the catalog; empty → selection falls back to PRODUCT_CATALOG.
   };
 }
 
