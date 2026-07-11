@@ -6,7 +6,8 @@ import {
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
 import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry } from "./mappers";
-import type { AppointmentReminderLead, DemoState, UserProfile } from "@/lib/demo/types";
+import type { AppointmentReminderLead, DemoState, FollowUpSettings, UserProfile } from "@/lib/demo/types";
+import { readFollowUpSettings } from "@/lib/demo/backend";
 import type { DemoClaims } from "./identity";
 
 export interface Row { id: string; data: Record<string, unknown> }
@@ -21,7 +22,7 @@ export interface HydrationRows {
   scriptPricing: Row[];
   noteTemplates: Row[];
   followUpTasks: Row[];
-  followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  followUpSettings: FollowUpSettings | null;
   appointmentReminderLead: AppointmentReminderLead | null;
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
@@ -200,11 +201,10 @@ async function readExternalBusy(ownerIds: string[]): Promise<Row[]> {
 }
 
 // The user's own profile doc carries follow-up settings, their booking token, and their
-// online/always-accept-auth status (one read). intervalDays is clamped to the UI's valid
-// range [1,90] so a corrupt/out-of-range stored value (0, negative, NaN) can't silently
-// schedule everything as overdue or in the past.
+// online/always-accept-auth status (one read). Follow-up settings (preset model + legacy
+// migration + custom-day clamp) are decoded by `readFollowUpSettings` (backend.ts).
 async function readUserProfile(uid: string): Promise<{
-  followUpSettings: { enabled: boolean; intervalDays: number } | null;
+  followUpSettings: FollowUpSettings | null;
   appointmentReminderLead: AppointmentReminderLead | null;
   bookingToken: string | null;
   doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
@@ -214,11 +214,8 @@ async function readUserProfile(uid: string): Promise<{
   const snap = await getDoc(doc(firestore(), "users", uid));
   if (!snap.exists()) return { followUpSettings: null, appointmentReminderLead: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null, profile: null };
   const d = snap.data();
-  const hasFU = d.followUpEnabled !== undefined || d.followUpIntervalDays !== undefined;
-  const raw = d.followUpIntervalDays;
-  const followUpSettings = hasFU
-    ? { enabled: d.followUpEnabled === true, intervalDays: typeof raw === "number" && Number.isFinite(raw) ? Math.min(90, Math.max(1, Math.round(raw))) : 14 }
-    : null;
+  // Follow-up settings: new preset model, migrating a legacy followUpIntervalDays-only doc (Tier 3 #2).
+  const followUpSettings = readFollowUpSettings(d);
   // Appointment-reminder lead time: coerce a stored value to the {0,1,2} enum (unknown → 0/off).
   const rawLead = d.appointmentReminderLeadDays;
   const appointmentReminderLead: AppointmentReminderLead | null =

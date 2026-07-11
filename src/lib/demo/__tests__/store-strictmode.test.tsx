@@ -56,7 +56,7 @@ const HYDRATED: DemoState = {
   ...emptyState(),
   patients: { p1: patient },
   // Opt the doctor into follow-up reminders so saveTreatmentNote also mints a follow-up id.
-  followUpSettingsByUser: { "u-doc": { enabled: true, intervalDays: 14 } },
+  followUpSettingsByUser: { "u-doc": { enabled: true, preset: "2wk", intervalDays: 14 } },
 };
 
 vi.mock("@/lib/firebase/hydrate", () => ({ hydrate: async () => HYDRATED }));
