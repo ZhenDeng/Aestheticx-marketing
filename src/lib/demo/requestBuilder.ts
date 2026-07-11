@@ -1,6 +1,6 @@
 // Request-builder helpers ported from iOS AXFeatures/AuthorisationRequestBuilder.swift
 // + AXDomain/PrescribingProducts.swift (RecentlyUsedProducts).
-import { productById, type CatalogProduct } from "./catalog";
+import { productById, PRODUCT_CATALOG, type CatalogProduct } from "./catalog";
 
 // iOS RecentlyUsedProducts default capacity (PrescribingProducts.swift:189).
 export const RECENTLY_USED_CAPACITY = 8;
@@ -21,10 +21,12 @@ export function recordRecentlyUsed(
 
 // Port of RecentlyUsedProducts.resolve(in:): ids → catalog products,
 // preserving recency order and dropping ids no longer in the catalog.
-export function resolveRecentlyUsed(ids: string[]): CatalogProduct[] {
+// Recently-used resolves to ACTIVE products only (iOS `resolve(in:)` parity) — a product that has
+// since been deactivated drops off the recently-used row rather than being offered again.
+export function resolveRecentlyUsed(ids: string[], catalog: CatalogProduct[] = PRODUCT_CATALOG): CatalogProduct[] {
   return ids
-    .map((id) => productById(id))
-    .filter((p): p is CatalogProduct => p !== undefined);
+    .map((id) => productById(id, catalog))
+    .filter((p): p is CatalogProduct => p !== undefined && p.isActive);
 }
 
 // Port of RecentlyUsedStore.load — tolerant of missing/corrupt storage, and

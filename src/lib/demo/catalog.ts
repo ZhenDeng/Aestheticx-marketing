@@ -8,6 +8,9 @@ export interface CatalogProduct {
   brand?: string;
   name: string;
   unit: ProductUnit;
+  // Inactive products stay in the catalog data but are hidden from selection/search (iOS parity;
+  // spec prescribing-products "Inactive products hidden from selection"). All seed products active.
+  isActive: boolean;
 }
 
 // slug: [category, brand?, name] joined "-", lowercased, " "→"-", "."→"", "/"→"-"
@@ -22,7 +25,7 @@ function makeId(category: ProductCategory, brand: string | undefined, name: stri
 }
 
 function product(category: ProductCategory, brand: string | undefined, name: string, unit: ProductUnit): CatalogProduct {
-  return { id: makeId(category, brand, name), category, brand, name, unit };
+  return { id: makeId(category, brand, name), category, brand, name, unit, isActive: true };
 }
 
 const NEUROTOXINS = ["Botox", "Dysport", "Xeomin", "Nuceiva", "Letybo", "Relfydess", "Daxxify"]
@@ -71,33 +74,37 @@ export function categoryDisplayName(category: ProductCategory): string {
   }
 }
 
-export function productsInCategory(category: ProductCategory): CatalogProduct[] {
-  return PRODUCT_CATALOG.filter((p) => p.category === category);
+// Selection reads return ACTIVE products only (iOS `activeProducts` parity). `catalog` is
+// injectable for tests / a future hydrated catalog; it defaults to the static seed.
+export function productsInCategory(category: ProductCategory, catalog: CatalogProduct[] = PRODUCT_CATALOG): CatalogProduct[] {
+  return catalog.filter((p) => p.category === category && p.isActive);
 }
 
-export function brandsInCategory(category: ProductCategory): string[] {
+export function brandsInCategory(category: ProductCategory, catalog: CatalogProduct[] = PRODUCT_CATALOG): string[] {
   const seen = new Set<string>();
   const ordered: string[] = [];
-  for (const p of productsInCategory(category)) {
+  for (const p of productsInCategory(category, catalog)) {
     if (p.brand && !seen.has(p.brand)) { seen.add(p.brand); ordered.push(p.brand); }
   }
   return ordered;
 }
 
-export function productsInBrand(category: ProductCategory, brand: string): CatalogProduct[] {
-  return productsInCategory(category).filter((p) => p.brand === brand);
+export function productsInBrand(category: ProductCategory, brand: string, catalog: CatalogProduct[] = PRODUCT_CATALOG): CatalogProduct[] {
+  return productsInCategory(category, catalog).filter((p) => p.brand === brand);
 }
 
-export function searchProducts(query: string): CatalogProduct[] {
+export function searchProducts(query: string, catalog: CatalogProduct[] = PRODUCT_CATALOG): CatalogProduct[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
-  return PRODUCT_CATALOG.filter(
-    (p) => p.name.toLowerCase().includes(needle) || (p.brand?.toLowerCase().includes(needle) ?? false),
+  return catalog.filter(
+    (p) => p.isActive && (p.name.toLowerCase().includes(needle) || (p.brand?.toLowerCase().includes(needle) ?? false)),
   );
 }
 
-export function productById(id: string): CatalogProduct | undefined {
-  return PRODUCT_CATALOG.find((p) => p.id === id);
+// Raw by-id lookup — NOT active-filtered, so an existing reference (e.g. a recently-used id or a
+// prior request line) can still be resolved. Callers that build the selection list filter active.
+export function productById(id: string, catalog: CatalogProduct[] = PRODUCT_CATALOG): CatalogProduct | undefined {
+  return catalog.find((p) => p.id === id);
 }
 
 export function productLabel(p: CatalogProduct): string {
