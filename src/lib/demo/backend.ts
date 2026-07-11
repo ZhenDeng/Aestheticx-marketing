@@ -519,6 +519,32 @@ export function resubmitRequest(state: DemoState, input: ResubmitRequestInput): 
   };
 }
 
+// The nurse amends their OWN request while it is still pending — before the doctor acts (Tier 3
+// #7). Only the raising nurse, only while `pending`, items-only, and the status STAYS `pending`
+// (unlike resubmit, which re-opens a needsEdit request). No syncReviewerAccess: the request never
+// left the open set, so reviewer file access is unchanged. The `pending` guard is also the race
+// guard — the moment the doctor approves/returns, status != pending and this throws; the live
+// Firestore rule enforces the same at write time (rejects a stale pending-edit). Shares the
+// ResubmitRequestInput shape (requestID/items/identity).
+export function editPendingRequest(state: DemoState, input: ResubmitRequestInput): DemoState {
+  const request = state.requests[input.requestID];
+  if (!request) throw new BackendError("notFound");
+  if (
+    input.identity.role !== "nurse" ||
+    request.nurse.id !== input.identity.user.id ||
+    request.status !== "pending"
+  ) {
+    throw new BackendError("notPermitted");
+  }
+  return {
+    ...state,
+    requests: {
+      ...state.requests,
+      [input.requestID]: { ...request, items: input.items },
+    },
+  };
+}
+
 // The nurse who raised a request (or a clinic admin over the request's clinic) withdraws it
 // while it is still open (pending/needsEdit), moving it to the terminal `withdrawn` status
 // (spec 2026-07-07 revocation hardening). Because `withdrawn` leaves the open set,

@@ -78,6 +78,16 @@ export async function mirrorResubmitRequest(requestId: string, items: Medication
   });
 }
 
+// The nurse edits their own still-pending request in place (Tier 3 #7): a direct client update
+// the rules allow for the raising nurse — items ONLY, status untouched (stays pending). If the
+// doctor has approved/returned in the meantime the request is no longer pending and the rule
+// rejects this write (the "actioned elsewhere" guard), surfaced as the lastSyncError banner.
+export async function mirrorEditPendingRequest(requestId: string, items: MedicationItem[]): Promise<void> {
+  await updateDoc(doc(firestore(), "authRequests", requestId), {
+    items: items.map(encodeMedication),
+  });
+}
+
 // Withdraw is a direct client update the rules allow for the raising nurse or a clinic admin:
 // flip status pending/needsEdit → withdrawn (status only), and nothing else. The
 // onAuthRequestWritten trigger then removes the reviewing doctor from openReviewerDoctorIds,
