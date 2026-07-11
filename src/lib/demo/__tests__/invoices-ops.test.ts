@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emptyState, submitRequest, approveRequest, setScriptPrice, generateInvoice, billableAuthorisations } from "@/lib/demo/backend";
+import { emptyState, submitRequest, approveRequest, setScriptPrice, generateInvoice, markInvoicePaid, billableAuthorisations } from "@/lib/demo/backend";
 import type { DemoState, Identity, Patient } from "@/lib/demo/types";
 
 const NOW = Date.UTC(2026, 5, 26);
@@ -50,6 +50,7 @@ describe("generateInvoice", () => {
     }, voss, NOW);
     expect(invoice.totalCents).toBe(2750); // $25 + 10% GST
     expect(state.invoices).toHaveLength(1);
+    expect(state.invoices[0].paid).toBe(false); // starts unpaid (Tier 3 #6)
     expect(state.authorisations[authID].invoiced).toBe(true);
     expect(billableAuthorisations(state, "u-voss")).toHaveLength(0); // dropped from billable
   });
@@ -62,5 +63,53 @@ describe("generateInvoice", () => {
   });
   it("throws when nothing is selectable", () => {
     expect(() => generateInvoice(approved(), { doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse", periodLabel: "x", authIDs: ["nope"] }, voss, NOW)).toThrow();
+  });
+});
+
+describe("markInvoicePaid (Tier 3 #6)", () => {
+  function withInvoice(): { state: DemoState; invoiceID: string } {
+    const s0 = approved();
+    const authID = billableAuthorisations(s0, "u-voss")[0].id;
+    const { state, invoice } = generateInvoice(s0, {
+      doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse", periodLabel: "June 2026", authIDs: [authID],
+    }, voss, NOW);
+    return { state, invoiceID: invoice.id };
+  }
+
+  it("marks the invoice paid, recording when and who", () => {
+    const { state, invoiceID } = withInvoice();
+    const paidAtNow = NOW + 5000;
+    const next = markInvoicePaid(state, invoiceID, voss, paidAtNow);
+    const inv = next.invoices.find((i) => i.id === invoiceID)!;
+    expect(inv.paid).toBe(true);
+    expect(inv.paidAt).toBe(paidAtNow);
+    expect(inv.markedBy).toBe("u-voss");
+    // writes a §21 audit entry
+    expect(Object.values(next.auditLogByID).some((e) => e.action === "invoice_marked_paid" && e.targetID === invoiceID)).toBe(true);
+  });
+
+  it("refuses a non-doctor (only the issuing doctor may mark paid)", () => {
+    const { state, invoiceID } = withInvoice();
+    expect(() => markInvoicePaid(state, invoiceID, sarah, NOW)).toThrow();
+  });
+
+  it("refuses a different doctor", () => {
+    const { state, invoiceID } = withInvoice();
+    const other: Identity = { ...voss, user: { id: "u-okafor", name: "Dr Okafor" } };
+    expect(() => markInvoicePaid(state, invoiceID, other, NOW)).toThrow();
+  });
+
+  it("throws for an unknown invoice", () => {
+    expect(() => markInvoicePaid(emptyState(), "nope", voss, NOW)).toThrow();
+  });
+
+  it("is idempotent — re-marking an already-paid invoice is a no-op (no overwrite, no duplicate audit)", () => {
+    const { state, invoiceID } = withInvoice();
+    const once = markInvoicePaid(state, invoiceID, voss, NOW + 1000);
+    const twice = markInvoicePaid(once, invoiceID, voss, NOW + 9999);
+    expect(twice).toBe(once); // same reference — untouched
+    const inv = twice.invoices.find((i) => i.id === invoiceID)!;
+    expect(inv.paidAt).toBe(NOW + 1000); // NOT overwritten by the second call
+    expect(Object.values(twice.auditLogByID).filter((e) => e.action === "invoice_marked_paid" && e.targetID === invoiceID)).toHaveLength(1);
   });
 });

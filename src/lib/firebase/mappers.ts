@@ -196,7 +196,7 @@ export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEn
 // union + the backend `auditLog` writer. Used to filter an unknown wire value to a safe member.
 const AUDIT_ACTIONS: readonly AuditAction[] = [
   "request_created", "request_resubmitted", "request_withdrawn", "request_edit_requested",
-  "request_approved", "invoice_generated", "user_created", "user_deleted", "admin_patient_access",
+  "request_approved", "invoice_generated", "invoice_marked_paid", "user_created", "user_deleted", "admin_patient_access",
 ];
 
 // auditLog/{id} (superAdmin-read only) written by the backend. Tolerant of missing fields;
@@ -439,6 +439,9 @@ export function mapInvoice(id: string, data: Doc): Invoice {
     authorisationIDs: strArray(data.authorisationIds),
     pdfFileId: typeof data.pdfFileId === "string" ? data.pdfFileId : undefined,
     createdAt: toMillis(data.createdAt),
+    paid: data.paid === true,
+    paidAt: data.paidAt != null ? toMillis(data.paidAt) : undefined,
+    markedBy: typeof data.markedBy === "string" ? data.markedBy : undefined,
   };
 }
 

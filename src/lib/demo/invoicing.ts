@@ -22,6 +22,11 @@ export interface Invoice {
   authorisationIDs: string[];
   pdfFileId?: string;
   createdAt: number;
+  // Payment status (Tier 3 #6). paid defaults false at issue; the doctor marks it paid when the
+  // counterparty settles, recording when + who.
+  paid: boolean;
+  paidAt?: number;
+  markedBy?: string;
 }
 
 export function computeInvoice(input: {

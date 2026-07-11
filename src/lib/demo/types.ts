@@ -384,6 +384,7 @@ export type AuditAction =
   | "request_edit_requested"
   | "request_approved"
   | "invoice_generated"
+  | "invoice_marked_paid"
   | "user_created"
   | "user_deleted"
   | "admin_patient_access";

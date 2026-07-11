@@ -109,6 +109,7 @@ interface StoreValue {
   billableAuthorisations: (doctorID: string) => ReturnType<typeof backend.billableAuthorisations>;
   setScriptPrice: (counterpartyID: string, priceCents: number, identity: Identity) => void;
   generateInvoice: (input: import("./backend").GenerateInvoiceInput, identity: Identity) => void;
+  markInvoicePaid: (invoiceID: string, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
@@ -228,6 +229,18 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           try {
             const m = await import("@/lib/firebase/invoices");
             await m.generateInvoice({ counterpartyID: input.counterpartyID, counterpartyType: input.counterpartyType, periodLabel: input.periodLabel, authorisationIDs: input.authIDs });
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      // Mark an invoice paid (Tier 3 #6). Same demo-reducer / live-callable split as generateInvoice —
+      // invoices are Function-only Firestore docs, so live routes through the markInvoicePaid callable.
+      markInvoicePaid: (invoiceID, id) => {
+        if (!live) { setState((s) => backend.markInvoicePaid(s, invoiceID, id, now)); return; }
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/invoices");
+            await m.markInvoicePaid(invoiceID);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(String(e)); }
         })();

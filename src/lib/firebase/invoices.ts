@@ -24,6 +24,10 @@ export async function generateInvoice(args: GenerateInvoiceArgs): Promise<string
   return (res.data as { invoiceId?: string }).invoiceId ?? "";
 }
 
+export async function markInvoicePaid(invoiceID: string): Promise<void> {
+  await httpsCallable(functions(), "markInvoicePaid")({ invoiceId: invoiceID });
+}
+
 export async function invoicePdfUrl(path: string): Promise<string> {
   const res = await httpsCallable(functions(), "mintDownloadUrl")({ path });
   const url = (res.data as { url?: string }).url;
