@@ -18,6 +18,7 @@ import type {
   FollowUpPreset,
   FollowUpNamedPreset,
   ProductCategory,
+  ProductUnit,
   AppointmentReminderLead,
   FollowUpStatus,
   FollowUpTask,
@@ -50,7 +51,7 @@ import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
-import { PRODUCT_CATEGORIES } from "./catalog";
+import { PRODUCT_CATEGORIES, productSlug, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyKindsFor } from "./emergency";
@@ -1816,6 +1817,43 @@ export function removeCooperationRelationship(state: DemoState, id: string, acto
     cooperationRelationshipsByID: { ...state.cooperationRelationshipsByID, [id]: rel },
     relationshipAuditByID: { ...state.relationshipAuditByID, [audit.id]: audit },
   };
+}
+
+// --- Admin-editable prescribing catalog (Tier 3 #5B) ---
+
+// All catalog products (active + inactive) for the admin editor, ordered by category → brand → name.
+export function catalogProductsList(state: DemoState): CatalogProduct[] {
+  return Object.values(state.productsByID).sort((a, b) =>
+    a.category.localeCompare(b.category) || (a.brand ?? "").localeCompare(b.brand ?? "") || a.name.localeCompare(b.name));
+}
+
+export interface SetProductInput {
+  id?: string;              // present = edit an existing product (id kept stable); absent = create.
+  category: ProductCategory;
+  brand?: string;
+  name: string;
+  unit: ProductUnit;
+  isActive?: boolean;
+}
+
+// superAdmin upsert of a catalog product. Mirrors the backend setProduct: slug id on create, the
+// caller's id kept on edit, isActive defaults true. (Audit is live-only via the callable.)
+export function setProduct(state: DemoState, input: SetProductInput, actor: Identity): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  const name = input.name.trim();
+  if (!name) throw new BackendError("validationFailed");
+  const brand = input.brand && input.brand.trim() ? input.brand.trim() : undefined;
+  const id = input.id && input.id.trim() ? input.id.trim() : productSlug(input.category, brand, name);
+  const product: CatalogProduct = { id, category: input.category, brand, name, unit: input.unit, isActive: input.isActive !== false };
+  return { ...state, productsByID: { ...state.productsByID, [id]: product } };
+}
+
+// superAdmin toggle of a product's active status (soft-deactivate / reactivate).
+export function setProductActive(state: DemoState, id: string, isActive: boolean, actor: Identity): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  const prior = state.productsByID[id];
+  if (!prior) throw new BackendError("notFound");
+  return { ...state, productsByID: { ...state.productsByID, [id]: { ...prior, isActive } } };
 }
 
 // --- Platform audit log (constitution §21) ---

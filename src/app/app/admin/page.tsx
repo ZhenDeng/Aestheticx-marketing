@@ -42,9 +42,10 @@ export default function AdminHomePage() {
 
       <AdminConsole live={mode === "live"} />
 
-      {/* Admin modules the constitution lists under Platform Admin but that aren't built yet. */}
+      {/* Admin modules the constitution lists under Platform Admin but that aren't built yet.
+          (The product catalog is now editable in the console above — Tier 3 #5B.) */}
       <div className="mt-8 rounded-card border border-dashed border-line px-5 py-4">
-        <p className="text-sm font-medium text-ink-soft">Product library · Business entities</p>
+        <p className="text-sm font-medium text-ink-soft">Business entities</p>
         <p className="mt-0.5 text-sm text-ink-soft">Managed through AestheticX operations for now — in-app admin editing is coming.</p>
       </div>
     </div>

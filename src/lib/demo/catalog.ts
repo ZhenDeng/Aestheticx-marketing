@@ -13,8 +13,9 @@ export interface CatalogProduct {
   isActive: boolean;
 }
 
-// slug: [category, brand?, name] joined "-", lowercased, " "→"-", "."→"", "/"→"-"
-function makeId(category: ProductCategory, brand: string | undefined, name: string): string {
+// slug: [category, brand?, name] joined "-", lowercased, " "→"-", "."→"", "/"→"-". Exported for the
+// demo admin editor so a demo-created product gets the SAME slug id the backend `productDocId` would.
+export function productSlug(category: ProductCategory, brand: string | undefined, name: string): string {
   return [category as string, brand, name]
     .filter((part): part is string => typeof part === "string" && part.length > 0)
     .join("-")
@@ -25,7 +26,7 @@ function makeId(category: ProductCategory, brand: string | undefined, name: stri
 }
 
 function product(category: ProductCategory, brand: string | undefined, name: string, unit: ProductUnit): CatalogProduct {
-  return { id: makeId(category, brand, name), category, brand, name, unit, isActive: true };
+  return { id: productSlug(category, brand, name), category, brand, name, unit, isActive: true };
 }
 
 const NEUROTOXINS = ["Botox", "Dysport", "Xeomin", "Nuceiva", "Letybo", "Relfydess", "Daxxify"]
