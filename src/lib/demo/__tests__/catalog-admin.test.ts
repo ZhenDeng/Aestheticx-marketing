@@ -24,9 +24,11 @@ describe("setProduct (demo, Tier 3 #5B)", () => {
     expect(p.brand).toBeUndefined();
     expect(p.name).toBe("Botox");
   });
-  it("refuses a non-superAdmin and a blank name", () => {
+  it("refuses a non-superAdmin, a blank name, and an over-long name/brand (backend cap parity)", () => {
     expect(() => setProduct(emptyState(), { category: "other", name: "X", unit: "freeText" }, nurse)).toThrow(BackendError);
     expect(() => setProduct(emptyState(), { category: "other", name: "  ", unit: "freeText" }, admin)).toThrow(BackendError);
+    expect(() => setProduct(emptyState(), { category: "other", name: "x".repeat(121), unit: "freeText" }, admin)).toThrow(BackendError);
+    expect(() => setProduct(emptyState(), { category: "haFiller", brand: "b".repeat(121), name: "V", unit: "millilitres" }, admin)).toThrow(BackendError);
   });
 });
 

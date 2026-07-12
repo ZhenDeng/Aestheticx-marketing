@@ -486,6 +486,8 @@ function AddProductForm({ identity, onDone, onCancel }: { identity: Identity; on
   function submit() {
     setError(null);
     if (!name.trim()) { setError("Name is required"); return; }
+    if (name.trim().length > 120) { setError("Name is too long (max 120)"); return; }
+    if (brand.trim().length > 120) { setError("Brand is too long (max 120)"); return; }
     try {
       store.setProduct({ category, brand: brand.trim() || undefined, name: name.trim(), unit }, identity);
       onDone();

@@ -1827,6 +1827,9 @@ export function catalogProductsList(state: DemoState): CatalogProduct[] {
     a.category.localeCompare(b.category) || (a.brand ?? "").localeCompare(b.brand ?? "") || a.name.localeCompare(b.name));
 }
 
+// Name/brand length cap, mirroring the backend `MAX_PRODUCT_TEXT` (domain.ts) for demo/live parity.
+export const MAX_PRODUCT_TEXT = 120;
+
 export interface SetProductInput {
   id?: string;              // present = edit an existing product (id kept stable); absent = create.
   category: ProductCategory;
@@ -1842,7 +1845,9 @@ export function setProduct(state: DemoState, input: SetProductInput, actor: Iden
   if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
   const name = input.name.trim();
   if (!name) throw new BackendError("validationFailed");
+  if (name.length > MAX_PRODUCT_TEXT) throw new BackendError("validationFailed"); // parity with backend cap
   const brand = input.brand && input.brand.trim() ? input.brand.trim() : undefined;
+  if (brand && brand.length > MAX_PRODUCT_TEXT) throw new BackendError("validationFailed");
   const id = input.id && input.id.trim() ? input.id.trim() : productSlug(input.category, brand, name);
   const product: CatalogProduct = { id, category: input.category, brand, name, unit: input.unit, isActive: input.isActive !== false };
   return { ...state, productsByID: { ...state.productsByID, [id]: product } };
