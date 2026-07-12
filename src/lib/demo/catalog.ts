@@ -63,6 +63,16 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   ...NEUROTOXINS, ...HA_FILLERS, ...SKIN_BOOSTERS, ...COLLAGEN_STIMULATORS, ...PRP_PRF,
 ];
 
+// The catalog the app should actually use (Tier 3 #5B): the hydrated / admin-edited products when the
+// store holds any, else the built-in static list. The fallback keeps selection working before the
+// Firestore `products` collection is seeded (live, deploy-order-safe) and in demo, where productsByID
+// is currently empty (the upcoming admin-editor slice will seed it). Pass the result as the `catalog`
+// arg to productsInCategory/searchProducts/etc.
+export function effectiveCatalog(productsByID: Record<string, CatalogProduct>): CatalogProduct[] {
+  const hydrated = Object.values(productsByID);
+  return hydrated.length > 0 ? hydrated : PRODUCT_CATALOG;
+}
+
 // The six product categories, in display order — the single source for iterating categories
 // (per-treatment follow-up overrides, etc.) so a future category change is made in one place.
 export const PRODUCT_CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];

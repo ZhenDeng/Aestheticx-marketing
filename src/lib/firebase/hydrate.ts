@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct } from "./mappers";
 import type { AppointmentReminderLead, DemoState, FollowUpSettings, UserProfile } from "@/lib/demo/types";
 import { readFollowUpSettings } from "@/lib/demo/backend";
 import type { DemoClaims } from "./identity";
@@ -39,6 +39,8 @@ export interface HydrationRows {
   relationshipAudit?: Row[];
   /** auditLog rows — super-admin hydration only (rules gate the read to that role). */
   auditLog?: Row[];
+  /** products rows — the admin-editable catalog (Tier 3 #5B), readable by any signed-in user. */
+  products?: Row[];
   currentUserID: string;
 }
 
@@ -119,10 +121,15 @@ export function assembleState(rows: HydrationRows): DemoState {
   const auditLogByID: DemoState["auditLogByID"] = {};
   for (const r of rows.auditLog ?? []) auditLogByID[r.id] = mapAuditLogEntry(r.id, r.data);
 
+  // Admin-editable catalog (Tier 3 #5B): decode the hydrated products. Empty (no rows, or the
+  // read failed) leaves selection to fall back to the static list via effectiveCatalog.
+  const productsByID: DemoState["productsByID"] = {};
+  for (const r of rows.products ?? []) productsByID[r.id] = mapProduct(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -280,6 +287,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       // Platform audit log (§21): superAdmin-read only. Deploy-order-safe via runQuerySafe —
       // a not-yet-deployed read rule degrades to "none" instead of failing the whole hydrate.
       auditLog: await runQuerySafe("auditLog"),
+      products: await runQuerySafe("products"),
       currentUserID: uid,
     });
   }
@@ -392,6 +400,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
     externalBusy: await readExternalBusy([uid, ...clinicIds]),
+    products: await runQuerySafe("products"),
     currentUserID: uid,
   });
 }

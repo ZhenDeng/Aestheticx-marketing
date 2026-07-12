@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   PRODUCT_CATALOG, productsInCategory, brandsInCategory, productsInBrand,
   searchProducts, productById, productLabel, treatmentAreasFor, quantityCaption,
-  type CatalogProduct,
+  effectiveCatalog, type CatalogProduct,
 } from "@/lib/demo/catalog";
 import { resolveRecentlyUsed } from "@/lib/demo/requestBuilder";
 
@@ -98,5 +98,22 @@ describe("active status (Tier 3 #5A — inactive hidden from selection, iOS pari
   });
   it("productById still resolves an inactive product (raw ref lookup)", () => {
     expect(productById("inactive-1", TEST_CATALOG)?.name).toBe("Volbella");
+  });
+});
+
+describe("effectiveCatalog (Tier 3 #5B fallback)", () => {
+  it("falls back to the built-in list when the store holds no products", () => {
+    expect(effectiveCatalog({})).toBe(PRODUCT_CATALOG);
+  });
+  it("uses the hydrated/edited products when the store holds any", () => {
+    const hydrated = { "active-1": cat({ id: "active-1", name: "Voluma" }) };
+    const result = effectiveCatalog(hydrated);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("Voluma");
+    expect(result).not.toBe(PRODUCT_CATALOG);
+  });
+  it("threads into a selection read (a store with one inactive product yields no active selection)", () => {
+    const hydrated = { x: cat({ id: "x", category: "neurotoxin", brand: undefined, name: "Botox", unit: "units", isActive: false }) };
+    expect(productsInCategory("neurotoxin", effectiveCatalog(hydrated))).toHaveLength(0);
   });
 });

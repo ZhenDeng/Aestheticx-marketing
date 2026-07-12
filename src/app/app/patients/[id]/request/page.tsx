@@ -10,7 +10,7 @@ import { doctorRequestStats, rankDoctors, mostRecentlyRequestedDoctor } from "@/
 import type { MedicationItem, ProductCategory } from "@/lib/demo/types";
 import {
   categoryDisplayName, productsInCategory, brandsInCategory, productsInBrand,
-  searchProducts, productLabel, treatmentAreasFor, quantityCaption, unitSuffix, type CatalogProduct,
+  searchProducts, productLabel, treatmentAreasFor, quantityCaption, unitSuffix, effectiveCatalog, type CatalogProduct,
 } from "@/lib/demo/catalog";
 import {
   loadRecentlyUsed, recordRecentlyUsedProduct, resolveRecentlyUsed,
@@ -246,9 +246,11 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     ?? patient.prescribingDoctorIDs.find((d) => doctors.some((x) => x.id === d))
     ?? doctors[0]?.id ?? "";
   const chosenDoctor = doctorId || defaultDoctor;
-  const brands = brandsInCategory(category);
-  const results = query.trim() ? searchProducts(query) : [];
-  const recent = resolveRecentlyUsed(recentIds);
+  // Tier 3 #5B: selection reads the hydrated/admin-edited catalog when present, else the built-in list.
+  const catalog = effectiveCatalog(store.state.productsByID);
+  const brands = brandsInCategory(category, catalog);
+  const results = query.trim() ? searchProducts(query, catalog) : [];
+  const recent = resolveRecentlyUsed(recentIds, catalog);
 
   function addProduct(p: CatalogProduct) {
     // iOS records at pick time (ProductPickerView.pick), not on submit.
@@ -352,7 +354,7 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
                   <button type="button" onClick={() => setBrand(null)} className="mb-2 text-sm text-ink-soft hover:text-ink">← All brands</button>
                 )}
                 <ul className="flex flex-col gap-1.5">
-                  {(brand !== null ? productsInBrand(category, brand) : productsInCategory(category)).map((p) => (
+                  {(brand !== null ? productsInBrand(category, brand, catalog) : productsInCategory(category, catalog)).map((p) => (
                     <li key={p.id}>
                       <button type="button" onClick={() => addProduct(p)} className="w-full rounded-inner border border-line bg-card px-3 py-2 text-left text-sm text-ink hover:border-tint">{productLabel(p)}</button>
                     </li>

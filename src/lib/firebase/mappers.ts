@@ -13,6 +13,7 @@ import type {
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
 import type { Invoice, InvoiceLine } from "@/lib/demo/invoicing";
+import type { CatalogProduct } from "@/lib/demo/catalog";
 
 type Doc = Record<string, unknown>;
 
@@ -177,6 +178,18 @@ export function mapCooperationRelationship(id: string, data: Doc): CooperationRe
     createdAt: toMillis(data.createdAt),
     updatedAt: toMillis(data.updatedAt),
   };
+}
+
+// Catalog product (Tier 3 #5B) written by the setProduct / backfillProducts Cloud Functions.
+// The doc id is the product slug. category/unit are coerced to their unions (backend enum-validates
+// on write; an unknown value degrades safely); isActive defaults true when absent.
+const PRODUCT_CATEGORY_SET: readonly string[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf", "other"];
+const PRODUCT_UNIT_SET: readonly string[] = ["units", "millilitres", "vial", "syringe", "tube", "freeText"];
+export function mapProduct(id: string, data: Doc): CatalogProduct {
+  const category = (PRODUCT_CATEGORY_SET.includes(str(data.category)) ? str(data.category) : "other") as ProductCategory;
+  const unit = (PRODUCT_UNIT_SET.includes(str(data.unit)) ? str(data.unit) : "freeText") as ProductUnit;
+  const brand = typeof data.brand === "string" && data.brand.length > 0 ? data.brand : undefined;
+  return { id, category, brand, name: str(data.name), unit, isActive: data.isActive !== false };
 }
 
 export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEntry {
