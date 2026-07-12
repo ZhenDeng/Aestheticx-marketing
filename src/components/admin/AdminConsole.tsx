@@ -637,14 +637,25 @@ function BusinessEntityForm({ identity, entity, onDone, onCancel }: { identity: 
 
   function submit() {
     setError(null);
-    if (!isEdit && !id.trim()) { setError("Owner id is required"); return; }
+    const entityId = entity?.id ?? id.trim();
+    if (!isEdit) {
+      // The owner id is free-text on add (unlike the auto-slugged product form), so guard it
+      // client-side to give a clear message instead of a raw backend "validationFailed".
+      if (!entityId) { setError("Owner id is required"); return; }
+      if (entityId.includes("/") || entityId.includes(".")) { setError("Owner id can't contain '/' or '.'"); return; }
+      // Add is an upsert — warn before silently clobbering an existing (likely backfilled) entity.
+      if (store.businessEntities().some((e) => e.id === entityId)) {
+        setError("An entity for this id already exists — use its Edit button instead"); return;
+      }
+    }
     if (!legalName.trim()) { setError("Legal name is required"); return; }
     if (legalName.trim().length > 160) { setError("Legal name is too long (max 160)"); return; }
+    if (tradingName.trim().length > 160) { setError("Trading name is too long (max 160)"); return; }
     const abnDigits = abn.replace(/\s+/g, "");
     if (abnDigits.length > 0 && !/^\d{11}$/.test(abnDigits)) { setError("ABN must be 11 digits"); return; }
     try {
       store.setBusinessEntity({
-        id: entity?.id ?? id.trim(), type, legalName: legalName.trim(),
+        id: entityId, type, legalName: legalName.trim(),
         tradingName: tradingName.trim() || undefined, abn: abnDigits || undefined,
         isActive: entity?.isActive ?? true,
       }, identity);
