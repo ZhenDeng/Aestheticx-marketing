@@ -45,6 +45,8 @@ import type {
   RelationshipAction,
   AuditLogEntry,
   AuditAction,
+  BusinessEntity,
+  BusinessEntityType,
 } from "./types";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
@@ -91,6 +93,7 @@ export function emptyState(): DemoState {
     relationshipAuditByID: {},
     auditLogByID: {},
     productsByID: {}, // Tier 3 #5B: live hydrates the catalog; empty → selection falls back to PRODUCT_CATALOG.
+    businessEntitiesByID: {}, // Tier 3 #4: live hydrates entities; empty → invoice snapshots / legacy fallback cover display.
   };
 }
 
@@ -1859,6 +1862,55 @@ export function setProductActive(state: DemoState, id: string, isActive: boolean
   const prior = state.productsByID[id];
   if (!prior) throw new BackendError("notFound");
   return { ...state, productsByID: { ...state.productsByID, [id]: { ...prior, isActive } } };
+}
+
+// --- First-class Business Entities (Tier 3 #4): superAdmin editor reducers, mirroring the backend
+// businessEntities.ts callables. Demo-writable; live mirrors to the setBusinessEntity/deactivate
+// callables. Length cap + ABN format mirror the backend for demo/live parity.
+export const MAX_ENTITY_TEXT = 160;
+const BUSINESS_ENTITY_TYPE_VALUES: BusinessEntityType[] = ["clinic", "independentNurse", "independentDoctor"];
+function normalizeAbn(abn: string): string { return abn.replace(/\s+/g, ""); }
+function isValidAbn(abn: string): boolean { return /^\d{11}$/.test(normalizeAbn(abn)); }
+
+// All entities (active + inactive) for the admin editor, ordered by type → legal name.
+export function businessEntitiesList(state: DemoState): BusinessEntity[] {
+  return Object.values(state.businessEntitiesByID).sort((a, b) =>
+    a.type.localeCompare(b.type) || a.legalName.localeCompare(b.legalName));
+}
+
+export interface SetBusinessEntityInput {
+  id: string;               // = owner id (always supplied; no slug generation)
+  type: BusinessEntityType;
+  legalName: string;
+  tradingName?: string;
+  abn?: string;
+  isActive?: boolean;
+}
+
+// superAdmin upsert of a business entity (create at an owner id / edit by id). Mirrors the backend
+// setBusinessEntity: type enum, required legalName, ABN format-validated when non-blank (blank
+// allowed for a clinic awaiting an ABN), isActive defaults true. (Audit is live-only via the callable.)
+export function setBusinessEntity(state: DemoState, input: SetBusinessEntityInput, actor: Identity): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  const id = input.id.trim();
+  if (!id || id.includes("/") || id.includes(".")) throw new BackendError("validationFailed");
+  if (!(BUSINESS_ENTITY_TYPE_VALUES as string[]).includes(input.type)) throw new BackendError("validationFailed");
+  const legalName = input.legalName.trim();
+  if (!legalName || legalName.length > MAX_ENTITY_TEXT) throw new BackendError("validationFailed");
+  const tradingName = input.tradingName && input.tradingName.trim() ? input.tradingName.trim() : undefined;
+  if (tradingName && tradingName.length > MAX_ENTITY_TEXT) throw new BackendError("validationFailed");
+  const abn = normalizeAbn(input.abn ?? "");
+  if (abn.length > 0 && !isValidAbn(abn)) throw new BackendError("validationFailed");
+  const entity: BusinessEntity = { id, type: input.type, legalName, tradingName, abn, isActive: input.isActive !== false };
+  return { ...state, businessEntitiesByID: { ...state.businessEntitiesByID, [id]: entity } };
+}
+
+// superAdmin toggle of an entity's active status (soft-deactivate / reactivate).
+export function setBusinessEntityActive(state: DemoState, id: string, isActive: boolean, actor: Identity): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  const prior = state.businessEntitiesByID[id];
+  if (!prior) throw new BackendError("notFound");
+  return { ...state, businessEntitiesByID: { ...state.businessEntitiesByID, [id]: { ...prior, isActive } } };
 }
 
 // --- Platform audit log (constitution §21) ---

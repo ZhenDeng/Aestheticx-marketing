@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity } from "./mappers";
 import type { AppointmentReminderLead, DemoState, FollowUpSettings, UserProfile } from "@/lib/demo/types";
 import { readFollowUpSettings } from "@/lib/demo/backend";
 import type { DemoClaims } from "./identity";
@@ -41,6 +41,8 @@ export interface HydrationRows {
   auditLog?: Row[];
   /** products rows — the admin-editable catalog (Tier 3 #5B), readable by any signed-in user. */
   products?: Row[];
+  /** businessEntities rows — first-class entity + ABN (Tier 3 #4), readable by any signed-in user. */
+  businessEntities?: Row[];
   currentUserID: string;
 }
 
@@ -126,10 +128,15 @@ export function assembleState(rows: HydrationRows): DemoState {
   const productsByID: DemoState["productsByID"] = {};
   for (const r of rows.products ?? []) productsByID[r.id] = mapProduct(r.id, r.data);
 
+  // First-class Business Entities (Tier 3 #4): decode the hydrated entities. Empty (no rows, or the
+  // read failed) — invoices carry their own snapshot, so an empty map degrades gracefully.
+  const businessEntitiesByID: DemoState["businessEntitiesByID"] = {};
+  for (const r of rows.businessEntities ?? []) businessEntitiesByID[r.id] = mapBusinessEntity(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -288,6 +295,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       // a not-yet-deployed read rule degrades to "none" instead of failing the whole hydrate.
       auditLog: await runQuerySafe("auditLog"),
       products: await runQuerySafe("products"),
+      businessEntities: await runQuerySafe("businessEntities"),
       currentUserID: uid,
     });
   }
@@ -401,6 +409,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
     externalBusy: await readExternalBusy([uid, ...clinicIds]),
     products: await runQuerySafe("products"),
+    businessEntities: await runQuerySafe("businessEntities"),
     currentUserID: uid,
   });
 }

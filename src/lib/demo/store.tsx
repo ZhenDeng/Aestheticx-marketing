@@ -86,6 +86,10 @@ interface StoreValue {
   catalogProducts: () => ReturnType<typeof backend.catalogProductsList>;
   setProduct: (input: import("./backend").SetProductInput, actor: Identity) => void;
   setProductActive: (id: string, isActive: boolean, actor: Identity) => void;
+  // First-class Business Entities (Tier 3 #4): the full entity list + super-admin upsert / active toggle.
+  businessEntities: () => ReturnType<typeof backend.businessEntitiesList>;
+  setBusinessEntity: (input: import("./backend").SetBusinessEntityInput, actor: Identity) => void;
+  setBusinessEntityActive: (id: string, isActive: boolean, actor: Identity) => void;
   // Platform audit log (constitution §21). Durable in live (hydrated from the `auditLog`
   // collection) and in-session in demo. recordAdminAccess logs an admin patient-file open.
   auditLog: () => ReturnType<typeof backend.auditLogEntries>;
@@ -667,6 +671,32 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             const m = await import("@/lib/firebase/mirror");
             if (isActive && prod) await m.mirrorSetProduct({ id: prod.id, category: prod.category, brand: prod.brand, name: prod.name, unit: prod.unit, isActive: true });
             else await m.mirrorDeactivateProduct(id);
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      businessEntities: () => backend.businessEntitiesList(state),
+      setBusinessEntity: (input, actor) => {
+        // Eager-validate (throws before the async live branch); entities are demo-writable.
+        const next = backend.setBusinessEntity(state, input, actor);
+        if (!live) { setState(() => next); return; }
+        void (async () => {
+          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetBusinessEntity(input); setRefreshTick((t) => t + 1); }
+          catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      setBusinessEntityActive: (id, isActive, actor) => {
+        const next = backend.setBusinessEntityActive(state, id, isActive, actor);
+        if (!live) { setState(() => next); return; }
+        // Live: deactivate → the deactivateBusinessEntity callable; reactivate → setBusinessEntity
+        // (isActive:true) with the stored fields (there is no reactivate callable — setBusinessEntity
+        // is the upsert path).
+        const entity = state.businessEntitiesByID[id];
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/mirror");
+            if (isActive && entity) await m.mirrorSetBusinessEntity({ id: entity.id, type: entity.type, legalName: entity.legalName, tradingName: entity.tradingName, abn: entity.abn, isActive: true });
+            else await m.mirrorDeactivateBusinessEntity(id);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(String(e)); }
         })();

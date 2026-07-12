@@ -90,6 +90,19 @@ describe("assembleState", () => {
     });
   });
 
+  it("maps businessEntities rows into businessEntitiesByID (empty when the collection wasn't read) (Tier 3 #4)", () => {
+    expect(assembleState(rows).businessEntitiesByID).toEqual({});
+    const state = assembleState({
+      ...rows,
+      businessEntities: [
+        { id: "clinic-lumiere", data: { type: "clinic", legalName: "Lumière Clinic Pty Ltd", tradingName: "Lumière", abn: "82601443218", isActive: true } },
+      ],
+    });
+    expect(state.businessEntitiesByID["clinic-lumiere"]).toEqual({
+      id: "clinic-lumiere", type: "clinic", legalName: "Lumière Clinic Pty Ltd", tradingName: "Lumière", abn: "82601443218", isActive: true,
+    });
+  });
+
   it("omits follow-up settings + booking token when the user doc carries neither", () => {
     const state = assembleState({ ...rows, followUpSettings: null, appointmentReminderLead: null, bookingToken: null });
     expect(state.followUpSettingsByUser).toEqual({});

@@ -87,6 +87,14 @@ export function buildSeedState(): DemoState {
   // (live hydrates productsByID from Firestore instead). Selection still works via effectiveCatalog.
   state = { ...state, productsByID: Object.fromEntries(PRODUCT_CATALOG.map((p) => [p.id, p])) };
 
+  // Tier 3 #4: seed demo business entities so the admin editor has a real dataset (live hydrates
+  // businessEntitiesByID from Firestore). The clinic starts with a BLANK ABN — the exact gap the
+  // editor fills (a clinic-billed tax invoice needs the clinic's ABN); the doctor issuer has one.
+  state = { ...state, businessEntitiesByID: {
+    [LUMIERE.id]: { id: LUMIERE.id, type: "clinic", legalName: "Lumière Clinic Pty Ltd", tradingName: "Lumière", abn: "", isActive: true },
+    "u-voss": { id: "u-voss", type: "independentDoctor", legalName: "Voss Aesthetics", abn: "51824753556", isActive: true },
+  } };
+
   // Amara 'Mara' Boyd — clinic patient, full workflow + lignocaine alert.
   const amara = makePatient(
     "Amara", "Boyd", { year: 1991, month: 3, day: 12 }, "0401 223 871",

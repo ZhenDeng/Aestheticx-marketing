@@ -8,11 +8,11 @@ import type {
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
   CooperationRelationship, CounterpartyType, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
-  AuditLogEntry, AuditAction,
+  AuditLogEntry, AuditAction, BusinessEntity, BusinessEntityType,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
-import type { Invoice, InvoiceLine } from "@/lib/demo/invoicing";
+import type { Invoice, InvoiceLine, InvoiceParty } from "@/lib/demo/invoicing";
 import type { CatalogProduct } from "@/lib/demo/catalog";
 
 type Doc = Record<string, unknown>;
@@ -190,6 +190,17 @@ export function mapProduct(id: string, data: Doc): CatalogProduct {
   const unit = (PRODUCT_UNIT_SET.includes(str(data.unit)) ? str(data.unit) : "freeText") as ProductUnit;
   const brand = typeof data.brand === "string" && data.brand.length > 0 ? data.brand : undefined;
   return { id, category, brand, name: str(data.name), unit, isActive: data.isActive !== false };
+}
+
+const BUSINESS_ENTITY_TYPE_SET: string[] = ["clinic", "independentNurse", "independentDoctor"];
+
+// First-class Business Entity (Tier 3 #4). Decodes a `businessEntities/{ownerId}` doc — public
+// identity only (no contact PII on the doc). Unknown type coerces to a safe default; blank trading
+// name → undefined; isActive defaults true.
+export function mapBusinessEntity(id: string, data: Doc): BusinessEntity {
+  const type = (BUSINESS_ENTITY_TYPE_SET.includes(str(data.type)) ? str(data.type) : "clinic") as BusinessEntityType;
+  const tradingName = typeof data.tradingName === "string" && data.tradingName.length > 0 ? data.tradingName : undefined;
+  return { id, type, legalName: str(data.legalName), tradingName, abn: str(data.abn), isActive: data.isActive !== false };
 }
 
 export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEntry {
@@ -431,6 +442,18 @@ export function encodeForm(f: SignedFormRecord): Doc {
   };
 }
 
+// The issuer/bill-to identity snapshot on an invoice doc (Tier 3 #4); undefined on legacy invoices.
+function mapInvoiceParty(v: unknown): InvoiceParty | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const p = v as Doc;
+  return {
+    businessName: str(p.businessName),
+    abn: str(p.abn),
+    email: str(p.email),
+    address: typeof p.address === "string" && p.address.length > 0 ? p.address : undefined,
+  };
+}
+
 export function mapInvoice(id: string, data: Doc): Invoice {
   const lines = (Array.isArray(data.lines) ? (data.lines as Doc[]) : []).map((l): InvoiceLine => ({
     authorisationID: str(l.authorisationId),
@@ -455,6 +478,8 @@ export function mapInvoice(id: string, data: Doc): Invoice {
     paid: data.paid === true,
     paidAt: data.paidAt != null ? toMillis(data.paidAt) : undefined,
     markedBy: typeof data.markedBy === "string" ? data.markedBy : undefined,
+    issuer: mapInvoiceParty(data.issuer),
+    billTo: mapInvoiceParty(data.billTo),
   };
 }
 
