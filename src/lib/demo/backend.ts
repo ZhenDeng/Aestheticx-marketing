@@ -91,6 +91,7 @@ export function emptyState(): DemoState {
     relationshipAuditByID: {},
     auditLogByID: {},
     productsByID: {}, // Tier 3 #5B: live hydrates the catalog; empty → selection falls back to PRODUCT_CATALOG.
+    businessEntitiesByID: {}, // Tier 3 #4: live hydrates entities; empty → invoice snapshots / legacy fallback cover display.
   };
 }
 

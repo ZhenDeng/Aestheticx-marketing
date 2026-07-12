@@ -32,6 +32,20 @@ export type PatientOwner =
   | { kind: "nurse"; id: string }
   | { kind: "clinic"; id: string };
 
+// First-class Business Entity (Tier 3 #4), keyed by the existing ownerId (doctor/nurse uid or clinic
+// id). The public business identity behind an owner — business name + ABN, used for invoice/document
+// display. Carries NO contact PII (email/address stay on the access-scoped user/clinic docs; the
+// `businessEntities` collection is world-readable). Mirrors the backend `BusinessEntityDoc`.
+export type BusinessEntityType = "clinic" | "independentNurse" | "independentDoctor";
+export interface BusinessEntity {
+  id: string;
+  type: BusinessEntityType;
+  legalName: string;
+  tradingName?: string;
+  abn: string;
+  isActive: boolean;
+}
+
 export interface DateOfBirth {
   year: number;
   month: number;
@@ -478,6 +492,11 @@ export interface DemoState {
   // back to the built-in PRODUCT_CATALOG via `effectiveCatalog`. The upcoming super-admin editor slice
   // will seed this from PRODUCT_CATALOG in demo so demo edits have a dataset to act on.
   productsByID: Record<string, import("./catalog").CatalogProduct>;
+  // First-class Business Entities (Tier 3 #4), keyed by ownerId. Live: hydrated from the world-
+  // readable Firestore `businessEntities` collection. Demo: empty until the editor slice seeds it.
+  // Invoices carry their own issuer/billTo snapshot, so this map feeds the admin editor + identity
+  // display rather than invoice rendering.
+  businessEntitiesByID: Record<string, BusinessEntity>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

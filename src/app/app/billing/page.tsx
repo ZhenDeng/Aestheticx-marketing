@@ -96,7 +96,12 @@ export default function BillingPage() {
         <p className="mt-2 text-sm text-ink-soft">No invoices yet.</p>
       ) : (
         <ul className="mt-3 flex flex-col gap-1.5">
-          {invoices.map((inv) => (
+          {invoices.map((inv) => {
+            // Tier 3 #4: the other party's identity as snapshotted on the invoice at generation —
+            // the bill-to counterparty for a doctor, the issuing doctor for a nurse/clinic. Legacy
+            // invoices carry no snapshot (undefined) and simply show no ABN caption.
+            const party = isDoctor ? inv.billTo : inv.issuer;
+            return (
             <li key={inv.id} className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3">
               <span className="text-sm text-ink">
                 {inv.periodLabel} · {partyLabel(isDoctor ? inv.counterpartyType : "doctor", isDoctor ? inv.counterpartyID : inv.doctorID, DEMO_ACCOUNTS, LUMIERE)}
@@ -106,6 +111,9 @@ export default function BillingPage() {
                   : { border: "1px solid var(--color-line)", color: "var(--color-ink-soft)" }}>
                   {inv.paid ? "Paid" : "Unpaid"}
                 </span>
+                {party?.abn && (
+                  <span className="mt-0.5 block text-xs text-ink-soft">{party.businessName} · ABN {party.abn}</span>
+                )}
               </span>
               <span className="flex items-center gap-3">
                 {isDoctor && !inv.paid && (
@@ -118,7 +126,8 @@ export default function BillingPage() {
                 <InvoiceDownload pdfFileId={inv.pdfFileId} isLive={isLive} />
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

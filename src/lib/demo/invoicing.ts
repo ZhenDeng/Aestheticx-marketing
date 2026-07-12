@@ -9,6 +9,17 @@ export interface InvoiceAuthInput { id: string; dateISO: string; patientName: st
 export interface InvoiceLine { authorisationID: string; dateISO: string; patientName: string; feeCents: number; gstCents: number; }
 export interface ComputedInvoice { lines: InvoiceLine[]; subtotalCents: number; gstCents: number; totalCents: number; }
 
+// Issuer / bill-to identity snapshotted onto an invoice at generation time (Tier 3 #4). The backend
+// sources business name + ABN from each party's Business Entity (contact from users/clinics) and
+// freezes them here, so the invoice is self-describing and its ABN doesn't drift if an entity is
+// later edited. Legacy invoices (pre-#4) carry no snapshot → undefined.
+export interface InvoiceParty {
+  businessName: string;
+  abn: string;
+  email: string;
+  address?: string;
+}
+
 export interface Invoice {
   id: string;
   doctorID: string;
@@ -27,6 +38,9 @@ export interface Invoice {
   paid: boolean;
   paidAt?: number;
   markedBy?: string;
+  // Tier 3 #4: the issuer (doctor) and bill-to (counterparty) identity as of generation (undefined on legacy invoices).
+  issuer?: InvoiceParty;
+  billTo?: InvoiceParty;
 }
 
 export function computeInvoice(input: {

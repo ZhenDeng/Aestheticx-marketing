@@ -6,6 +6,8 @@ import {
   mapEmergencyAuthorisation,
   mapAuditLogEntry,
   mapProduct,
+  mapBusinessEntity,
+  mapInvoice,
   mapAuthRequest,
   mapAppointment,
   mapExternalBusy,
@@ -374,5 +376,44 @@ describe("mapProduct (Tier 3 #5B)", () => {
     const p = mapProduct("x", { category: "bogus", name: "X", unit: "bogus" });
     expect(p.category).toBe("other");
     expect(p.unit).toBe("freeText");
+  });
+});
+
+describe("mapBusinessEntity (Tier 3 #4)", () => {
+  it("decodes an entity doc, keeping the owner id; no contact fields", () => {
+    const e = mapBusinessEntity("clinic-lumiere", { type: "clinic", legalName: "Lumière Clinic Pty Ltd", tradingName: "Lumière", abn: "82601443218", isActive: true });
+    expect(e).toEqual({ id: "clinic-lumiere", type: "clinic", legalName: "Lumière Clinic Pty Ltd", tradingName: "Lumière", abn: "82601443218", isActive: true });
+  });
+  it("defaults isActive true, tradingName undefined when blank/missing", () => {
+    const e = mapBusinessEntity("u-voss", { type: "independentDoctor", legalName: "Vaughn Aesthetics", abn: "51824753556" });
+    expect(e.isActive).toBe(true);
+    expect(e.tradingName).toBeUndefined();
+  });
+  it("respects an explicit isActive:false", () => {
+    expect(mapBusinessEntity("x", { type: "clinic", legalName: "X", abn: "", isActive: false }).isActive).toBe(false);
+  });
+  it("coerces an unknown type to a safe default", () => {
+    expect(mapBusinessEntity("x", { type: "bogus", legalName: "X", abn: "" }).type).toBe("clinic");
+  });
+});
+
+describe("mapInvoice issuer/billTo snapshot (Tier 3 #4)", () => {
+  it("decodes the issuer + bill-to party snapshot when present", () => {
+    const inv = mapInvoice("inv1", {
+      doctorId: "u-voss", counterpartyId: "clinic-lumiere", counterpartyType: "clinic", periodLabel: "Jul 2026",
+      lines: [], subtotalCents: 0, gstCents: 0, totalCents: 0, authorisationIds: [], paid: false,
+      issuer: { businessName: "Vaughn Aesthetics", abn: "51824753556", email: "vera@x.au", address: "1 King St" },
+      billTo: { businessName: "Lumière", abn: "82601443218", email: "hi@lumiere.au" },
+    });
+    expect(inv.issuer).toEqual({ businessName: "Vaughn Aesthetics", abn: "51824753556", email: "vera@x.au", address: "1 King St" });
+    expect(inv.billTo).toEqual({ businessName: "Lumière", abn: "82601443218", email: "hi@lumiere.au", address: undefined });
+  });
+  it("leaves issuer/billTo undefined on a legacy invoice carrying no snapshot", () => {
+    const inv = mapInvoice("inv2", {
+      doctorId: "u-voss", counterpartyId: "n1", counterpartyType: "nurse", periodLabel: "Jun 2026",
+      lines: [], subtotalCents: 0, gstCents: 0, totalCents: 0, authorisationIds: [], paid: false,
+    });
+    expect(inv.issuer).toBeUndefined();
+    expect(inv.billTo).toBeUndefined();
   });
 });
