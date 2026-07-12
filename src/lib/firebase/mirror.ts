@@ -57,6 +57,22 @@ export async function mirrorRemoveCooperationRelationship(relationshipId: string
   await httpsCallable(functions(), "removeCooperationRelationship")({ relationshipId });
 }
 
+// Admin-editable catalog (Tier 3 #5B): the superAdmin setProduct/deactivateProduct callables.
+export async function mirrorSetProduct(input: import("@/lib/demo/backend").SetProductInput): Promise<void> {
+  await httpsCallable(functions(), "setProduct")({
+    ...(input.id ? { id: input.id } : {}),
+    category: input.category,
+    brand: input.brand ?? null,
+    name: input.name,
+    unit: input.unit,
+    isActive: input.isActive ?? true,
+  });
+}
+
+export async function mirrorDeactivateProduct(productId: string): Promise<void> {
+  await httpsCallable(functions(), "deactivateProduct")({ productId });
+}
+
 // Platform audit log (§21): a Platform Admin opening a patient file → the superAdmin-only
 // recordAdminPatientAccess callable, which writes the durable `admin_patient_access` entry.
 // Lowercase wire keys ({patientId, patientName}), matching the backend callable's schema.

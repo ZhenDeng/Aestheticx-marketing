@@ -82,6 +82,10 @@ interface StoreValue {
   relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
   setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
   removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
+  // Admin-editable catalog (Tier 3 #5B): the full product list + super-admin upsert / active toggle.
+  catalogProducts: () => ReturnType<typeof backend.catalogProductsList>;
+  setProduct: (input: import("./backend").SetProductInput, actor: Identity) => void;
+  setProductActive: (id: string, isActive: boolean, actor: Identity) => void;
   // Platform audit log (constitution §21). Durable in live (hydrated from the `auditLog`
   // collection) and in-session in demo. recordAdminAccess logs an admin patient-file open.
   auditLog: () => ReturnType<typeof backend.auditLogEntries>;
@@ -640,6 +644,31 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorRemoveCooperationRelationship(relationshipID); setRefreshTick((t) => t + 1); }
           catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      catalogProducts: () => backend.catalogProductsList(state),
+      setProduct: (input, actor) => {
+        // Eager-validate (throws before the async live branch); catalog is demo-writable.
+        const next = backend.setProduct(state, input, actor);
+        if (!live) { setState(() => next); return; }
+        void (async () => {
+          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetProduct(input); setRefreshTick((t) => t + 1); }
+          catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      setProductActive: (id, isActive, actor) => {
+        const next = backend.setProductActive(state, id, isActive, actor);
+        if (!live) { setState(() => next); return; }
+        // Live: deactivate → the deactivateProduct callable; reactivate → setProduct(isActive:true)
+        // with the stored fields (there is no reactivate callable — setProduct is the upsert path).
+        const prod = state.productsByID[id];
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/mirror");
+            if (isActive && prod) await m.mirrorSetProduct({ id: prod.id, category: prod.category, brand: prod.brand, name: prod.name, unit: prod.unit, isActive: true });
+            else await m.mirrorDeactivateProduct(id);
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(String(e)); }
         })();
       },
       auditLog: () => backend.auditLogEntries(state),

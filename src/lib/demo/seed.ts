@@ -2,6 +2,7 @@
 // Built by replaying domain operations so seeded state obeys the same rules.
 import type { CooperationRelationship, DemoState, FollowUpTask, Identity, MedicationItem, Note, Patient } from "./types";
 import { LUMIERE, DEMO_ACCOUNTS } from "./accounts";
+import { PRODUCT_CATALOG } from "./catalog";
 import {
   emptyState,
   submitRequest,
@@ -82,6 +83,9 @@ const profhilo: MedicationItem = {
 export function buildSeedState(): DemoState {
   seq = 0;
   let state = emptyState();
+  // Tier 3 #5B: seed the demo catalog from the static list so the admin editor has a real dataset
+  // (live hydrates productsByID from Firestore instead). Selection still works via effectiveCatalog.
+  state = { ...state, productsByID: Object.fromEntries(PRODUCT_CATALOG.map((p) => [p.id, p])) };
 
   // Amara 'Mara' Boyd — clinic patient, full workflow + lignocaine alert.
   const amara = makePatient(
