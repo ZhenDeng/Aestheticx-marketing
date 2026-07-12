@@ -35,7 +35,7 @@ export type PatientOwner =
 // First-class Business Entity (Tier 3 #4), keyed by the existing ownerId (doctor/nurse uid or clinic
 // id). The public business identity behind an owner — business name + ABN, used for invoice/document
 // display. Carries NO contact PII (email/address stay on the access-scoped user/clinic docs; the
-// `businessEntities` collection is world-readable). Mirrors the backend `BusinessEntityDoc`.
+// `businessEntities` collection is readable by any signed-in user). Mirrors the backend `BusinessEntityDoc`.
 export type BusinessEntityType = "clinic" | "independentNurse" | "independentDoctor";
 export interface BusinessEntity {
   id: string;

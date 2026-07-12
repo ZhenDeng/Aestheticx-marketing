@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
-import { identityBadge, type AccountRecord, type CooperationRelationship, type Identity, type Role, type ProductCategory, type ProductUnit } from "@/lib/demo/types";
+import { identityBadge, type AccountRecord, type CooperationRelationship, type Identity, type Role, type ProductCategory, type ProductUnit, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
 import { categoryDisplayName, PRODUCT_CATEGORIES, type CatalogProduct } from "@/lib/demo/catalog";
 import type { SetCooperationRelationshipInput } from "@/lib/demo/backend";
 import { validateNewUser } from "@/lib/demo/userAdmin";
@@ -61,6 +61,7 @@ function DemoAdminConsole() {
       </p>
       <CooperationRelationshipsSection />
       <ProductCatalogSection />
+      <BusinessEntitiesSection />
     </>
   );
 }
@@ -106,6 +107,7 @@ function LiveAdminConsole() {
       </p>
       <CooperationRelationshipsSection />
       <ProductCatalogSection />
+      <BusinessEntitiesSection />
     </>
   );
 }
@@ -523,6 +525,166 @@ function AddProductForm({ identity, onDone, onCancel }: { identity: Identity; on
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-3 flex gap-2">
         <button onClick={submit} className="rounded-btn bg-tint px-4 py-2 text-sm font-medium text-white hover:bg-tint/90">Add product</button>
+        <button onClick={onCancel} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint/50">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// --- First-class Business Entities (Tier 3 #4): super-admin editor ---
+const ENTITY_TYPE_LABEL: Record<BusinessEntityType, string> = {
+  clinic: "Clinic", independentNurse: "Independent nurse", independentDoctor: "Independent doctor",
+};
+const ENTITY_TYPES: BusinessEntityType[] = ["clinic", "independentNurse", "independentDoctor"];
+
+function BusinessEntitiesSection() {
+  const store = useDemoStore();
+  const { identity } = useDemoAuth();
+  const [adding, setAdding] = useState(false);
+  const entities = store.businessEntities();
+  const groups = useMemo(() => ENTITY_TYPES
+    .map((type) => ({ type, items: entities.filter((e) => e.type === type) }))
+    .filter((g) => g.items.length > 0), [entities]);
+
+  if (!identity) return null;
+
+  return (
+    <section className="mt-8">
+      <h2 className="font-display text-lg text-ink">Business entities</h2>
+      <p className="mt-1 text-sm text-ink-soft">
+        The owning entity behind each clinic, independent nurse, and independent doctor — its legal
+        name and ABN, used on tax invoices. Set a missing ABN or add an entity; changes take effect
+        without an app release.
+      </p>
+      {groups.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-soft">No business entities yet.</p>
+      ) : (
+        <div className="mt-3 flex flex-col gap-4">
+          {groups.map((g) => (
+            <div key={g.type} className="rounded-card border border-line bg-card shadow-card">
+              <h3 className="border-b border-line px-4 py-2.5 font-display text-base text-ink">
+                {ENTITY_TYPE_LABEL[g.type]} <span className="text-sm text-ink-soft">· {g.items.length}</span>
+              </h3>
+              <ul>
+                {g.items.map((e) => <BusinessEntityRow key={e.id} entity={e} identity={identity} />)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {adding ? (
+        <BusinessEntityForm identity={identity} onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className="mt-4 w-full rounded-btn border border-line px-4 py-2.5 text-sm text-ink-soft hover:border-tint/50"
+        >
+          Add business entity
+        </button>
+      )}
+    </section>
+  );
+}
+
+function BusinessEntityRow({ entity, identity }: { entity: BusinessEntity; identity: Identity }) {
+  const store = useDemoStore();
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  function toggle() {
+    setError(null);
+    try { store.setBusinessEntityActive(entity.id, !entity.isActive, identity); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not update"); }
+  }
+  if (editing) {
+    return (
+      <li className="border-b border-line px-4 py-2.5 last:border-b-0">
+        <BusinessEntityForm identity={identity} entity={entity} onDone={() => setEditing(false)} onCancel={() => setEditing(false)} />
+      </li>
+    );
+  }
+  return (
+    <li className="flex items-center gap-3 border-b border-line px-4 py-2.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm ${entity.isActive ? "text-ink" : "text-ink-soft line-through"}`}>
+          {entity.tradingName ? `${entity.tradingName} · ${entity.legalName}` : entity.legalName}
+        </p>
+        <p className="text-xs text-ink-soft">{entity.abn ? `ABN ${entity.abn}` : "— no ABN"}{entity.isActive ? "" : " · inactive"}</p>
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+      <button onClick={() => setEditing(true)} className="shrink-0 rounded-btn border border-line px-3 py-1.5 text-xs text-ink-soft hover:border-tint/50">Edit</button>
+      <button
+        onClick={toggle}
+        className="shrink-0 rounded-btn border border-line px-3 py-1.5 text-xs text-ink-soft hover:border-tint/50"
+      >
+        {entity.isActive ? "Deactivate" : "Activate"}
+      </button>
+    </li>
+  );
+}
+
+// Add (no entity) or edit (entity supplied) a business entity. On edit, id + type are fixed; on add
+// they are entered — the id is the owner id (a clinic id or a doctor/nurse uid). ABN is optional
+// (a clinic may await one) but must be 11 digits when supplied; validation mirrors the backend.
+function BusinessEntityForm({ identity, entity, onDone, onCancel }: { identity: Identity; entity?: BusinessEntity; onDone: () => void; onCancel: () => void }) {
+  const store = useDemoStore();
+  const isEdit = !!entity;
+  const [id, setId] = useState(entity?.id ?? "");
+  const [type, setType] = useState<BusinessEntityType>(entity?.type ?? "clinic");
+  const [legalName, setLegalName] = useState(entity?.legalName ?? "");
+  const [tradingName, setTradingName] = useState(entity?.tradingName ?? "");
+  const [abn, setAbn] = useState(entity?.abn ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit() {
+    setError(null);
+    if (!isEdit && !id.trim()) { setError("Owner id is required"); return; }
+    if (!legalName.trim()) { setError("Legal name is required"); return; }
+    if (legalName.trim().length > 160) { setError("Legal name is too long (max 160)"); return; }
+    const abnDigits = abn.replace(/\s+/g, "");
+    if (abnDigits.length > 0 && !/^\d{11}$/.test(abnDigits)) { setError("ABN must be 11 digits"); return; }
+    try {
+      store.setBusinessEntity({
+        id: entity?.id ?? id.trim(), type, legalName: legalName.trim(),
+        tradingName: tradingName.trim() || undefined, abn: abnDigits || undefined,
+        isActive: entity?.isActive ?? true,
+      }, identity);
+      onDone();
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save entity"); }
+  }
+
+  const field = "w-full rounded-btn border border-line bg-card px-3 py-2 text-sm text-ink";
+  return (
+    <div className="mt-4 rounded-card border border-line bg-card p-4 shadow-card">
+      <h3 className="font-display text-base text-ink">{isEdit ? "Edit business entity" : "Add business entity"}</h3>
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {!isEdit && (
+          <label className="text-sm text-ink-soft">
+            Owner id <span className="text-ink-soft/70">(clinic id or user uid)</span>
+            <input className={`mt-1 ${field}`} value={id} onChange={(e) => setId(e.target.value)} placeholder="e.g. clinic-lumiere" />
+          </label>
+        )}
+        <label className="text-sm text-ink-soft">
+          Type
+          <select className={`mt-1 ${field}`} value={type} onChange={(e) => setType(e.target.value as BusinessEntityType)} disabled={isEdit}>
+            {ENTITY_TYPES.map((t) => <option key={t} value={t}>{ENTITY_TYPE_LABEL[t]}</option>)}
+          </select>
+        </label>
+        <label className="text-sm text-ink-soft">
+          Legal name
+          <input className={`mt-1 ${field}`} value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="e.g. Lumière Clinic Pty Ltd" />
+        </label>
+        <label className="text-sm text-ink-soft">
+          Trading name <span className="text-ink-soft/70">(optional)</span>
+          <input className={`mt-1 ${field}`} value={tradingName} onChange={(e) => setTradingName(e.target.value)} placeholder="e.g. Lumière" />
+        </label>
+        <label className="text-sm text-ink-soft">
+          ABN <span className="text-ink-soft/70">(11 digits, optional)</span>
+          <input className={`mt-1 ${field}`} value={abn} onChange={(e) => setAbn(e.target.value)} placeholder="e.g. 82 601 443 218" />
+        </label>
+      </div>
+      {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      <div className="mt-3 flex gap-2">
+        <button onClick={submit} className="rounded-btn bg-tint px-4 py-2 text-sm font-medium text-white hover:bg-tint/90">{isEdit ? "Save" : "Add entity"}</button>
         <button onClick={onCancel} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint/50">Cancel</button>
       </div>
     </div>

@@ -444,7 +444,7 @@ export function encodeForm(f: SignedFormRecord): Doc {
 
 // The issuer/bill-to identity snapshot on an invoice doc (Tier 3 #4); undefined on legacy invoices.
 function mapInvoiceParty(v: unknown): InvoiceParty | undefined {
-  if (!v || typeof v !== "object") return undefined;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
   const p = v as Doc;
   return {
     businessName: str(p.businessName),

@@ -73,6 +73,23 @@ export async function mirrorDeactivateProduct(productId: string): Promise<void> 
   await httpsCallable(functions(), "deactivateProduct")({ productId });
 }
 
+// First-class Business Entities (Tier 3 #4): the superAdmin setBusinessEntity/deactivateBusinessEntity
+// callables. `id` is the owner id (always present). No contact fields are sent — the entity is PII-free.
+export async function mirrorSetBusinessEntity(input: import("@/lib/demo/backend").SetBusinessEntityInput): Promise<void> {
+  await httpsCallable(functions(), "setBusinessEntity")({
+    id: input.id,
+    type: input.type,
+    legalName: input.legalName,
+    tradingName: input.tradingName ?? null,
+    abn: input.abn ?? "",
+    isActive: input.isActive ?? true,
+  });
+}
+
+export async function mirrorDeactivateBusinessEntity(entityId: string): Promise<void> {
+  await httpsCallable(functions(), "deactivateBusinessEntity")({ entityId });
+}
+
 // Platform audit log (§21): a Platform Admin opening a patient file → the superAdmin-only
 // recordAdminPatientAccess callable, which writes the durable `admin_patient_access` entry.
 // Lowercase wire keys ({patientId, patientName}), matching the backend callable's schema.
