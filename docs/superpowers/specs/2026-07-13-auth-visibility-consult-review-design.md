@@ -72,10 +72,10 @@ patient and act. `CallOverlay` (ConsultCall.tsx) gains:
 
 ## Tasks
 
-- [ ] 1. Bug 1: remove the Sarah Chen sentence (+ empty-inbox test)
-- [ ] 2. `mergeRequestRows` + `subscribeAuthRequests` in `src/lib/firebase/requestsLive.ts` (+ unit tests)
-- [ ] 3. Wire subscription into `DemoStoreProvider` hydrate effect (live only)
-- [ ] 4. `ownerDisplayLabel` resolution chain (+ unit tests); switch other-patients page
-- [ ] 5. CallOverlay review panel: patient info + approve/require-edit during call (+ tests)
-- [ ] 6. Wrap-up step: decision buttons + post-call treatment note (+ tests)
-- [ ] 7. Full suite + build green
+- [x] 1. Bug 1: remove the Sarah Chen sentence (+ empty-inbox test)
+- [x] 2. `mergeRequestRows` + `subscribeAuthRequests` in `src/lib/firebase/requestsLive.ts` (+ unit tests)
+- [x] 3. Wire subscription into `DemoStoreProvider` hydrate effect (live only)
+- [x] 4. `ownerDisplayLabel` resolution chain (+ unit tests); switch other-patients page
+- [x] 5. CallOverlay review panel: patient info + approve/require-edit during call (+ tests)
+- [x] 6. Wrap-up step: decision buttons + post-call treatment note (+ tests)
+- [x] 7. Full suite + build green

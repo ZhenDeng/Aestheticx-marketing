@@ -60,6 +60,9 @@ export interface SubscribeAuthRequestsHandlers {
   hasPatient: (patientID: string) => boolean;
   /** A reviewer-visible patient doc fetched for a listener-delivered request. */
   onPatient: (patient: Patient) => void;
+  /** A scope's listener errored (Firestore doesn't auto-retry): its last-good rows are
+   * frozen until the next rehydrate, so surface the possible staleness to the user. */
+  onScopeError?: (scopeKey: string) => void;
 }
 
 /** Subscribe to every authRequests scope the user can read. Returns an unsubscribe fn that
@@ -112,10 +115,11 @@ export function subscribeAuthRequests(
       },
       () => {
         // Count the scope as reported (keeping its last good rows, if any) so the other
-        // scopes still deliver; hydrate ran the same query, so a persistent error here
-        // would already have failed loudly there.
+        // scopes still deliver. An allowed→denied flip AFTER hydrate freezes this scope's
+        // rows until the next rehydrate — tell the caller so the staleness isn't silent.
         rowsByScope[key] ??= [];
         fired.add(key);
+        if (!cancelled) handlers.onScopeError?.(key);
         deliver();
       },
     ),

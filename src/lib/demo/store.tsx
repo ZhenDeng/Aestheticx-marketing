@@ -211,6 +211,10 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
               // patient only if hydrate didn't already load it (never clobber local edits).
               onPatient: (patient) =>
                 setState((s) => (s.patients[patient.id] ? s : { ...s, patients: { ...s.patients, [patient.id]: patient } })),
+              // A dropped scope listener freezes that scope's rows until the next
+              // rehydrate — reuse the sync-error banner so the staleness is visible.
+              onScopeError: () =>
+                setLastSyncError("Live request updates were interrupted — refresh to make sure the list is current."),
             },
           );
           if (cancelled) unsubscribeRequests(); // cleanup ran while the module was loading
