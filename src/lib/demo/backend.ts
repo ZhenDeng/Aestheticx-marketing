@@ -46,6 +46,7 @@ import type {
   AuditLogEntry,
   AuditAction,
 } from "./types";
+import { ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
@@ -263,6 +264,32 @@ export function groupPatientsByOwner(
   return [...buckets.keys()]
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     .map((key) => ({ key, patients: buckets.get(key) ?? [] }));
+}
+
+// Display label for a patient owner, resolved through hydrated state (owner bug 3,
+// 2026-07-13). The demo-cast lookup (ownerLabel) returned the RAW owner id for live
+// accounts — a Firebase uid, which read as garbled text in the doctor's "Other patients"
+// grouping. Resolution order: demo cast/Lumière → hydrated accounts inventory (super
+// admin) → cooperation relationships (a doctor's cooperating nurses/clinics are exactly
+// the owners of their other patients) → request nurse names → a readable role-prefixed
+// stub, never a raw uid.
+export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string {
+  const cast = ownerLabel(owner);
+  if (cast !== owner.id) return cast;
+  const account = state.accountsByID[owner.id];
+  if (account?.name) return account.name;
+  for (const rel of Object.values(state.cooperationRelationshipsByID)) {
+    if (owner.kind === "doctor" && rel.doctorID === owner.id && rel.doctorName) return rel.doctorName;
+    if (owner.kind !== "doctor" && rel.counterpartyType === owner.kind && rel.counterpartyID === owner.id && rel.counterpartyName) {
+      return rel.counterpartyName;
+    }
+  }
+  if (owner.kind === "nurse") {
+    const req = Object.values(state.requests).find((r) => r.nurse.id === owner.id && r.nurse.name);
+    if (req) return req.nurse.name;
+  }
+  const role = owner.kind === "clinic" ? "Clinic" : owner.kind === "doctor" ? "Doctor" : "Nurse";
+  return `${role} ${owner.id.slice(0, 6)}`;
 }
 
 export function visiblePatients(state: DemoState, identity: Identity): Patient[] {

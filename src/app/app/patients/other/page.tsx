@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { splitPatients, groupPatientsByOwner } from "@/lib/demo/backend";
-import { ownerLabel } from "@/lib/demo/accounts";
+import { splitPatients, groupPatientsByOwner, ownerDisplayLabel } from "@/lib/demo/backend";
 import { PatientRow } from "@/components/app/PatientRow";
 
 // The doctor's "Other patients" subpage (iOS OtherPatientsView, spec: patient-records →
@@ -18,7 +17,8 @@ export default function OtherPatientsPage() {
   if (store.status === "error") return <p className="text-ink-soft">Could not load data. Open the dashboard to retry.</p>;
 
   const { others } = splitPatients(store.searchPatients("", identity), identity);
-  const groups = groupPatientsByOwner(others, ownerLabel);
+  // State-aware labels (owner bug 3): resolve live owner names instead of raw uids.
+  const groups = groupPatientsByOwner(others, (owner) => ownerDisplayLabel(store.state, owner));
 
   return (
     <div>
