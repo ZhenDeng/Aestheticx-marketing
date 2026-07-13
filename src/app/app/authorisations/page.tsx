@@ -68,7 +68,7 @@ function DoctorReviewInbox({ doctor, store, consult }: { doctor: Identity; store
             </div>
           </li>
         ))}
-        {pending.length === 0 && <li className="text-sm text-ink-soft">No pending requests. Sign in as Sarah Chen to raise one.</li>}
+        {pending.length === 0 && <li className="text-sm text-ink-soft">No pending requests.</li>}
       </ul>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppointmentLead, DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { fullName } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
@@ -158,27 +158,81 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   // Lazy initializer keeps the impure Date.now() out of the render path.
   const [now] = useState(() => (live ? Date.now() : SEED_NOW));
 
+  // Latest patients map for the requests listener's hasPatient check — a ref, not a dep,
+  // so the subscription isn't torn down on every state change.
+  const patientsRef = useRef(state.patients);
+  useEffect(() => { patientsRef.current = state.patients; }, [state.patients]);
+
+  // auth.tsx rebuilds availableIdentities as a NEW array on every watchUser callback
+  // (including routine token refreshes), which used to be a cheap re-hydrate but would now
+  // also tear down and rebuild every request listener. Key the effect on the identity-set
+  // CONTENT instead, and read the latest array through a ref at run time.
+  const availableIdentitiesRef = useRef(availableIdentities);
+  useEffect(() => { availableIdentitiesRef.current = availableIdentities; }, [availableIdentities]);
+  const identitySetKey = useMemo(
+    () => (availableIdentities.length ? availableIdentities : identity ? [identity] : [])
+      .map((i) => `${i.user.id}:${i.role}:${i.context.kind === "clinic" ? i.context.clinic.id : ""}`)
+      .sort()
+      .join("|"),
+    [availableIdentities, identity],
+  );
+
   // Live hydrate whenever the signed-in user changes or a refresh is requested.
   useEffect(() => {
     if (!live || !identity) return;
     let cancelled = false;
+    let unsubscribeRequests: (() => void) | undefined;
     (async () => {
       setStatus("loading");
       try {
         const { hydrate } = await import("@/lib/firebase/hydrate");
         // Hydrate across ALL of the user's identities (roles + clinics), not just the
         // selected one, so a multi-clinic user sees their full visible data set.
-        const ids = availableIdentities.length ? availableIdentities : [identity];
+        const availableNow = availableIdentitiesRef.current;
+        const ids = availableNow.length ? availableNow : [identity];
         const allClinics = Object.assign({}, ...ids.map(clinicMap));
         const allRoles = [...new Set(ids.map((i) => i.role))];
         const next = await hydrate({ uid: identity.user.id, roles: allRoles, clinics: allClinics });
-        if (!cancelled) { setState(next); setStatus("ready"); }
+        if (cancelled) return;
+        setState(next);
+        setStatus("ready");
+        // Keep authRequests current AFTER the one-shot hydrate (owner bug 2, 2026-07-13):
+        // without listeners a signed-in doctor never saw a nurse's new request until they
+        // re-authenticated. Subscribing after hydrate resolves means the first full listener
+        // union always replaces an equal-or-older snapshot, never races it. Listener setup
+        // is an enhancement over the hydrated snapshot — its failure must not error a store
+        // that already loaded, so it gets its own catch.
+        try {
+          const { subscribeAuthRequests } = await import("@/lib/firebase/requestsLive");
+          unsubscribeRequests = subscribeAuthRequests(
+            // superAdmin: hydrate loaded the platform-wide request set, so the listener
+            // must be unconstrained too — scoped queries would replace it with ~nothing.
+            { uid: identity.user.id, clinicIds: Object.keys(allClinics), superAdmin: allRoles.includes("superAdmin") },
+            {
+              onRequests: (requests) => setState((s) => ({ ...s, requests })),
+              hasPatient: (id) => !!patientsRef.current[id],
+              // Reviewer file access for a listener-delivered request: merge the fetched
+              // patient only if hydrate didn't already load it (never clobber local edits).
+              onPatient: (patient) =>
+                setState((s) => (s.patients[patient.id] ? s : { ...s, patients: { ...s.patients, [patient.id]: patient } })),
+              // A dropped scope listener freezes that scope's rows until the next
+              // rehydrate — reuse the sync-error banner so the staleness is visible.
+              onScopeError: () =>
+                setLastSyncError("Live request updates were interrupted — refresh to make sure the list is current."),
+            },
+          );
+          if (cancelled) unsubscribeRequests(); // cleanup ran while the module was loading
+        } catch {
+          // Stay on the one-shot snapshot; manual rehydrate still works.
+        }
       } catch (e) {
         if (!cancelled) { setStatus("error"); setLastSyncError(String(e)); }
       }
     })();
-    return () => { cancelled = true; };
-  }, [live, identity, availableIdentities, refreshTick]);
+    return () => { cancelled = true; unsubscribeRequests?.(); };
+    // identitySetKey stands in for availableIdentities (content-keyed; read via ref) so
+    // token-refresh array churn doesn't tear down the listeners.
+  }, [live, identity, identitySetKey, refreshTick]);
 
   // Optimistic local apply, then mirror to Firestore/Functions (live only).
   const applyAndMirror = useCallback(
