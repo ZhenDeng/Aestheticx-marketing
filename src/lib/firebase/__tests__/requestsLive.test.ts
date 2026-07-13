@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeRequestRows, missingReviewerPatientIDs } from "../requestsLive";
+import { mergeRequestRows, missingReviewerPatientIDs, requestScopesFor } from "../requestsLive";
 import type { Row } from "../hydrate";
 import type { AuthorisationRequest } from "@/lib/demo/types";
 
@@ -46,6 +46,19 @@ describe("mergeRequestRows", () => {
   it("keeps a withdrawn request so views can filter it out live", () => {
     const merged = mergeRequestRows({ doctor: [row("r1", { status: "withdrawn" })] });
     expect(merged.r1.status).toBe("withdrawn");
+  });
+});
+
+describe("requestScopesFor", () => {
+  it("builds nurse + doctor + per-clinic scopes for clinical users", () => {
+    const scopes = requestScopesFor({ uid: "u1", clinicIds: ["c1", "c2"], superAdmin: false });
+    expect(scopes.map((s) => s.key)).toEqual(["nurse", "doctor", "clinic:c1", "clinic:c2"]);
+    expect(scopes.every((s) => s.constraint !== null)).toBe(true);
+  });
+
+  it("uses one unconstrained scope for a super admin (hydrate parity — scoped queries would wipe the platform-wide set)", () => {
+    const scopes = requestScopesFor({ uid: "admin", clinicIds: [], superAdmin: true });
+    expect(scopes).toEqual([{ key: "all", constraint: null }]);
   });
 });
 

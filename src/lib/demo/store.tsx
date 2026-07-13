@@ -159,6 +159,20 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   const patientsRef = useRef(state.patients);
   useEffect(() => { patientsRef.current = state.patients; }, [state.patients]);
 
+  // auth.tsx rebuilds availableIdentities as a NEW array on every watchUser callback
+  // (including routine token refreshes), which used to be a cheap re-hydrate but would now
+  // also tear down and rebuild every request listener. Key the effect on the identity-set
+  // CONTENT instead, and read the latest array through a ref at run time.
+  const availableIdentitiesRef = useRef(availableIdentities);
+  useEffect(() => { availableIdentitiesRef.current = availableIdentities; }, [availableIdentities]);
+  const identitySetKey = useMemo(
+    () => (availableIdentities.length ? availableIdentities : identity ? [identity] : [])
+      .map((i) => `${i.user.id}:${i.role}:${i.context.kind === "clinic" ? i.context.clinic.id : ""}`)
+      .sort()
+      .join("|"),
+    [availableIdentities, identity],
+  );
+
   // Live hydrate whenever the signed-in user changes or a refresh is requested.
   useEffect(() => {
     if (!live || !identity) return;
@@ -170,7 +184,8 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         const { hydrate } = await import("@/lib/firebase/hydrate");
         // Hydrate across ALL of the user's identities (roles + clinics), not just the
         // selected one, so a multi-clinic user sees their full visible data set.
-        const ids = availableIdentities.length ? availableIdentities : [identity];
+        const availableNow = availableIdentitiesRef.current;
+        const ids = availableNow.length ? availableNow : [identity];
         const allClinics = Object.assign({}, ...ids.map(clinicMap));
         const allRoles = [...new Set(ids.map((i) => i.role))];
         const next = await hydrate({ uid: identity.user.id, roles: allRoles, clinics: allClinics });
@@ -186,7 +201,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         try {
           const { subscribeAuthRequests } = await import("@/lib/firebase/requestsLive");
           unsubscribeRequests = subscribeAuthRequests(
-            { uid: identity.user.id, clinicIds: Object.keys(allClinics) },
+            // superAdmin: hydrate loaded the platform-wide request set, so the listener
+            // must be unconstrained too — scoped queries would replace it with ~nothing.
+            { uid: identity.user.id, clinicIds: Object.keys(allClinics), superAdmin: allRoles.includes("superAdmin") },
             {
               onRequests: (requests) => setState((s) => ({ ...s, requests })),
               hasPatient: (id) => !!patientsRef.current[id],
@@ -205,7 +222,9 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
       }
     })();
     return () => { cancelled = true; unsubscribeRequests?.(); };
-  }, [live, identity, availableIdentities, refreshTick]);
+    // identitySetKey stands in for availableIdentities (content-keyed; read via ref) so
+    // token-refresh array churn doesn't tear down the listeners.
+  }, [live, identity, identitySetKey, refreshTick]);
 
   // Optimistic local apply, then mirror to Firestore/Functions (live only).
   const applyAndMirror = useCallback(
