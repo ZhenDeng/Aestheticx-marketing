@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppointmentLead, DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { fullName } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
@@ -154,10 +154,16 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
   // Lazy initializer keeps the impure Date.now() out of the render path.
   const [now] = useState(() => (live ? Date.now() : SEED_NOW));
 
+  // Latest patients map for the requests listener's hasPatient check — a ref, not a dep,
+  // so the subscription isn't torn down on every state change.
+  const patientsRef = useRef(state.patients);
+  useEffect(() => { patientsRef.current = state.patients; }, [state.patients]);
+
   // Live hydrate whenever the signed-in user changes or a refresh is requested.
   useEffect(() => {
     if (!live || !identity) return;
     let cancelled = false;
+    let unsubscribeRequests: (() => void) | undefined;
     (async () => {
       setStatus("loading");
       try {
@@ -168,12 +174,37 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         const allClinics = Object.assign({}, ...ids.map(clinicMap));
         const allRoles = [...new Set(ids.map((i) => i.role))];
         const next = await hydrate({ uid: identity.user.id, roles: allRoles, clinics: allClinics });
-        if (!cancelled) { setState(next); setStatus("ready"); }
+        if (cancelled) return;
+        setState(next);
+        setStatus("ready");
+        // Keep authRequests current AFTER the one-shot hydrate (owner bug 2, 2026-07-13):
+        // without listeners a signed-in doctor never saw a nurse's new request until they
+        // re-authenticated. Subscribing after hydrate resolves means the first full listener
+        // union always replaces an equal-or-older snapshot, never races it. Listener setup
+        // is an enhancement over the hydrated snapshot — its failure must not error a store
+        // that already loaded, so it gets its own catch.
+        try {
+          const { subscribeAuthRequests } = await import("@/lib/firebase/requestsLive");
+          unsubscribeRequests = subscribeAuthRequests(
+            { uid: identity.user.id, clinicIds: Object.keys(allClinics) },
+            {
+              onRequests: (requests) => setState((s) => ({ ...s, requests })),
+              hasPatient: (id) => !!patientsRef.current[id],
+              // Reviewer file access for a listener-delivered request: merge the fetched
+              // patient only if hydrate didn't already load it (never clobber local edits).
+              onPatient: (patient) =>
+                setState((s) => (s.patients[patient.id] ? s : { ...s, patients: { ...s.patients, [patient.id]: patient } })),
+            },
+          );
+          if (cancelled) unsubscribeRequests(); // cleanup ran while the module was loading
+        } catch {
+          // Stay on the one-shot snapshot; manual rehydrate still works.
+        }
       } catch (e) {
         if (!cancelled) { setStatus("error"); setLastSyncError(String(e)); }
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; unsubscribeRequests?.(); };
   }, [live, identity, availableIdentities, refreshTick]);
 
   // Optimistic local apply, then mirror to Firestore/Functions (live only).
