@@ -80,9 +80,10 @@ doctor's (owner) and the booking nurse's/clinic's (bookedBy) calendars.
   delivers the patient.
 
 ### 9. Mobile nav
-The 8-tab underline strip stays for `sm:`+. Below `sm:` the nav becomes a **wrapping pill
-grid** (4 per row, 2 rows) — every tab visible at once, no horizontal scrolling. Active pill
-= tint background; inactive = border. Same `navItemsFor` data.
+The underline strip stays for `sm:`+. Below `sm:` the nav becomes a **wrapping pill grid**
+(3 per row — the Invoice tab makes 9 clinical tabs, so 3×3) — every tab visible at once, no
+horizontal scrolling. Active pill = tint-soft background + tint border; inactive = line
+border. Same `navItemsFor` data.
 
 ## Tests
 - billing: `approvedThisMonth` (doctor + counterparty perspectives, month boundary);

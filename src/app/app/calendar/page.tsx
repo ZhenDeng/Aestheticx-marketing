@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentTitle, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
 import {
-  addDaysISO, shiftMonthISO, weekDaysFor, monthGridFor,
+  addDaysISO, shiftMonthISO, weekDaysFor, weekStartISO, monthGridFor,
   monthLabel, weekRangeLabel, dayHeaderLabel, dayLabel,
   layoutDay, dragStartMinute, dragEndMinute, dragTopMinute, edgeScrollVelocity, slotStartMinute, dayDelta, type DayColumn,
 } from "@/lib/demo/calendar";
@@ -116,12 +116,15 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
         )}
       </div>
 
+      {/* key={selectedISO}: stepping the period REMOUNTS the view so tap-state (selection,
+          empty-slot chooser, slot form) can never leak onto a different week/day — a stale
+          chooser could otherwise book an appointment on a date no longer on screen. */}
       {view === "day" && (
-        <DayView ownerID={ownerID} dateISO={selectedISO} todayISO={todayISO} me={me}
+        <DayView key={selectedISO} ownerID={ownerID} dateISO={selectedISO} todayISO={todayISO} me={me}
           showNew={showNew} setShowNew={setShowNew} />
       )}
       {view === "week" && (
-        <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay}
+        <WeekView key={weekStartISO(selectedISO)} ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay}
           showNew={showNew} setShowNew={setShowNew} />
       )}
       {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}

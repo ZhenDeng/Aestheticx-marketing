@@ -278,17 +278,26 @@ export function groupPatientsByOwner(
 // admin) → cooperation relationships (a doctor's cooperating nurses/clinics are exactly
 // the owners of their other patients) → request nurse names → a readable role-prefixed
 // stub, never a raw uid.
-export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string {
-  const cast = ownerLabel(owner);
-  if (cast !== owner.id) return cast;
-  const account = state.accountsByID[owner.id];
+// Shared account-name resolution core (ids never collide across kinds, so a kind-blind
+// sweep is safe): demo cast → hydrated accounts inventory → cooperation relationships.
+// Null when nothing resolves — callers pick their own fallback.
+function accountNameByID(state: DemoState, id: string): string | null {
+  for (const kind of ["clinic", "nurse"] as const) {
+    const cast = ownerLabel({ kind, id });
+    if (cast !== id) return cast;
+  }
+  const account = state.accountsByID[id];
   if (account?.name) return account.name;
   for (const rel of Object.values(state.cooperationRelationshipsByID)) {
-    if (owner.kind === "doctor" && rel.doctorID === owner.id && rel.doctorName) return rel.doctorName;
-    if (owner.kind !== "doctor" && rel.counterpartyType === owner.kind && rel.counterpartyID === owner.id && rel.counterpartyName) {
-      return rel.counterpartyName;
-    }
+    if (rel.doctorID === id && rel.doctorName) return rel.doctorName;
+    if (rel.counterpartyID === id && rel.counterpartyName) return rel.counterpartyName;
   }
+  return null;
+}
+
+export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string {
+  const resolved = accountNameByID(state, owner.id);
+  if (resolved) return resolved;
   if (owner.kind === "nurse") {
     const req = Object.values(state.requests).find((r) => r.nurse.id === owner.id && r.nurse.name);
     if (req) return req.nurse.name;
@@ -1391,18 +1400,8 @@ export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): stri
  * stamp fall back to parsing the "Auth request · X" note; null when nothing resolves.
  */
 export function bookerLabel(state: DemoState, a: Appointment): string | null {
-  const id = a.bookedByID;
-  if (id) {
-    for (const kind of ["clinic", "nurse"] as const) {
-      const cast = ownerLabel({ kind, id });
-      if (cast !== id) return cast;
-    }
-    const account = state.accountsByID[id];
-    if (account?.name) return account.name;
-    for (const rel of Object.values(state.cooperationRelationshipsByID)) {
-      if (rel.counterpartyID === id && rel.counterpartyName) return rel.counterpartyName;
-    }
-  }
+  const resolved = a.bookedByID ? accountNameByID(state, a.bookedByID) : null;
+  if (resolved) return resolved;
   const m = /^Auth request · (.+)$/.exec(a.appointmentNote ?? "");
   return m ? m[1] : null;
 }
