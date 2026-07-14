@@ -108,7 +108,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
         <button onClick={() => step(-1)} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint" aria-label="Previous">‹</button>
         <button onClick={() => setSelectedISO(todayISO)} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Today</button>
         <button onClick={() => step(1)} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint" aria-label="Next">›</button>
-        {view === "day" && (
+        {(view === "day" || view === "week") && (
           <button onClick={() => setShowNew((v) => !v)}
             className="ml-auto rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
             New appointment
@@ -120,7 +120,10 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
         <DayView ownerID={ownerID} dateISO={selectedISO} todayISO={todayISO} me={me}
           showNew={showNew} setShowNew={setShowNew} />
       )}
-      {view === "week" && <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
+      {view === "week" && (
+        <WeekView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay}
+          showNew={showNew} setShowNew={setShowNew} />
+      )}
       {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
     </div>
   );
@@ -578,8 +581,9 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 
 // A week chip with the day-timeline gestures adapted to the grid: drag to reschedule
 // (vertical → time, horizontal → another day), top/bottom-edge drag to resize, tap → open the day.
-function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
-  appt: Appointment; me: Identity; days: string[]; dayIndex: number; layout: DayColumn; openDay: (iso: string) => void;
+function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
+  appt: Appointment; me: Identity; days: string[]; dayIndex: number; layout: DayColumn;
+  selected: boolean; onSelect: (id: string | null) => void;
 }) {
   const store = useDemoStore();
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
@@ -659,7 +663,8 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
     stopScrollLoop();
     const st = drag.current; drag.current = null; setMove(null);
     if (!st) return;
-    if (!st.moved) { openDay(appt.dateISO); return; } // a tap opens the day
+    // 14/07 feedback: a tap opens the same detail/edit panel as day view (was: openDay).
+    if (!st.moved) { onSelect(appt.id); return; }
     if (!draggable) return; // dragged a non-reschedulable chip — discard silently
     const duration = appt.endMinute - appt.startMinute;
     const targetISO = days[Math.max(0, Math.min(days.length - 1, dayIndex + dayDelta(st.dx, st.colW)))];
@@ -749,6 +754,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
         background: apptColor(appt), borderLeft: `3px solid ${apptTypeAccent(appt)}`,
         transform: move ? `translate(${move.dx}px, ${move.dy}px)` : undefined,
         touchAction: "none", cursor: draggable ? "grab" : "pointer",
+        outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
         zIndex: move || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
       aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
@@ -779,8 +785,9 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
   );
 }
 
-function WeekView({ ownerID, selectedISO, todayISO, me, openDay }: {
+function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setShowNew }: {
   ownerID: string; selectedISO: string; todayISO: string; me: Identity; openDay: (iso: string) => void;
+  showNew: boolean; setShowNew: (v: boolean | ((p: boolean) => boolean)) => void;
 }) {
   const store = useDemoStore();
   const days = weekDaysFor(selectedISO);
@@ -788,48 +795,88 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay }: {
   const byDay = new Map<string, Appointment[]>();
   for (const a of appts) byDay.set(a.dateISO, [...(byDay.get(a.dateISO) ?? []), a]);
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
+  // 14/07 feedback: week view gains the day view's editing affordances — tap a chip to
+  // open the detail/edit panel (was: switch to day view), tap an empty column slot to
+  // book or block that time on THAT day. Drag/resize behaviour is unchanged.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [chooser, setChooser] = useState<{ iso: string; start: number } | null>(null);
+  const [slotForm, setSlotForm] = useState<{ iso: string; start?: number; block?: boolean } | null>(null);
+  const selected = appts.find((a) => a.id === selectedId) ?? null;
+  const showForm = showNew || slotForm !== null;
+  function closeForm() { setShowNew(false); setSlotForm(null); }
+
+  function onColumnClick(iso: string, e: React.MouseEvent) {
+    // Grid lines/busy bands are pointer-events-none and blocks are separate targets, so a
+    // bare-column click is an empty-slot tap (DayTimeline.onColumnClick parity).
+    if (e.target !== e.currentTarget) return;
+    setSelectedId(null);
+    setChooser({ iso, start: slotStartMinute(e.nativeEvent.offsetY, PX_PER_MIN, SLOT_STEP, WIN_START, WIN_END) });
+    setSlotForm(null);
+  }
 
   return (
-    <div className="mt-6 overflow-x-auto">
-      <div className="grid min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
-        {/* header row */}
-        <div />
-        {days.map((iso) => (
-          <button key={iso} onClick={() => openDay(iso)}
-            className="border-b border-line px-1 pb-2 text-center text-sm hover:text-tint"
-            style={iso === todayISO ? { color: "var(--color-tint)", fontWeight: 600 } : { color: "var(--color-ink-soft)" }}>
-            {dayHeaderLabel(iso)}
-          </button>
-        ))}
-        {/* hour rail */}
-        <div className="relative" style={{ height: railHeight }}>
-          {HOURS_IN.map((h) => (
-            <div key={h} className="absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
-              style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
-          ))}
+    <>
+      {showForm && (
+        <NewAppointmentForm dateISO={slotForm?.iso ?? selectedISO} me={me}
+          initialStart={slotForm?.start} initialBlock={slotForm?.block} onDone={closeForm} />
+      )}
+
+      {chooser !== null && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-inner border border-line bg-card px-4 py-3">
+          <span className="text-sm text-ink-soft">Add {dayHeaderLabel(chooser.iso)} at {timeLabel(chooser.start)}</span>
+          <button onClick={() => { setSlotForm({ iso: chooser.iso, start: chooser.start, block: false }); setChooser(null); }}
+            className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>New appointment</button>
+          <button onClick={() => { setSlotForm({ iso: chooser.iso, start: chooser.start, block: true }); setChooser(null); }}
+            className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Block time</button>
+          <button onClick={() => setChooser(null)} className="rounded-btn px-2 py-1.5 text-sm text-ink-soft">Cancel</button>
         </div>
-        {/* day columns */}
-        {days.map((iso, dayIndex) => {
-          const dayAppts = byDay.get(iso) ?? [];
-          const cols = new Map<string, DayColumn>(
-            layoutDay(dayAppts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
-          );
-          return (
-            <div key={iso} className="relative border-l border-line" style={{ height: railHeight }}>
-              {HOURS_IN.map((h) => (
-                <div key={h} className="absolute left-0 right-0 border-t border-line/60"
-                  style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
-              ))}
-              <BusyBlocks ownerID={ownerID} dateISO={iso} />
-              {dayAppts.map((a) => (
-                <WeekBlock key={a.id} appt={a} me={me} days={days} dayIndex={dayIndex}
-                  layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }} openDay={openDay} />
-              ))}
-            </div>
-          );
-        })}
+      )}
+
+      <div className="mt-6 overflow-x-auto">
+        <div className="grid min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
+          {/* header row */}
+          <div />
+          {days.map((iso) => (
+            <button key={iso} onClick={() => openDay(iso)}
+              className="border-b border-line px-1 pb-2 text-center text-sm hover:text-tint"
+              style={iso === todayISO ? { color: "var(--color-tint)", fontWeight: 600 } : { color: "var(--color-ink-soft)" }}>
+              {dayHeaderLabel(iso)}
+            </button>
+          ))}
+          {/* hour rail */}
+          <div className="relative" style={{ height: railHeight }}>
+            {HOURS_IN.map((h) => (
+              <div key={h} className="absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
+                style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
+            ))}
+          </div>
+          {/* day columns */}
+          {days.map((iso, dayIndex) => {
+            const dayAppts = byDay.get(iso) ?? [];
+            const cols = new Map<string, DayColumn>(
+              layoutDay(dayAppts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
+            );
+            return (
+              <div key={iso} className="relative border-l border-line" style={{ height: railHeight }}
+                onClick={(e) => onColumnClick(iso, e)}>
+                {HOURS_IN.map((h) => (
+                  <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
+                    style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
+                ))}
+                <BusyBlocks ownerID={ownerID} dateISO={iso} />
+                {dayAppts.map((a) => (
+                  <WeekBlock key={a.id} appt={a} me={me} days={days} dayIndex={dayIndex}
+                    layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
+                    selected={a.id === selectedId} onSelect={setSelectedId} />
+                ))}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {selected && <AppointmentDetail key={selected.id} appt={selected} me={me} onDone={() => setSelectedId(null)} />}
+    </>
   );
 }
 
