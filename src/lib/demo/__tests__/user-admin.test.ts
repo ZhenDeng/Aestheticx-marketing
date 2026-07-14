@@ -7,11 +7,14 @@ import type { AccountRecord } from "@/lib/demo/types";
 
 // Port parity with backend/functions/src/userAdmin.test.ts — the web form must
 // pre-validate exactly like the deployed createUser Function.
+const premise = { name: "Chen Aesthetics", address: "12 Hall St, Bondi Beach NSW 2026" };
 const base = {
   email: "rn@clinic.au", name: "Sarah Chen", abn: "12 345 678 901",
   businessName: "Chen Aesthetics", phone: "0400 000 000",
   temporaryPassword: "Temp1234!", roles: ["nurse"], ahpra: "NMW0001",
+  premises: [premise],
 };
+const doctor = { ...base, roles: ["doctor"], premises: undefined, principalPlace: "88 Oxford St, Paddington NSW 2021" };
 
 describe("validateNewUser", () => {
   it("accepts a complete nurse", () => {
@@ -29,7 +32,7 @@ describe("validateNewUser", () => {
 
   it("requires AHPRA for doctors and nurses", () => {
     expect(validateNewUser({ ...base, roles: ["nurse"], ahpra: "" })).toContain("ahpra");
-    expect(validateNewUser({ ...base, roles: ["doctor"], ahpra: undefined })).toContain("ahpra");
+    expect(validateNewUser({ ...doctor, ahpra: undefined })).toContain("ahpra");
   });
 
   it("does not require AHPRA when the account is clinic admin only", () => {
@@ -38,6 +41,34 @@ describe("validateNewUser", () => {
 
   it("requires a temporary password of at least 8 characters", () => {
     expect(validateNewUser({ ...base, temporaryPassword: "short" })).toContain("temporaryPassword");
+  });
+
+  // Round 6 (auth-pdf-feedback-round-6): the account must carry everything the
+  // treatment-authorisation PDF needs, captured at creation.
+  it("accepts a complete doctor and requires their principal place of practice", () => {
+    expect(validateNewUser(doctor)).toEqual([]);
+    expect(validateNewUser({ ...doctor, principalPlace: " " })).toContain("principalPlace");
+    expect(validateNewUser({ ...doctor, principalPlace: undefined })).toContain("principalPlace");
+  });
+
+  it("requires at least one COMPLETE premise for nurses", () => {
+    expect(validateNewUser({ ...base, premises: undefined })).toContain("premises");
+    expect(validateNewUser({ ...base, premises: [] })).toContain("premises");
+    expect(validateNewUser({ ...base, premises: [{ name: "X", address: " " }] })).toContain("premises");
+    expect(validateNewUser({ ...base, premises: [premise, { name: "", address: "1 St" }] })).toContain("premises");
+  });
+
+  it("accepts a clinic account: no AHPRA, clinicAdmin role, clinic address required", () => {
+    const clinic = {
+      ...base, accountType: "clinic", roles: ["clinicAdmin"], ahpra: "",
+      premises: undefined, name: "Eydis Aesthetics",
+      clinicAddress: "7/61 Market St, Sydney NSW 2000",
+    };
+    expect(validateNewUser(clinic)).toEqual([]);
+    expect(validateNewUser({ ...clinic, clinicAddress: "" })).toContain("clinicAddress");
+    expect(validateNewUser({ ...clinic, roles: ["nurse"] })).toContain("roles (clinic accounts must carry clinicAdmin)");
+    // Clinic accounts skip the practitioner requirements even with clinical roles absent.
+    expect(validateNewUser({ ...clinic, ahpra: undefined })).toEqual([]);
   });
 });
 
