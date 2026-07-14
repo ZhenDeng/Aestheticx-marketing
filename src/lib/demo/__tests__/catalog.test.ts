@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   PRODUCT_CATALOG, productsInCategory, brandsInCategory, productsInBrand,
   searchProducts, productById, productLabel, treatmentAreasFor, quantityCaption,
-  effectiveCatalog, type CatalogProduct,
+  unitSuffix, effectiveCatalog, type CatalogProduct,
 } from "@/lib/demo/catalog";
 import { resolveRecentlyUsed } from "@/lib/demo/requestBuilder";
 
@@ -29,8 +29,19 @@ describe("catalog data", () => {
     expect(productsInCategory("neurotoxin").every((p) => p.unit === "units")).toBe(true);
     expect(productsInCategory("haFiller").every((p) => p.unit === "millilitres")).toBe(true);
     expect(productById("collagenstimulator-sculptra")?.unit).toBe("vial");
-    expect(productById("collagenstimulator-radiesse")?.unit).toBe("syringe");
     expect(productById("collagenstimulator-ellanse")?.unit).toBe("millilitres");
+  });
+  // Owner feedback round 6 (2026-07-13): HarmonyCa + Radiesse dose in millilitres, not syringes.
+  it("doses HarmonyCa and Radiesse in millilitres (round 6)", () => {
+    expect(productById("collagenstimulator-radiesse")?.unit).toBe("millilitres");
+    expect(productById("collagenstimulator-harmonyca")?.unit).toBe("millilitres");
+    expect(PRODUCT_CATALOG.some((p) => p.unit === "syringe")).toBe(false);
+  });
+  // "Redensity 1" → "Teoxane Redensity 1" (round 6), id PINNED to the pre-rename slug so
+  // existing references (recently-used ids, prior request lines) still resolve.
+  it("renames Redensity 1 to Teoxane Redensity 1 at the pinned id", () => {
+    expect(productById("skinbooster-redensity-1")?.name).toBe("Teoxane Redensity 1");
+    expect(PRODUCT_CATALOG.filter((p) => p.name.includes("Redensity 1"))).toHaveLength(1);
   });
 });
 
@@ -73,6 +84,12 @@ describe("labels, areas, captions", () => {
   it("captions dose vs amount", () => {
     expect(quantityCaption("units")).toBe("Dose");
     expect(quantityCaption("millilitres")).toBe("Amount");
+  });
+  // Round 6: millilitres reads "mls" everywhere dosing displays (owner wording, not SI "mL").
+  it("suffixes millilitres as mls (round 6)", () => {
+    expect(unitSuffix("millilitres")).toBe("mls");
+    expect(unitSuffix("units")).toBe("U");
+    expect(unitSuffix("freeText")).toBe("");
   });
 });
 

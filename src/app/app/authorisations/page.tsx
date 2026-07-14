@@ -5,6 +5,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { useConsultCall } from "@/components/app/ConsultCall";
+import { unitSuffix } from "@/lib/demo/catalog";
 import type { AuthorisationRequest, Identity } from "@/lib/demo/types";
 
 // While a request is open the addressed doctor gets read-only access to the patient's full
@@ -51,7 +52,7 @@ function DoctorReviewInbox({ doctor, store, consult }: { doctor: Identity; store
             <PatientReviewCard request={r} />
             <ul className="mt-3 flex flex-col gap-1 text-sm text-ink">
               {r.items.map((it, i) => (
-                <li key={i}>{it.name} · {it.dosage} {it.unit} · {it.areas.join(", ")}</li>
+                <li key={i}>{it.name} · {it.dosage} {unitSuffix(it.unit)} · {it.areas.join(", ")}</li>
               ))}
             </ul>
             <div className="mt-4 flex gap-3">
