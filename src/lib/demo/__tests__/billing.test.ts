@@ -164,3 +164,83 @@ describe("monthKey / monthLabel", () => {
     expect(monthLabel("bogus")).toBe("bogus");
   });
 });
+
+// 14/07 feedback: dashboard headline + Invoice-section drilldown.
+import { approvedThisMonth } from "@/lib/demo/billing";
+import { counterpartyMonthDetail, emptyState } from "@/lib/demo/backend";
+import type { DemoState } from "@/lib/demo/types";
+
+describe("approvedThisMonth (dashboard headline)", () => {
+  const JUNE = Date.UTC(2026, 5, 26);
+  it("counts only the current calendar month, per approved request", () => {
+    const auths = [
+      auth({ id: "r1-0", requestID: "r1", createdAt: JUNE }),
+      auth({ id: "r1-1", requestID: "r1", createdAt: JUNE }), // same request — one event
+      auth({ id: "r2-0", requestID: "r2", createdAt: Date.UTC(2026, 4, 30) }), // May — out
+    ];
+    expect(approvedThisMonth(auths, doctor, JUNE)).toBe(1);
+    expect(approvedThisMonth(auths, clinicAdmin, JUNE)).toBe(1);
+    expect(approvedThisMonth(auths, nurseIndep, JUNE)).toBe(0); // clinic-billed, not theirs
+    expect(approvedThisMonth([], doctor, JUNE)).toBe(0);
+  });
+});
+
+describe("counterpartyMonthDetail (Invoice-section drilldown)", () => {
+  const JUNE_1 = Date.UTC(2026, 5, 1);
+  const JUNE_20 = Date.UTC(2026, 5, 20);
+  function stateWith(auths: ReturnType<typeof auth>[]): DemoState {
+    const s = emptyState();
+    return {
+      ...s,
+      authorisations: Object.fromEntries(auths.map((a) => [a.id, a])),
+      patients: {
+        p: {
+          id: "p", givenName: "Amara", lastName: "Boyd", dateOfBirth: { year: 1991, month: 3, day: 12 },
+          gender: "F", address: "", phone: "", email: "", allergies: "", currentMedications: "",
+          owner: { kind: "clinic", id: LUMIERE.id }, prescribingDoctorIDs: [],
+        },
+      },
+    };
+  }
+
+  it("groups a multi-item request into ONE row with an items summary, most recent first", () => {
+    const s = stateWith([
+      auth({ id: "r1-0", requestID: "r1", createdAt: JUNE_1 }),
+      auth({ id: "r1-1", requestID: "r1", createdAt: JUNE_1, medication: { name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: [] } }),
+      auth({ id: "r2-0", requestID: "r2", createdAt: JUNE_20 }),
+    ]);
+    const rows = counterpartyMonthDetail(s, "u-voss", "clinic", LUMIERE.id, "2026-06");
+    expect(rows.map((r) => r.requestID)).toEqual(["r2", "r1"]); // desc by date
+    expect(rows[1].detail).toBe("Profhilo 2 mls · Botox 20 U");
+    expect(rows[0].patientName).toBe("Amara Boyd");
+    expect(rows[0].dateISO).toBe("2026-06-20");
+  });
+
+  it("filters by month, doctor and counterparty; flags fully-invoiced requests", () => {
+    const s = stateWith([
+      auth({ id: "r1-0", requestID: "r1", createdAt: JUNE_1, invoiced: true }),
+      auth({ id: "r3-0", requestID: "r3", createdAt: Date.UTC(2026, 4, 1) }),           // May
+      auth({ id: "r4-0", requestID: "r4", createdAt: JUNE_1, doctorID: "u-else" }),     // other doctor
+      auth({ id: "r5-0", requestID: "r5", createdAt: JUNE_1, clinicID: null }),         // nurse counterparty
+    ]);
+    const rows = counterpartyMonthDetail(s, "u-voss", "clinic", LUMIERE.id, "2026-06");
+    expect(rows.map((r) => r.requestID)).toEqual(["r1"]);
+    expect(rows[0].invoiced).toBe(true);
+    expect(counterpartyMonthDetail(s, "u-voss", "nurse", "u-sarah", "2026-06").map((r) => r.requestID)).toEqual(["r5"]);
+  });
+
+  it("falls back to the request's patient snapshot for a deleted patient", () => {
+    const s = stateWith([auth({ id: "r9-0", requestID: "r9", createdAt: JUNE_1, patientID: "gone" })]);
+    const withSnapshot: DemoState = {
+      ...s,
+      requests: {
+        r9: {
+          id: "r9", patientID: "gone", nurse: { id: "u-sarah", name: "Sarah Chen" }, doctorID: "u-voss",
+          context: { kind: "clinic", clinic: LUMIERE }, items: [], status: "approved", createdAt: JUNE_1,
+          patientSummary: { fullName: "Grace Huang", dateOfBirth: { year: 1979, month: 1, day: 17 }, allergies: "", currentMedications: "" },
+        },
+      },
+    };
+    expect(counterpartyMonthDetail(withSnapshot, "u-voss", "clinic", LUMIERE.id, "2026-06")[0].patientName).toBe("Grace Huang");
+  });
+});

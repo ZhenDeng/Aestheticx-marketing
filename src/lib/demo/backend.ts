@@ -55,7 +55,7 @@ import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
-import { PRODUCT_CATEGORIES, productSlug, type CatalogProduct } from "./catalog";
+import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
@@ -2148,6 +2148,60 @@ export function billableAuthorisations(state: DemoState, doctorID: string): Bill
     })
     // Spec 2026-07-08: a relationship with invoiceApplies:false makes its counterparty's auths non-billable.
     .filter((r) => invoiceAppliesFor(relationshipFor(state.cooperationRelationshipsByID, doctorID, r.counterpartyType, r.counterpartyID)));
+}
+
+export interface CounterpartyAuthDetail {
+  requestID: string;
+  createdAt: number;
+  dateISO: string;
+  patientName: string;
+  /** All the request's medication items, summarised — "Botox 20 U · Voluma 2 mls". */
+  detail: string;
+  /** True when every line item of the request is already on an invoice. */
+  invoiced: boolean;
+}
+
+/**
+ * The Invoice-section drilldown (14/07 feedback): a doctor's approved requests for one
+ * counterparty in one calendar month, on the billingEvents grain (one row per request,
+ * a multi-item approval is one row), most recent first. Patient name resolves via the
+ * patient file, falling back to the request's snapshot for since-deleted patients.
+ */
+export function counterpartyMonthDetail(
+  state: DemoState,
+  doctorID: string,
+  counterpartyType: "nurse" | "clinic",
+  counterpartyID: string,
+  mk: string,
+): CounterpartyAuthDetail[] {
+  const byRequest = new Map<string, Authorisation[]>();
+  for (const a of Object.values(state.authorisations)) {
+    if (a.doctorID !== doctorID) continue;
+    const type: "clinic" | "nurse" = a.clinicID ? "clinic" : "nurse";
+    if (type !== counterpartyType || (a.clinicID ?? a.nurseID) !== counterpartyID) continue;
+    if (monthKey(a.createdAt) !== mk) continue;
+    byRequest.set(a.requestID, [...(byRequest.get(a.requestID) ?? []), a]);
+  }
+  return [...byRequest.values()]
+    .map((auths) => {
+      const first = auths[0];
+      const patient = state.patients[first.patientID];
+      const patientName = patient
+        ? fullName(patient)
+        : state.requests[first.requestID]?.patientSummary?.fullName ?? "Patient";
+      const detail = auths
+        .map((a) => `${a.medication.name} ${a.medication.dosage} ${unitSuffix(a.medication.unit)}`.trim())
+        .join(" · ");
+      return {
+        requestID: first.requestID,
+        createdAt: first.createdAt,
+        dateISO: new Date(first.createdAt).toISOString().slice(0, 10),
+        patientName,
+        detail,
+        invoiced: auths.every((a) => a.invoiced),
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export interface GenerateInvoiceInput {

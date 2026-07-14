@@ -6,6 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { activePremise, appointmentTitle, premisesAfterSelect, upcomingAuthCalls } from "@/lib/demo/backend";
+import { approvedThisMonth } from "@/lib/demo/billing";
 import { dayHeaderLabel } from "@/lib/demo/calendar";
 import type { Identity } from "@/lib/demo/types";
 
@@ -117,11 +118,13 @@ export default function DashboardPage() {
     );
   }
 
-  const patients = store.searchPatients("", identity);
   // Prescribing is always-on: the pending-approvals tile follows the account's held doctor identity,
   // not the selected workspace, so a doctor+clinicAdmin keeps it while acting as the clinic admin.
   const asDoctor = prescriberIdentity(heldIdentities(identity, availableIdentities));
   const pending = asDoctor ? store.pendingRequestsForDoctor(asDoctor.user.id) : [];
+  // 14/07 feedback: the headline tile is the CURRENT calendar month's approved
+  // authorisations (doctor: their approvals; nurse/clinic: approvals billed to them).
+  const approvedCount = approvedThisMonth(Object.values(store.state.authorisations), identity, store.now);
 
   return (
     <div>
@@ -133,9 +136,9 @@ export default function DashboardPage() {
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Link href="/app/patients" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
-          <p className="font-display text-3xl text-ink">{patients.length}</p>
-          <p className="mt-1 text-sm text-ink-soft">Patients you can see</p>
+        <Link href="/app/billing" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
+          <p className="font-display text-3xl text-ink">{approvedCount}</p>
+          <p className="mt-1 text-sm text-ink-soft">Authorisation approved this month</p>
         </Link>
         {asDoctor && (
           <Link href="/app/authorisations" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
