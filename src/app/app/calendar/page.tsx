@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentTitle, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
@@ -548,11 +548,11 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
         zIndex: dragDy !== 0 || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
-      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentTitle(appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
-      title={`${timeLabel(appt.startMinute)} ${appointmentTitle(appt, "Blocked time")}`}>
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
+      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}`}>
       {showText && (
         <span className="block text-[11px] leading-tight">
-          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentTitle(appt)}
+          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentChipTitle(store.state, appt)}
         </span>
       )}
       {draggable && (
@@ -751,11 +751,11 @@ function WeekBlock({ appt, me, days, dayIndex, layout, openDay }: {
         touchAction: "none", cursor: draggable ? "grab" : "pointer",
         zIndex: move || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
-      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentTitle(appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
-      title={`${timeLabel(appt.startMinute)} ${appointmentTitle(appt, "Blocked time")}`}>
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
+      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}`}>
       {showText && (
         <span className="block text-[11px] leading-tight">
-          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentTitle(appt)}
+          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentChipTitle(store.state, appt)}
         </span>
       )}
       {draggable && (
@@ -957,7 +957,7 @@ function MonthChip({ appt, me, selected, onError }: {
         cursor: draggable ? "grab" : undefined,
       }}>
       <span className="inline-block h-2 w-1 flex-none rounded-sm" style={{ background: apptColor(appt) }} />
-      <span className="truncate">{timeLabel(appt.startMinute)} {appointmentTitle(appt)}</span>
+      <span className="truncate">{timeLabel(appt.startMinute)} {appointmentChipTitle(store.state, appt)}</span>
     </span>
   );
 }

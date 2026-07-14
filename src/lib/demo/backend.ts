@@ -1383,6 +1383,43 @@ export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): stri
   return a.patientName ?? blockPlaceholder;
 }
 
+/**
+ * The nurse/clinic who booked an authorisation slot, as a display name (14/07 feedback).
+ * `bookedByID` (nurse uid or clinic id — the kind isn't stored) resolves through the
+ * demo cast, the hydrated accounts inventory, then cooperation relationships (a doctor's
+ * bookers are exactly their cooperating counterparties). Legacy appointments without the
+ * stamp fall back to parsing the "Auth request · X" note; null when nothing resolves.
+ */
+export function bookerLabel(state: DemoState, a: Appointment): string | null {
+  const id = a.bookedByID;
+  if (id) {
+    for (const kind of ["clinic", "nurse"] as const) {
+      const cast = ownerLabel({ kind, id });
+      if (cast !== id) return cast;
+    }
+    const account = state.accountsByID[id];
+    if (account?.name) return account.name;
+    for (const rel of Object.values(state.cooperationRelationshipsByID)) {
+      if (rel.counterpartyID === id && rel.counterpartyName) return rel.counterpartyName;
+    }
+  }
+  const m = /^Auth request · (.+)$/.exec(a.appointmentNote ?? "");
+  return m ? m[1] : null;
+}
+
+/**
+ * Calendar-chip title (14/07 feedback): an authorisation slot reads
+ * "{nurse/clinic} – {patient} – teleconsult" on BOTH participants' calendars (the
+ * appointment appears for owner and booker alike); everything else keeps the
+ * patient/lead title.
+ */
+export function appointmentChipTitle(state: DemoState, a: Appointment, blockPlaceholder = "—"): string {
+  if (a.type !== "authSlot") return appointmentTitle(a, blockPlaceholder);
+  const booker = bookerLabel(state, a);
+  const patient = appointmentTitle(a, "Authorisation call");
+  return [booker, patient, "teleconsult"].filter(Boolean).join(" – ");
+}
+
 // Client contact details for a calendar item (spec: pending bookings on the calendar show
 // DOB/phone/email). Per-field: the structured lead wins, the linked patient record fills
 // gaps; absent fields are omitted (a blocked time yields {}). DOB renders d/m/yyyy, the
