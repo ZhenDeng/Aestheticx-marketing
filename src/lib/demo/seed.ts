@@ -168,7 +168,9 @@ export function buildSeedState(): DemoState {
 
   // Seeded appointments for today (clinic + doctor calendars).
   const appts = [
-    { id: "appt-1", type: "authSlot" as const, ownerID: "u-voss", dateISO: TODAY_ISO, startMinute: 540, endMinute: 570, status: "confirmed" as const, patientID: amara.id, patientName: "Mara Boyd", appointmentNote: "Antiwrinkle" },
+    // bookedByID: the clinic booked this teleconsult — drives the round-6 chip title
+    // "Lumière Clinic – Mara Boyd – teleconsult" and the upcoming-calls requester line.
+    { id: "appt-1", type: "authSlot" as const, ownerID: "u-voss", bookedByID: LUMIERE.id, dateISO: TODAY_ISO, startMinute: 540, endMinute: 570, status: "confirmed" as const, patientID: amara.id, patientName: "Mara Boyd", appointmentNote: "Antiwrinkle" },
     { id: "appt-2", type: "treatment" as const, ownerID: "u-voss", dateISO: TODAY_ISO, startMinute: 600, endMinute: 630, status: "confirmed" as const, patientID: claire.id, patientName: "Coco Donovan", appointmentNote: "HA filler review" },
     { id: "appt-3", type: "treatment" as const, ownerID: LUMIERE.id, dateISO: TODAY_ISO, startMinute: 570, endMinute: 615, status: "confirmed" as const, patientID: amara.id, patientName: "Mara Boyd", appointmentNote: "Antiwrinkle review" },
     { id: "appt-4", type: "treatment" as const, ownerID: LUMIERE.id, dateISO: TODAY_ISO, startMinute: 630, endMinute: 660, status: "completed" as const, patientID: claire.id, patientName: "Coco Donovan", appointmentNote: "Profhilo" },

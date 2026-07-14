@@ -54,8 +54,8 @@ import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
-import { PRODUCT_CATEGORIES, productSlug, type CatalogProduct } from "./catalog";
+import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
+import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
@@ -278,17 +278,26 @@ export function groupPatientsByOwner(
 // admin) → cooperation relationships (a doctor's cooperating nurses/clinics are exactly
 // the owners of their other patients) → request nurse names → a readable role-prefixed
 // stub, never a raw uid.
-export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string {
-  const cast = ownerLabel(owner);
-  if (cast !== owner.id) return cast;
-  const account = state.accountsByID[owner.id];
+// Shared account-name resolution core (ids never collide across kinds, so a kind-blind
+// sweep is safe): demo cast → hydrated accounts inventory → cooperation relationships.
+// Null when nothing resolves — callers pick their own fallback.
+function accountNameByID(state: DemoState, id: string): string | null {
+  for (const kind of ["clinic", "nurse"] as const) {
+    const cast = ownerLabel({ kind, id });
+    if (cast !== id) return cast;
+  }
+  const account = state.accountsByID[id];
   if (account?.name) return account.name;
   for (const rel of Object.values(state.cooperationRelationshipsByID)) {
-    if (owner.kind === "doctor" && rel.doctorID === owner.id && rel.doctorName) return rel.doctorName;
-    if (owner.kind !== "doctor" && rel.counterpartyType === owner.kind && rel.counterpartyID === owner.id && rel.counterpartyName) {
-      return rel.counterpartyName;
-    }
+    if (rel.doctorID === id && rel.doctorName) return rel.doctorName;
+    if (rel.counterpartyID === id && rel.counterpartyName) return rel.counterpartyName;
   }
+  return null;
+}
+
+export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string {
+  const resolved = accountNameByID(state, owner.id);
+  if (resolved) return resolved;
   if (owner.kind === "nurse") {
     const req = Object.values(state.requests).find((r) => r.nurse.id === owner.id && r.nurse.name);
     if (req) return req.nurse.name;
@@ -1383,6 +1392,33 @@ export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): stri
   return a.patientName ?? blockPlaceholder;
 }
 
+/**
+ * The nurse/clinic who booked an authorisation slot, as a display name (14/07 feedback).
+ * `bookedByID` (nurse uid or clinic id — the kind isn't stored) resolves through the
+ * demo cast, the hydrated accounts inventory, then cooperation relationships (a doctor's
+ * bookers are exactly their cooperating counterparties). Legacy appointments without the
+ * stamp fall back to parsing the "Auth request · X" note; null when nothing resolves.
+ */
+export function bookerLabel(state: DemoState, a: Appointment): string | null {
+  const resolved = a.bookedByID ? accountNameByID(state, a.bookedByID) : null;
+  if (resolved) return resolved;
+  const m = /^Auth request · (.+)$/.exec(a.appointmentNote ?? "");
+  return m ? m[1] : null;
+}
+
+/**
+ * Calendar-chip title (14/07 feedback): an authorisation slot reads
+ * "{nurse/clinic} – {patient} – teleconsult" on BOTH participants' calendars (the
+ * appointment appears for owner and booker alike); everything else keeps the
+ * patient/lead title.
+ */
+export function appointmentChipTitle(state: DemoState, a: Appointment, blockPlaceholder = "—"): string {
+  if (a.type !== "authSlot") return appointmentTitle(a, blockPlaceholder);
+  const booker = bookerLabel(state, a);
+  const patient = appointmentTitle(a, "Authorisation call");
+  return [booker, patient, "teleconsult"].filter(Boolean).join(" – ");
+}
+
 // Client contact details for a calendar item (spec: pending bookings on the calendar show
 // DOB/phone/email). Per-field: the structured lead wins, the linked patient record fills
 // gaps; absent fields are omitted (a blocked time yields {}). DOB renders d/m/yyyy, the
@@ -2150,6 +2186,83 @@ export function billableAuthorisations(state: DemoState, doctorID: string): Bill
     .filter((r) => invoiceAppliesFor(relationshipFor(state.cooperationRelationshipsByID, doctorID, r.counterpartyType, r.counterpartyID)));
 }
 
+// An invoice party resolved from hydrated state (14/07 tax-invoice PDF): business name +
+// ABN from the party's Business Entity when active (backend entityParty parity), name
+// falling back through ownerDisplayLabel. Email/address aren't client-knowable outside a
+// snapshot — they stay empty here; the backend's generation-time snapshot wins when present.
+export function invoicePartyFor(state: DemoState, kind: "doctor" | "nurse" | "clinic", id: string): InvoiceParty {
+  const entity = state.businessEntitiesByID[id];
+  const entityName = entity?.isActive ? (entity.tradingName || entity.legalName) : "";
+  return {
+    businessName: entityName || ownerDisplayLabel(state, { kind, id } as PatientOwner),
+    abn: entity?.isActive ? entity.abn : "",
+    email: "",
+  };
+}
+
+/** The issuer/bill-to pair for a tax invoice: generation-time snapshots when present
+ *  (live invoices, Tier 3 #4), else resolved from state (demo + legacy invoices). */
+export function invoicePartiesFor(state: DemoState, invoice: Invoice): { issuer: InvoiceParty; billTo: InvoiceParty } {
+  return {
+    issuer: invoice.issuer ?? invoicePartyFor(state, "doctor", invoice.doctorID),
+    billTo: invoice.billTo ?? invoicePartyFor(state, invoice.counterpartyType, invoice.counterpartyID),
+  };
+}
+
+export interface CounterpartyAuthDetail {
+  requestID: string;
+  createdAt: number;
+  dateISO: string;
+  patientName: string;
+  /** All the request's medication items, summarised — "Botox 20 U · Voluma 2 mls". */
+  detail: string;
+  /** True when every line item of the request is already on an invoice. */
+  invoiced: boolean;
+}
+
+/**
+ * The Invoice-section drilldown (14/07 feedback): a doctor's approved requests for one
+ * counterparty in one calendar month, on the billingEvents grain (one row per request,
+ * a multi-item approval is one row), most recent first. Patient name resolves via the
+ * patient file, falling back to the request's snapshot for since-deleted patients.
+ */
+export function counterpartyMonthDetail(
+  state: DemoState,
+  doctorID: string,
+  counterpartyType: "nurse" | "clinic",
+  counterpartyID: string,
+  mk: string,
+): CounterpartyAuthDetail[] {
+  const byRequest = new Map<string, Authorisation[]>();
+  for (const a of Object.values(state.authorisations)) {
+    if (a.doctorID !== doctorID) continue;
+    const type: "clinic" | "nurse" = a.clinicID ? "clinic" : "nurse";
+    if (type !== counterpartyType || (a.clinicID ?? a.nurseID) !== counterpartyID) continue;
+    if (monthKey(a.createdAt) !== mk) continue;
+    byRequest.set(a.requestID, [...(byRequest.get(a.requestID) ?? []), a]);
+  }
+  return [...byRequest.values()]
+    .map((auths) => {
+      const first = auths[0];
+      const patient = state.patients[first.patientID];
+      const patientName = patient
+        ? fullName(patient)
+        : state.requests[first.requestID]?.patientSummary?.fullName ?? "Patient";
+      const detail = auths
+        .map((a) => `${a.medication.name} ${a.medication.dosage} ${unitSuffix(a.medication.unit)}`.trim())
+        .join(" · ");
+      return {
+        requestID: first.requestID,
+        createdAt: first.createdAt,
+        dateISO: new Date(first.createdAt).toISOString().slice(0, 10),
+        patientName,
+        detail,
+        invoiced: auths.every((a) => a.invoiced),
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export interface GenerateInvoiceInput {
   doctorID: string;
   counterpartyID: string;
@@ -2181,6 +2294,10 @@ export function generateInvoice(
     ...computed,
     authorisationIDs: rows.map((r) => r.id),
     createdAt: now,
+    // Tier 3 #4 parity with the backend: freeze the party identities at generation so
+    // the tax-invoice PDF is self-describing (demo has no post-commit snapshot step).
+    issuer: invoicePartyFor(state, "doctor", input.doctorID),
+    billTo: invoicePartyFor(state, input.counterpartyType, input.counterpartyID),
     paid: false,
   };
   const invoicedIDs = new Set(rows.map((r) => r.id));

@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { partyLabel, monthLabel } from "@/lib/demo/billing";
-import { isoDay } from "@/lib/demo/backend";
-import { formatAUD, computeInvoice, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS } from "@/lib/demo/invoicing";
+import { partyLabel, monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
+import { counterpartyMonthDetail, invoicePartiesFor, isoDay } from "@/lib/demo/backend";
+import { formatAUD, computeInvoice, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
+import { buildTaxInvoiceModel, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
 import { DEMO_ACCOUNTS, LUMIERE } from "@/lib/demo/accounts";
 
 export default function BillingPage() {
@@ -19,7 +20,6 @@ export default function BillingPage() {
   if (store.status === "loading") return <p className="text-ink-soft">Loading…</p>;
 
   const me = identity;
-  const isLive = store.status !== "demo";
   const isDoctor = me.role === "doctor";
   const summary = store.billingSummary(me);
   const invoices = store.invoicesFor(me);
@@ -31,15 +31,38 @@ export default function BillingPage() {
     setPriceInput((store.scriptPrice(me.user.id, counterpartyID) / 100).toFixed(2));
   }
 
+  // 14/07 feedback: the Invoice section leads with THIS calendar month per counterparty,
+  // each row expandable into the date–patient–detail drilldown + price editing + generate.
+  const currentMonthKey = monthKey(store.now);
+  const thisMonth = summary.months.find((m) => m.monthKey === currentMonthKey);
+
   return (
     <div className="max-w-3xl">
-      <h1 className="font-display text-3xl text-ink">Billing</h1>
+      <h1 className="font-display text-3xl text-ink">Invoice</h1>
       <p className="mt-1 text-ink-soft">{heading}</p>
 
       <div className="mt-5 rounded-card border border-line bg-card p-5 shadow-card">
         <span className="micro">Total approved requests</span>
         <p className="mt-1 font-display text-4xl text-ink">{summary.totalCount}</p>
       </div>
+
+      {isDoctor && (
+        <section className="mt-6">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-xl text-ink">This month</h2>
+            <span className="micro">{monthLabel(currentMonthKey)}</span>
+          </div>
+          {!thisMonth ? (
+            <p className="mt-2 text-sm text-ink-soft">No authorisations approved yet this month.</p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {thisMonth.byParty.map((p) => (
+                <ThisMonthRow key={`${p.type}:${p.id}`} party={p} monthKey={currentMonthKey} />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {summary.months.length === 0 ? (
         <p className="mt-6 text-sm text-ink-soft">No billable authorisations yet.</p>
@@ -114,6 +137,16 @@ export default function BillingPage() {
                 {party?.abn && (
                   <span className="mt-0.5 block text-xs text-ink-soft">{party.businessName} · ABN {party.abn}</span>
                 )}
+                {/* 14/07 feedback: surface the post-generation email. Live: the backend
+                    queues it to the bill-to email on generation; without an address on
+                    file there is nothing to send to — say so rather than pretend. */}
+                {isDoctor && (
+                  <span className="mt-0.5 block text-xs text-ink-soft">
+                    {inv.billTo?.email
+                      ? `Emailed to ${inv.billTo.email}`
+                      : "No billing email on file — download the PDF and send it manually."}
+                  </span>
+                )}
               </span>
               <span className="flex items-center gap-3">
                 {isDoctor && !inv.paid && (
@@ -123,7 +156,7 @@ export default function BillingPage() {
                     {marking === inv.id ? "Marking…" : "Mark paid"}
                   </button>
                 )}
-                <InvoiceDownload pdfFileId={inv.pdfFileId} isLive={isLive} />
+                <InvoiceDownload invoice={inv} />
               </span>
             </li>
             );
@@ -131,6 +164,60 @@ export default function BillingPage() {
         </ul>
       )}
     </div>
+  );
+}
+
+// One current-month counterparty row of the Invoice section (14/07 feedback): click the
+// nurse/clinic name to open the drilldown — every approved request of the month as
+// "date — patient — items", most recent first — plus the per-counterparty price editor
+// and invoice generation (GeneratePanel, shared with the historical grid).
+function ThisMonthRow({ party, monthKey: mk }: { party: BillingParty; monthKey: string }) {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  const me = identity!;
+  const [open, setOpen] = useState(false);
+  const [priceInput, setPriceInput] = useState("");
+  const counterpartyType = party.type === "clinic" ? "clinic" : "nurse";
+  const rows = open ? counterpartyMonthDetail(store.state, me.user.id, counterpartyType, party.id, mk) : [];
+
+  function toggle() {
+    if (!open) setPriceInput((store.scriptPrice(me.user.id, party.id) / 100).toFixed(2));
+    setOpen((o) => !o);
+  }
+
+  return (
+    <li className="rounded-inner border border-line bg-card px-4 py-3">
+      <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center justify-between text-left">
+        <span className="text-sm font-medium text-ink">{partyLabel(party.type, party.id, DEMO_ACCOUNTS, LUMIERE)}</span>
+        <span className="flex items-center gap-2 text-sm text-ink">
+          {party.count} authorisation{party.count === 1 ? "" : "s"}
+          <span aria-hidden className="text-ink-soft">{open ? "▾" : "›"}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="mt-3">
+          <ul className="flex flex-col gap-1">
+            {rows.map((r) => (
+              <li key={r.requestID} className="flex items-start justify-between gap-3 border-b border-line py-1.5 text-sm last:border-b-0">
+                <span className="min-w-0">
+                  <span className="text-ink">{r.dateISO} — {r.patientName}</span>
+                  <span className="block text-xs text-ink-soft">{r.detail}</span>
+                </span>
+                {r.invoiced && <span className="micro flex-none rounded-full border border-line px-2 py-0.5 text-ink-soft">Invoiced</span>}
+              </li>
+            ))}
+          </ul>
+          <GeneratePanel
+            monthKey={mk}
+            counterpartyID={party.id}
+            counterpartyType={counterpartyType}
+            priceInput={priceInput}
+            setPriceInput={setPriceInput}
+            onDone={() => setOpen(false)}
+          />
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -288,22 +375,38 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
   );
 }
 
-function InvoiceDownload({ pdfFileId, isLive }: { pdfFileId?: string; isLive: boolean }) {
-  const [busy, setBusy] = useState(false);
-  if (!isLive) {
-    return <span className="text-xs text-ink-soft">PDF available in live mode</span>;
-  }
-  async function download() {
-    if (!pdfFileId) return;
-    setBusy(true);
-    try { const { invoicePdfUrl } = await import("@/lib/firebase/invoices"); window.open(await invoicePdfUrl(pdfFileId), "_blank", "noopener"); }
-    catch { /* surfaced via the sync-error banner */ }
-    finally { setBusy(false); }
+// 14/07 feedback: the exported PDF follows the ATO's Example 2 tax-invoice layout and is
+// rendered CLIENT-side from the invoice in state — identical in demo and live, no server
+// round-trip. (The backend still archives its own PDF copy in Storage for live audit.)
+function InvoiceDownload({ invoice }: { invoice: Invoice }) {
+  const store = useDemoStore();
+  const [error, setError] = useState(false);
+  function download() {
+    setError(false);
+    try {
+      const { issuer, billTo } = invoicePartiesFor(store.state, invoice);
+      const bytes = renderTaxInvoicePdf(buildTaxInvoiceModel(invoice, issuer, billTo));
+      const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = taxInvoicePdfFilename(invoice.id);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Defer revocation: revoking synchronously can abort the download (directionPdf precedent).
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError(true);
+    }
   }
   return (
-    <button type="button" onClick={download} disabled={!pdfFileId || busy}
-      className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint disabled:opacity-50">
-      {busy ? "Opening…" : pdfFileId ? "Download PDF" : "Preparing…"}
-    </button>
+    <span className="flex items-center gap-2">
+      {error && <span className="text-xs" style={{ color: "var(--color-rose)" }}>Couldn’t create the PDF</span>}
+      <button type="button" onClick={download}
+        className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+        Download PDF
+      </button>
+    </span>
   );
 }

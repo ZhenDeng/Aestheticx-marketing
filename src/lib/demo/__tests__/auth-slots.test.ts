@@ -5,6 +5,7 @@ import {
   bookAuthSlot, requestAdHocAuth, BackendError, setDoctorStatus,
   appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentOwnerScope,
   canRescheduleAppointment, rescheduleAppointment, upcomingAuthCalls,
+  appointmentChipTitle, bookerLabel,
 } from "@/lib/demo/backend";
 import { LUMIERE } from "@/lib/demo/accounts";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
@@ -210,5 +211,35 @@ describe("upcomingAuthCalls (round 6 doctor schedule)", () => {
     const calls = upcomingAuthCalls(s, "u-voss", NOON);
     expect(calls.map((a) => a.dateISO)).toEqual(["2026-06-27"]);
     expect(calls[0].type).toBe("authSlot");
+  });
+});
+
+describe("authSlot chip title (14/07: 'nurse/clinic – patient – teleconsult')", () => {
+  it("titles a nurse-booked slot with the booker, patient and teleconsult marker", () => {
+    const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "Amara Boyd", identity: sarah }).state;
+    const appt = Object.values(s.appointments)[0];
+    expect(bookerLabel(s, appt)).toBe("Sarah Chen");
+    expect(appointmentChipTitle(s, appt)).toBe("Sarah Chen – Amara Boyd – teleconsult");
+  });
+  it("labels a clinic-context booking with the clinic", () => {
+    const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "Amara Boyd", identity: sarahClinic }).state;
+    const appt = Object.values(s.appointments)[0];
+    expect(appointmentChipTitle(s, appt)).toBe(`${LUMIERE.name} – Amara Boyd – teleconsult`);
+  });
+  it("falls back to the legacy 'Auth request · X' note when bookedByID is unresolvable", () => {
+    const legacy: Appointment = {
+      id: "x", type: "authSlot", ownerID: "u-voss", dateISO: DAY, startMinute: 540, endMinute: 550,
+      status: "confirmed", patientID: "p1", patientName: "Amara Boyd", appointmentNote: "Auth request · Janet Wang",
+    };
+    expect(bookerLabel(emptyState(), legacy)).toBe("Janet Wang");
+    expect(appointmentChipTitle(emptyState(), legacy)).toBe("Janet Wang – Amara Boyd – teleconsult");
+  });
+  it("leaves non-auth appointments on the patient/lead title", () => {
+    const treatment: Appointment = {
+      id: "t", type: "treatment", ownerID: "u-voss", dateISO: DAY, startMinute: 600, endMinute: 660,
+      status: "confirmed", patientID: "p2", patientName: "Coco Donovan",
+    };
+    expect(appointmentChipTitle(emptyState(), treatment)).toBe("Coco Donovan");
+    expect(appointmentChipTitle(emptyState(), { ...treatment, patientID: undefined, patientName: undefined }, "Blocked time")).toBe("Blocked time");
   });
 });

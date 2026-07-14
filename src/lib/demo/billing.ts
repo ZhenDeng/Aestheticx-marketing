@@ -74,6 +74,14 @@ export function billingSummary(authorisations: Authorisation[], identity: Identi
   return { totalCount: visible.length, months };
 }
 
+// The dashboard headline (14/07 feedback): approved authorisation requests in the
+// CURRENT calendar month, from the same billingEvents grain as billingSummary —
+// doctor: their approvals; nurse/clinic: approvals billed to them.
+export function approvedThisMonth(authorisations: Authorisation[], identity: Identity, now: number): number {
+  const current = monthKey(now);
+  return billingSummary(authorisations, identity).months.find((m) => m.monthKey === current)?.count ?? 0;
+}
+
 // Ad-hoc timeframe count for the "Custom timeframe" card, port of
 // BillingLedger.count(forDoctor:/forCounterparty:from:to:) as BillingView uses it:
 // inclusive bounds, doctor scoped by doctorID, everyone else by their counterparty

@@ -40,17 +40,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-5 sm:px-8 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* 14/07 feedback: the horizontal-scroll tab strip was hard to use on mobile —
+            below `sm:` every tab is visible at once as a wrapping pill grid; from `sm:`
+            up the underline tab strip is unchanged. */}
+        <nav className="mx-auto grid max-w-6xl grid-cols-3 gap-1.5 px-5 py-2 sm:flex sm:gap-1 sm:px-8 sm:py-0">
           {nav.map((item) => {
             const active = item.href === activeHref;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition-colors ${
-                  active ? "border-tint text-ink" : "border-transparent text-ink-soft hover:text-ink"
+                className={`rounded-btn border px-2 py-2 text-center text-sm transition-colors sm:-mb-px sm:shrink-0 sm:whitespace-nowrap sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b-2 sm:bg-transparent sm:px-3 sm:py-2.5 ${
+                  active
+                    ? "border-[var(--color-tint)] bg-[var(--color-tint-soft)] font-medium text-ink"
+                    : "border-line bg-card text-ink-soft hover:text-ink sm:border-transparent"
                 }`}
-                style={active ? { borderColor: "var(--color-tint)" } : undefined}
               >
                 {item.label}
               </Link>
