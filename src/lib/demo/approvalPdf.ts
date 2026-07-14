@@ -22,12 +22,18 @@ export const DEFAULT_TIMING = "PRN monthly, max 6 treatments yearly (6 months in
 const text = (v: string | undefined | null): string =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : MISSING_VALUE;
 
+/** Legacy millilitre spellings a stored dosage may already end with ("2 mL", "2 ml",
+ *  "2 mls", "2 millilitres") — all count as suffixed so "2 mL" never renders "2 mL mls". */
+const LEGACY_ML_SUFFIX = /(ml|mls|millilitres?)$/;
+
 /** "48 U" / "2 mls" — mirrors backend dosageWithUnit (no double suffix). */
 export function dosageWithUnit(item: MedicationItem): string {
   const suffix = unitSuffix(item.unit);
   const trimmed = item.dosage.trim();
   if (!suffix) return trimmed || MISSING_VALUE;
-  if (trimmed.toLowerCase().endsWith(suffix.toLowerCase())) return trimmed;
+  const lower = trimmed.toLowerCase();
+  if (lower.endsWith(suffix.toLowerCase())) return trimmed;
+  if (item.unit === "millilitres" && LEGACY_ML_SUFFIX.test(lower)) return trimmed;
   return trimmed ? `${trimmed} ${suffix}` : suffix;
 }
 

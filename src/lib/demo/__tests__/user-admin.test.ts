@@ -67,6 +67,9 @@ describe("validateNewUser", () => {
     expect(validateNewUser(clinic)).toEqual([]);
     expect(validateNewUser({ ...clinic, clinicAddress: "" })).toContain("clinicAddress");
     expect(validateNewUser({ ...clinic, roles: ["nurse"] })).toContain("roles (clinic accounts must carry clinicAdmin)");
+    // A clinic must not smuggle clinical roles past the practitioner requirements.
+    expect(validateNewUser({ ...clinic, roles: ["clinicAdmin", "doctor"] }))
+      .toContain("roles (clinic accounts cannot carry doctor/nurse roles)");
     // Clinic accounts skip the practitioner requirements even with clinical roles absent.
     expect(validateNewUser({ ...clinic, ahpra: undefined })).toEqual([]);
   });

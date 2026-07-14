@@ -69,6 +69,12 @@ export function validateNewUser(input: NewUserInput): string[] {
   if (isClinicAccount) {
     if (blank(input.clinicAddress)) missing.push("clinicAddress");
     if (!roles.includes("clinicAdmin")) missing.push("roles (clinic accounts must carry clinicAdmin)");
+    // A clinic is an organisation login — clinical roles would bypass the practitioner
+    // requirements above (AHPRA, principalPlace, premises) while gaining clinical write
+    // capability.
+    if (roles.some((r) => PRESCRIBER_ROLES.includes(r))) {
+      missing.push("roles (clinic accounts cannot carry doctor/nurse roles)");
+    }
   }
   return missing;
 }

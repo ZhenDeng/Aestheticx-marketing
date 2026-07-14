@@ -62,6 +62,9 @@ describe("display helpers", () => {
     expect(dosageWithUnit(voluma)).toBe("2 mls");
     expect(dosageWithUnit({ ...voluma, dosage: "2 mls" })).toBe("2 mls");
     expect(dosageWithUnit({ ...botox, unit: "freeText", dosage: "" })).toBe(MISSING_VALUE);
+    // Legacy pre-round-6 spellings already on the stored dosage never double up.
+    expect(dosageWithUnit({ ...voluma, dosage: "2 mL" })).toBe("2 mL");
+    expect(dosageWithUnit({ ...voluma, dosage: "2 millilitres" })).toBe("2 millilitres");
   });
   it("formats dd/MM/yyyy in Sydney time", () => {
     expect(formatDay(APPROVED)).toBe("13/07/2026");

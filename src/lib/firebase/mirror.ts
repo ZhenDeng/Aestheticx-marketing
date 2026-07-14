@@ -421,6 +421,13 @@ export async function mirrorCreateUser(input: import("@/lib/demo/userAdmin").New
     email: input.email, name: input.name, abn: input.abn, businessName: input.businessName,
     phone: input.phone, temporaryPassword: input.temporaryPassword, roles: input.roles,
     ...(input.ahpra ? { ahpra: input.ahpra } : {}),
+    // Round 6: the deployed callable validates + persists these — dropping any of them
+    // fails doctor/nurse creation server-side, and omitting accountType would silently
+    // skip clinic provisioning (an orphaned clinicAdmin claim with no clinic doc).
+    ...(input.accountType ? { accountType: input.accountType } : {}),
+    ...(input.clinicAddress ? { clinicAddress: input.clinicAddress } : {}),
+    ...(input.principalPlace ? { principalPlace: input.principalPlace } : {}),
+    ...(input.premises ? { premises: input.premises.map((p) => ({ name: p.name, address: p.address })) } : {}),
   });
   const d = res.data as { uid?: unknown };
   if (typeof d.uid !== "string" || !d.uid) throw new Error("createUser returned no uid");
