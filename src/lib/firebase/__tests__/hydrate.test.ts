@@ -25,7 +25,7 @@ const rows: HydrationRows = {
   appointmentReminderLead: null,
   bookingToken: "bk-voss",
   doctorStatus: { online: false, alwaysAcceptAuth: false },
-  profile: { ahpra: "MED0001234567", abn: "82 601 443 218", phone: "0412 884 209", address: "14 Acland St, St Kilda VIC", avatarFileId: "users/u-voss/avatar.jpg" },
+  profile: { ahpra: "MED0001234567", abn: "82 601 443 218", phone: "0412 884 209", address: "14 Acland St, St Kilda VIC", principalPlace: "", premises: [], avatarFileId: "users/u-voss/avatar.jpg" },
   currentUserID: "u-voss",
 };
 
@@ -121,7 +121,8 @@ describe("assembleState", () => {
     const state = assembleState(rows);
     expect(state.profileByUser["u-voss"]).toEqual({
       ahpra: "MED0001234567", abn: "82 601 443 218", phone: "0412 884 209",
-      address: "14 Acland St, St Kilda VIC", avatarFileId: "users/u-voss/avatar.jpg",
+      address: "14 Acland St, St Kilda VIC", principalPlace: "", premises: [],
+      avatarFileId: "users/u-voss/avatar.jpg",
     });
   });
 

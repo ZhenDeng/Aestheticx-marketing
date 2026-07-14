@@ -5,8 +5,8 @@ import {
 } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity } from "./mappers";
-import type { AppointmentReminderLead, DemoState, FollowUpSettings, UserProfile } from "@/lib/demo/types";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity, mapPremise } from "./mappers";
+import type { AppointmentReminderLead, DemoState, FollowUpSettings, Premise, UserProfile } from "@/lib/demo/types";
 import { readFollowUpSettings } from "@/lib/demo/backend";
 import type { DemoClaims } from "./identity";
 
@@ -243,8 +243,17 @@ async function readUserProfile(uid: string): Promise<{
   // client-writable address/avatarFileId. ahpra is nullable on the wire (createUser
   // writes `ahpra: data.ahpra ?? null` for admins) — coerce non-strings to "".
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  // Premises of administration + principal place (round 6) — written by createUser and
+  // the profile/dashboard UI; malformed rows are dropped by mapPremise.
+  const premises = Array.isArray(d.premises)
+    ? d.premises.map(mapPremise).filter((p): p is Premise => p !== null)
+    : [];
   const profile: UserProfile = {
     ahpra: str(d.ahpra), abn: str(d.abn), phone: str(d.phone), address: str(d.address),
+    principalPlace: str(d.principalPlace),
+    premises,
+    ...(typeof d.defaultPremiseId === "string" && d.defaultPremiseId ? { defaultPremiseId: d.defaultPremiseId } : {}),
+    ...(typeof d.selectedPremiseId === "string" && d.selectedPremiseId ? { selectedPremiseId: d.selectedPremiseId } : {}),
     ...(typeof d.avatarFileId === "string" && d.avatarFileId ? { avatarFileId: d.avatarFileId } : {}),
   };
   return { followUpSettings, appointmentReminderLead, bookingToken, doctorStatus, lastCalledDoctorId, profile };

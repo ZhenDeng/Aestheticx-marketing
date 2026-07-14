@@ -7,14 +7,13 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
 import { doctorRequestStats, rankDoctors, mostRecentlyRequestedDoctor } from "@/lib/demo/doctorRanking";
-import type { MedicationItem, ProductCategory } from "@/lib/demo/types";
+import { ROUTES_OF_ADMINISTRATION, ROUTE_DISPLAY_LABELS, type MedicationItem, type ProductCategory } from "@/lib/demo/types";
 import {
   categoryDisplayName, productsInCategory, brandsInCategory, productsInBrand,
   searchProducts, productLabel, treatmentAreasFor, quantityCaption, unitSuffix, effectiveCatalog, type CatalogProduct,
 } from "@/lib/demo/catalog";
 import {
-  loadRecentlyUsed, recordRecentlyUsedProduct, resolveRecentlyUsed,
-  composeOtherDosage, splitCustomAreas,
+  loadRecentlyUsed, recordRecentlyUsedProduct, resolveRecentlyUsed, splitCustomAreas,
 } from "@/lib/demo/requestBuilder";
 
 const CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf"];
@@ -31,27 +30,39 @@ function emptyOtherItem(): MedicationItem {
   return { name: "", dosage: "", category: "other", unit: "freeText", areas: [] };
 }
 
+// Clause 68C route selector (round 6): exactly the five options, never pre-chosen —
+// the nurse must actively pick one per item before the request can be submitted
+// (mirrors iOS LineItemEditorView.routePicker).
+function RouteSelect({ value, onChange }: { value: string | undefined; onChange: (route: string) => void }) {
+  return (
+    <label className="block">
+      <span className="micro">Route of administration</span>
+      <select value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-label="Route of administration"
+        className="mt-1 w-48 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink">
+        <option value="" disabled>Select route…</option>
+        {ROUTES_OF_ADMINISTRATION.map((r) => (
+          <option key={r} value={r}>{ROUTE_DISPLAY_LABELS[r]}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 // Free-text editor for the "other" category — port of iOS LineItemEditorView's
 // isOther branch: name / dosage / route of administration / treatment area, no timing.
-// Route folds into dosage as "dose · route"; areas come from the comma-split area text.
+// Round 6: route is a first-class five-option selection (no more folding into dosage);
+// areas come from the comma-split area text.
 function OtherLineEditor({ line, onChange, onRemove }: {
   line: Line;
   onChange: (item: MedicationItem) => void;
   onRemove: () => void;
 }) {
   const { item } = line;
-  const [dose, setDose] = useState(item.dosage);
-  const [route, setRoute] = useState("");
   const [areaText, setAreaText] = useState(item.areas.join(", "));
 
-  function update(next: { dose?: string; route?: string; areaText?: string }) {
-    const d = next.dose ?? dose;
-    const r = next.route ?? route;
-    const a = next.areaText ?? areaText;
-    if (next.dose !== undefined) setDose(next.dose);
-    if (next.route !== undefined) setRoute(next.route);
-    if (next.areaText !== undefined) setAreaText(next.areaText);
-    onChange({ ...item, dosage: composeOtherDosage(d, r), areas: splitCustomAreas(a) });
+  function updateAreas(a: string) {
+    setAreaText(a);
+    onChange({ ...item, areas: splitCustomAreas(a) });
   }
 
   return (
@@ -78,18 +89,14 @@ function OtherLineEditor({ line, onChange, onRemove }: {
       <div className="mt-3 flex flex-wrap gap-3">
         <label className="block">
           <span className="micro">Dosage</span>
-          <input value={dose} onChange={(e) => update({ dose: e.target.value })}
+          <input value={item.dosage} onChange={(e) => onChange({ ...item, dosage: e.target.value })}
             className="mt-1 w-40 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
         </label>
-        <label className="block">
-          <span className="micro">Route of administration</span>
-          <input value={route} onChange={(e) => update({ route: e.target.value })}
-            placeholder="e.g. topical" className="mt-1 w-48 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
-        </label>
+        <RouteSelect value={item.route} onChange={(route) => onChange({ ...item, route })} />
       </div>
       <label className="mt-3 block">
         <span className="micro">Treatment area</span>
-        <input value={areaText} onChange={(e) => update({ areaText: e.target.value })}
+        <input value={areaText} onChange={(e) => updateAreas(e.target.value)}
           placeholder="Type a custom area" className="mt-1 w-full rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
       </label>
     </div>
@@ -121,11 +128,14 @@ function LineEditor({ line, onChange, onRemove }: {
         <p className="text-sm font-medium text-ink">{item.brand ? `${item.brand} · ${item.name}` : item.name}</p>
         <button type="button" onClick={onRemove} className="text-sm text-ink-soft hover:text-ink">Remove</button>
       </div>
-      <label className="mt-3 block">
-        <span className="micro">{quantityCaption(item.unit)}{unitSuffix(item.unit) ? ` (${unitSuffix(item.unit)})` : ""}</span>
-        <input value={item.dosage} onChange={(e) => onChange({ ...item, dosage: e.target.value })} inputMode="decimal"
-          className="mt-1 w-32 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
-      </label>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <label className="block">
+          <span className="micro">{quantityCaption(item.unit)}{unitSuffix(item.unit) ? ` (${unitSuffix(item.unit)})` : ""}</span>
+          <input value={item.dosage} onChange={(e) => onChange({ ...item, dosage: e.target.value })} inputMode="decimal"
+            className="mt-1 w-32 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+        </label>
+        <RouteSelect value={item.route} onChange={(route) => onChange({ ...item, route })} />
+      </div>
       <div className="mt-3">
         <span className="micro">Treatment areas</span>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -269,9 +279,10 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   }
 
   // iOS drops nameless items at submit and blocks on missing dosage; the web keeps
-  // it stricter-but-simpler: every line must have a name and a dosage.
+  // it stricter-but-simpler: every line must have a name and a dosage. Round 6: every
+  // line must also carry a route of administration (never defaulted — actively chosen).
   const canSubmit = lines.length > 0
-    && lines.every((l) => l.item.name.trim() && l.item.dosage.trim())
+    && lines.every((l) => l.item.name.trim() && l.item.dosage.trim() && l.item.route)
     && !!chosenDoctor;
 
   function submit() {

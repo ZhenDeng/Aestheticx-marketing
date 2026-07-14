@@ -46,15 +46,29 @@ const HA_BRANDS: [string, string[]][] = [
 const HA_FILLERS = HA_BRANDS.flatMap(([brand, names]) =>
   names.map((n) => product("haFiller", brand, n, "millilitres")));
 
-const SKIN_BOOSTERS = [
-  "Juvederm Skinvive", "Restylane Vital", "Restylane Vital Light", "Profhilo",
-  "Profhilo Structura", "Rejuran Healer", "Rejuran i", "Rejuran s",
-  "Belotero Revive", "Redensity 1", "Sunekos 1200", "Sunekos Performa", "NCTF 135HA",
-].map((n) => product("skinBooster", undefined, n, "millilitres"));
+// "Redensity 1" was renamed "Teoxane Redensity 1" (owner feedback round 6, 2026-07-13).
+// The id is PINNED to the pre-rename slug — productSlug would derive a new id from the
+// new name and orphan existing references (recently-used ids, prior request lines).
+const TEOXANE_REDENSITY_1: CatalogProduct = {
+  ...product("skinBooster", undefined, "Teoxane Redensity 1", "millilitres"),
+  id: "skinbooster-redensity-1",
+};
 
+const SKIN_BOOSTERS = [
+  ...[
+    "Juvederm Skinvive", "Restylane Vital", "Restylane Vital Light", "Profhilo",
+    "Profhilo Structura", "Rejuran Healer", "Rejuran i", "Rejuran s", "Belotero Revive",
+  ].map((n) => product("skinBooster", undefined, n, "millilitres")),
+  TEOXANE_REDENSITY_1,
+  ...["Sunekos 1200", "Sunekos Performa", "NCTF 135HA"]
+    .map((n) => product("skinBooster", undefined, n, "millilitres")),
+];
+
+// HarmonyCa and Radiesse dose in millilitres ("mls" on display), not syringes (owner
+// feedback round 6, 2026-07-13). `syringe` stays a valid unit for decode-compat.
 const COLLAGEN: [string, ProductUnit][] = [
   ["Sculptra", "vial"], ["Lenisna 50", "vial"], ["Lenisna 200", "vial"], ["AestheFill", "vial"],
-  ["Radiesse", "syringe"], ["HarmonyCa", "syringe"], ["Ellanse", "millilitres"],
+  ["Radiesse", "millilitres"], ["HarmonyCa", "millilitres"], ["Ellanse", "millilitres"],
 ];
 const COLLAGEN_STIMULATORS = COLLAGEN.map(([n, u]) => product("collagenStimulator", undefined, n, u));
 
@@ -133,7 +147,8 @@ export function quantityCaption(unit: ProductUnit): string {
 export function unitSuffix(unit: ProductUnit): string {
   switch (unit) {
     case "units": return "U";
-    case "millilitres": return "mL";
+    // Round 6: the owner's wording is "mls" (not SI "mL") wherever dosing displays.
+    case "millilitres": return "mls";
     case "vial": return "vial";
     case "syringe": return "syringe";
     case "tube": return "tube";

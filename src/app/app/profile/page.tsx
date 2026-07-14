@@ -7,7 +7,8 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities } from "@/lib/demo/identity";
-import { identityBadge, type Identity, type Role, type UserProfile } from "@/lib/demo/types";
+import { identityBadge, type Identity, type Premise, type Role, type UserProfile, type UserProfileEdit } from "@/lib/demo/types";
+import { activePremise, premisesAfterDelete, premisesAfterSave } from "@/lib/demo/backend";
 import { identityKey } from "@/lib/demo/identityPrefs";
 import { landingFor } from "@/lib/demo/authRedirect";
 import { tintStyle } from "@/lib/demo/tint";
@@ -69,6 +70,10 @@ export default function ProfilePage() {
   // a super admin who also holds a clinician role sees it without switching identities.
   // Accounts with no clinical role (pure admins) still hide it.
   const holdsClinicalRole = identities.some((i) => i.role === "doctor" || i.role === "nurse");
+  // Round 6: principal place of practice is a doctor field (prints on the Clause 68C
+  // direction body + signature block); premises belong to the nurse role.
+  const holdsDoctorRole = identities.some((i) => i.role === "doctor");
+  const holdsNurseRole = identities.some((i) => i.role === "nurse");
 
   return (
     <div className="max-w-3xl">
@@ -80,7 +85,9 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <ProfileFields me={me} profile={profile} showsAhpra={isClinician || holdsClinicalRole} />
+      <ProfileFields me={me} profile={profile} showsAhpra={isClinician || holdsClinicalRole} showsPrincipalPlace={holdsDoctorRole} />
+
+      {holdsNurseRole && <PremisesSection me={me} profile={profile} />}
 
       {!isSuperAdmin && (
         <>
@@ -242,7 +249,7 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
 // The details card: AHPRA (doctor/nurse only), ABN, Phone, Address — the same rows as
 // iOS ProfileView. AHPRA/phone/address are client-writable on users/{uid}; ABN is
 // rules-immutable (set by the createUser Function), so it renders display-only.
-function ProfileFields({ me, profile, showsAhpra }: { me: Identity; profile: UserProfile; showsAhpra: boolean }) {
+function ProfileFields({ me, profile, showsAhpra, showsPrincipalPlace }: { me: Identity; profile: UserProfile; showsAhpra: boolean; showsPrincipalPlace: boolean }) {
   const store = useDemoStore();
   // Address is per-identity (owner feedback #2); AHPRA/phone are account-wide.
   const identityAddress = store.addressForIdentity(me);
@@ -250,25 +257,28 @@ function ProfileFields({ me, profile, showsAhpra }: { me: Identity; profile: Use
   // "Practise as" keeps the same user id, so the identity key must be part of the key.
   return (
     <ProfileFieldsEditor
-      key={`${identityKey(me)}|${profile.ahpra}|${profile.phone}|${identityAddress}`}
-      me={me} profile={profile} identityAddress={identityAddress} showsAhpra={showsAhpra} store={store}
+      key={`${identityKey(me)}|${profile.ahpra}|${profile.phone}|${profile.principalPlace}|${identityAddress}`}
+      me={me} profile={profile} identityAddress={identityAddress} showsAhpra={showsAhpra} showsPrincipalPlace={showsPrincipalPlace} store={store}
     />
   );
 }
 
-function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, store }: {
-  me: Identity; profile: UserProfile; identityAddress: string; showsAhpra: boolean; store: ReturnType<typeof useDemoStore>;
+function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPrincipalPlace, store }: {
+  me: Identity; profile: UserProfile; identityAddress: string; showsAhpra: boolean; showsPrincipalPlace: boolean; store: ReturnType<typeof useDemoStore>;
 }) {
   const [ahpra, setAhpra] = useState(profile.ahpra);
   const [phone, setPhone] = useState(profile.phone);
+  const [principalPlace, setPrincipalPlace] = useState(profile.principalPlace);
   const [address, setAddress] = useState(identityAddress);
-  const dirty = ahpra !== profile.ahpra || phone !== profile.phone || address !== identityAddress;
+  const dirty = ahpra !== profile.ahpra || phone !== profile.phone
+    || principalPlace !== profile.principalPlace || address !== identityAddress;
 
   function save() {
-    if (ahpra !== profile.ahpra || phone !== profile.phone) {
+    if (ahpra !== profile.ahpra || phone !== profile.phone || principalPlace !== profile.principalPlace) {
       store.updateProfile({
         ...(ahpra !== profile.ahpra ? { ahpra } : {}),
         ...(phone !== profile.phone ? { phone } : {}),
+        ...(principalPlace !== profile.principalPlace ? { principalPlace } : {}),
       }, me);
     }
     if (address !== identityAddress) store.setAddressForIdentity(me, address);
@@ -294,6 +304,19 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, store }
         <span className="micro">Phone</span>
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={FIELD_PLACEHOLDER.phone} className={input} />
       </label>
+      {/* Round 6: prints in the Clause 68C direction body and the PDF signature block. */}
+      {showsPrincipalPlace && (
+        <label className="block border-b border-line py-2.5 last:border-b-0">
+          <span className="micro">Principal place of practice</span>
+          <textarea
+            value={principalPlace}
+            onChange={(e) => setPrincipalPlace(e.target.value)}
+            placeholder="Practice name, street address"
+            rows={2}
+            className="mt-1.5 w-full resize-none rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+          />
+        </label>
+      )}
       {/* Address gets its own full-width block (label above, wrapping textarea) so long
           addresses stay fully visible — the shared right-aligned w-56 input truncates them. */}
       <label className="block border-b border-line py-2.5 last:border-b-0">
@@ -315,6 +338,126 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, store }
         </div>
       )}
     </section>
+  );
+}
+
+// Premises of administration manager (round 6, spec auth-pdf-feedback-round-6): an
+// independent RN's named working locations. Add/edit/delete with a last-premise guard
+// (a nurse must always keep one); the first-ever premise becomes the default. The ACTIVE
+// premise is switched from the dashboard, not here — this card only manages the list.
+// Patient files stay shared across premises (ownership is the nurse uid, unchanged).
+function PremisesSection({ me, profile }: { me: Identity; profile: UserProfile }) {
+  const store = useDemoStore();
+  const [editing, setEditing] = useState<Premise | null>(null); // holds the row draft
+  const [error, setError] = useState<string | null>(null);
+
+  function apply(patch: () => UserProfileEdit) {
+    setError(null);
+    try {
+      store.updateProfile(patch(), me);
+      setEditing(null);
+    } catch {
+      setError("Could not save that change.");
+    }
+  }
+  function save(draft: Premise) {
+    if (!draft.name.trim() || !draft.address.trim()) {
+      setError("A premise needs both a name and an address.");
+      return;
+    }
+    apply(() => premisesAfterSave(profile, draft));
+  }
+  function remove(id: string) {
+    if (profile.premises.length <= 1) {
+      setError("You must keep at least one premise of administration.");
+      return;
+    }
+    apply(() => premisesAfterDelete(profile, id));
+  }
+
+  const active = activePremise(profile);
+  return (
+    <section className="mt-7 rounded-card border border-line bg-card px-5 py-4 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-base text-ink">Premises of administration</h2>
+        <button
+          onClick={() => { setError(null); setEditing({ id: `prem-${crypto.randomUUID()}`, name: "", address: "" }); }}
+          className="rounded-btn border border-line px-3 py-1 text-sm text-ink-soft hover:border-tint/50"
+        >
+          Add premise
+        </button>
+      </div>
+      <p className="mt-1 text-sm text-ink-soft">
+        Where you administer treatments. The premise you’re working from is chosen on the
+        dashboard and prints on each authorisation document. Patient files are shared across
+        all your premises.
+      </p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {profile.premises.map((p) => (
+          <li key={p.id} className="rounded-inner border border-line px-4 py-2.5">
+            {editing?.id === p.id ? (
+              <PremiseForm draft={editing} onChange={setEditing} onSave={save} onCancel={() => setEditing(null)} />
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ink">
+                    {p.name}
+                    {p.id === profile.defaultPremiseId && (
+                      <span className="micro ml-2 rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>Default</span>
+                    )}
+                    {p.id === active?.id && (
+                      <span className="micro ml-2 rounded-full px-2 py-0.5" style={{ background: "var(--color-sage-soft)", color: "var(--color-sage)" }}>Working here</span>
+                    )}
+                  </p>
+                  <p className="text-sm text-ink-soft">{p.address}</p>
+                </div>
+                <div className="flex flex-none gap-2">
+                  <button onClick={() => { setError(null); setEditing(p); }} className="text-sm text-ink-soft hover:text-ink">Edit</button>
+                  <button onClick={() => remove(p.id)} className="text-sm text-ink-soft hover:text-ink" disabled={profile.premises.length <= 1}
+                    style={profile.premises.length <= 1 ? { opacity: 0.4 } : undefined}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+        {profile.premises.length === 0 && !editing && (
+          <li className="text-sm text-ink-soft">No premises yet — add the location you administer from.</li>
+        )}
+        {editing && !profile.premises.some((p) => p.id === editing.id) && (
+          <li className="rounded-inner border border-dashed border-line px-4 py-2.5">
+            <PremiseForm draft={editing} onChange={setEditing} onSave={save} onCancel={() => setEditing(null)} />
+          </li>
+        )}
+      </ul>
+      {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
+    </section>
+  );
+}
+
+function PremiseForm({ draft, onChange, onSave, onCancel }: {
+  draft: Premise; onChange: (p: Premise) => void; onSave: (p: Premise) => void; onCancel: () => void;
+}) {
+  const input = "mt-1 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint";
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="block">
+        <span className="micro">Premise name</span>
+        <input value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} className={input} />
+      </label>
+      <label className="block">
+        <span className="micro">Address</span>
+        <input value={draft.address} onChange={(e) => onChange({ ...draft, address: e.target.value })}
+          placeholder="Street address incl. suburb, state, postcode" className={input} />
+      </label>
+      <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="rounded-btn border border-line px-3 py-1 text-sm text-ink-soft">Cancel</button>
+        <button onClick={() => onSave(draft)} className="rounded-btn px-3 py-1 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+          Save premise
+        </button>
+      </div>
+    </div>
   );
 }
 

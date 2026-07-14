@@ -1,9 +1,105 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
+import { activePremise, appointmentTitle, premisesAfterSelect, upcomingAuthCalls } from "@/lib/demo/backend";
+import { dayHeaderLabel } from "@/lib/demo/calendar";
+import type { Identity } from "@/lib/demo/types";
+
+const timeLabel = (minute: number): string =>
+  `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+
+// Round 6 booking surface, doctor side: the chronological schedule of booked
+// authorisation teleconsults, so upcoming calls are visible in advance (the call itself
+// starts from the Authorisations inbox when the request lands).
+function UpcomingAuthCalls({ doctorID }: { doctorID: string }) {
+  const store = useDemoStore();
+  const calls = upcomingAuthCalls(store.state, doctorID, store.now);
+  return (
+    <section className="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <h2 className="font-display text-lg text-ink">Upcoming authorisation calls</h2>
+      {calls.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-soft">
+          No calls booked. Nurses book against your published availability — manage it under{" "}
+          <Link href="/app/availability" className="underline hover:text-ink">Availability</Link>.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2">
+          {calls.map((a) => (
+            <li key={a.id} className="flex items-center justify-between gap-3 rounded-inner border border-line px-4 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-ink">{appointmentTitle(a, "Authorisation call")}</span>
+                {a.appointmentNote && <span className="block text-sm text-ink-soft">{a.appointmentNote}</span>}
+              </span>
+              <span className="flex-none text-right">
+                <span className="block text-sm text-ink">{dayHeaderLabel(a.dateISO)}</span>
+                <span className="block text-sm text-ink-soft">{timeLabel(a.startMinute)}–{timeLabel(a.endMinute)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// Round 6 (spec auth-pdf-feedback-round-6): an independent RN picks the premise they are
+// working from here. The selection persists on the users doc — it survives sign-out and
+// stays until changed — and is stamped onto every authorisation request they submit
+// (that stamp is the premise printed on the generated authorisation document).
+function PremiseSwitcher({ me }: { me: Identity }) {
+  const store = useDemoStore();
+  const [error, setError] = useState<string | null>(null);
+  const profile = store.profileForUser(me.user.id);
+  if (me.role !== "nurse" || me.context.kind !== "independent" || profile.premises.length === 0) return null;
+  const active = activePremise(profile);
+
+  function select(id: string) {
+    setError(null);
+    try {
+      store.updateProfile(premisesAfterSelect(profile, id), me);
+    } catch {
+      setError("Could not switch premise.");
+    }
+  }
+
+  return (
+    <section className="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-lg text-ink">Working from</h2>
+        <Link href="/app/profile" className="text-sm text-ink-soft hover:text-ink">Manage premises ›</Link>
+      </div>
+      <p className="mt-1 text-sm text-ink-soft">New authorisation requests are stamped with this premise.</p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {profile.premises.map((p) => {
+          const on = p.id === active?.id;
+          return (
+            <li key={p.id}>
+              <button
+                onClick={() => select(p.id)}
+                aria-pressed={on}
+                className="flex w-full items-center gap-3 rounded-inner border px-4 py-2.5 text-left transition-colors"
+                style={on ? { borderColor: "var(--color-tint)" } : { borderColor: "var(--color-line)" }}
+              >
+                <span aria-hidden className="flex-none text-base" style={{ color: on ? "var(--color-tint)" : "var(--color-line)" }}>
+                  {on ? "●" : "○"}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-ink">{p.name}</span>
+                  <span className="block text-sm text-ink-soft">{p.address}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
+    </section>
+  );
+}
 
 export default function DashboardPage() {
   const { identity, availableIdentities } = useDemoAuth();
@@ -47,11 +143,24 @@ export default function DashboardPage() {
             <p className="mt-1 text-sm text-ink-soft">Requests awaiting your review</p>
           </Link>
         )}
+        {/* Round 6 booking surface, nurse side: an obvious entry to book an authorisation
+            teleconsult with a cooperating doctor (the existing Availability flow). */}
+        {identity.role === "nurse" && (
+          <Link href="/app/availability" className="rounded-card border p-6 shadow-card transition-colors hover:border-tint"
+            style={{ borderColor: "var(--color-tint)", background: "var(--color-tint-soft)" }}>
+            <p className="font-display text-2xl text-ink">Book an authorisation call</p>
+            <p className="mt-1 text-sm text-ink-soft">Pick a doctor’s open slot, or request now</p>
+          </Link>
+        )}
         <Link href="/app/calendar" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
           <p className="font-display text-3xl text-ink">Today</p>
           <p className="mt-1 text-sm text-ink-soft">Open the calendar</p>
         </Link>
       </div>
+
+      {asDoctor && <UpcomingAuthCalls doctorID={asDoctor.user.id} />}
+
+      <PremiseSwitcher me={identity} />
     </div>
   );
 }

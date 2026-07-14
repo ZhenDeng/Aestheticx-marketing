@@ -313,6 +313,49 @@ describe("encoders", () => {
     expect(doc.clinicId).toBe("clinic-lumiere");
     expect(doc.status).toBe("pending");
     expect((doc.items as unknown[]).length).toBe(1);
+    // Round 6: legacy items encode route: null (never undefined — Firestore rejects it).
+    expect((doc.items as Record<string, unknown>[])[0].route).toBeNull();
+  });
+  it("round-trips the stamped premise and maps reviewedAtMillis (round 6)", () => {
+    const premise = { id: "prem-1", name: "Sarah Chen Aesthetics", address: "12 Hall St, Bondi Beach NSW 2026" };
+    const doc = encodeAuthRequest({
+      id: "r1", patientID: "p1", nurse: { id: "u-sarah", name: "Sarah Chen" }, doctorID: "u-voss",
+      context: { kind: "independent" },
+      items: [{ name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"], route: "intramuscular" }],
+      status: "pending", createdAt: 1750000000000, premise,
+    });
+    expect(doc.premise).toEqual(premise);
+    expect(mapAuthRequest("r1", doc).premise).toEqual(premise);
+    // Legacy/clinic requests carry null and map back to null; junk premises are dropped.
+    expect(mapAuthRequest("r2", { ...doc, premise: null }).premise).toBeNull();
+    expect(mapAuthRequest("r3", { ...doc, premise: { name: "x" } }).premise).toBeNull();
+
+    const auth = mapAuthorisation("r1-0", {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah", clinicId: null,
+      medication: { name: "Botox", route: "intramuscular" }, repeatsRemaining: 5,
+      expiresAtMillis: 1765000000000, createdAt: 1750000000000, reviewedAtMillis: 1750000000000, premise,
+    });
+    expect(auth.reviewedAt).toBe(1750000000000);
+    expect(auth.premise).toEqual(premise);
+    expect(auth.medication.route).toBe("intramuscular");
+    // Legacy authorisations: both stamps absent.
+    const legacy = mapAuthorisation("a0", { requestId: "r0", medication: {}, expiresAtMillis: 1 });
+    expect(legacy.reviewedAt).toBeUndefined();
+    expect(legacy.premise).toBeUndefined();
+  });
+  it("round-trips the per-item route of administration (round 6)", () => {
+    const doc = encodeAuthRequest({
+      id: "r1", patientID: "p1", nurse: { id: "u-sarah", name: "Sarah Chen" }, doctorID: "u-voss",
+      context: { kind: "independent" },
+      items: [{ name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"], route: "intramuscular" }],
+      status: "pending", createdAt: 1750000000000,
+    });
+    expect((doc.items as Record<string, unknown>[])[0].route).toBe("intramuscular");
+    const back = mapAuthRequest("r1", doc);
+    expect(back.items[0].route).toBe("intramuscular");
+    // Absent/blank wire routes map to undefined (legacy docs).
+    expect(mapAuthRequest("r2", { ...doc, items: [{ name: "Botox", route: "" }] }).items[0].route).toBeUndefined();
+    expect(mapAuthRequest("r3", { ...doc, items: [{ name: "Botox" }] }).items[0].route).toBeUndefined();
   });
   it("encodeNote writes a general note", () => {
     const doc = encodeNote({

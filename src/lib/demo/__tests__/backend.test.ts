@@ -640,6 +640,8 @@ describe("saveTreatmentNote", () => {
     );
     expect(next.authorisations[authID].repeatsRemaining).toBe(REPEATS_PER_AUTHORISATION - 1);
     expect(activeAuthorisations(next, "p1", NOW)).toHaveLength(1);
-    expect(next.notesByPatient["p1"]).toHaveLength(1);
+    // Two notes: the round-6 system approval-PDF note plus the saved treatment note.
+    expect(next.notesByPatient["p1"]).toHaveLength(2);
+    expect(next.notesByPatient["p1"].filter((n) => n.title === "Profhilo session 1")).toHaveLength(1);
   });
 });

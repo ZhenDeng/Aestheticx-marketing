@@ -7,7 +7,7 @@ import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 import { identityBadge, type AccountRecord, type CooperationRelationship, type Identity, type Role, type ProductCategory, type ProductUnit, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
 import { categoryDisplayName, PRODUCT_CATEGORIES, type CatalogProduct } from "@/lib/demo/catalog";
 import type { SetCooperationRelationshipInput } from "@/lib/demo/backend";
-import { validateNewUser } from "@/lib/demo/userAdmin";
+import { validateNewUser, type NewPremiseInput, type NewUserInput } from "@/lib/demo/userAdmin";
 
 // The platform-admin management console (accounts + create user + cooperation relationships).
 // Lives under the Admin module (/app/admin), separate from the clinical UI (constitution
@@ -218,26 +218,53 @@ function AccountRow({ account }: { account: AccountRecord }) {
 
 // Inline create-user form. Pre-validates with the client port of the Function's
 // validateNewUser so field errors show before any network call; Function errors
-// (e.g. email already in use) surface underneath.
+// (e.g. email already in use) surface underneath. Round 6 (auth-pdf-feedback-round-6):
+// everything the treatment-authorisation PDF needs is captured at creation — a doctor's
+// principal place of practice, a nurse's premises of administration (≥1, first becomes
+// the default), and a new "Clinic" account type (name IS the clinic name, no AHPRA,
+// clinic address required — that address is its fixed premise on generated documents).
 function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; onCancel: () => void }) {
   const store = useDemoStore();
+  const [accountType, setAccountType] = useState<"practitioner" | "clinic">("practitioner");
   const [draft, setDraft] = useState({
     name: "", email: "", phone: "", abn: "", businessName: "", ahpra: "", temporaryPassword: "",
+    principalPlace: "", clinicAddress: "",
   });
+  const [premises, setPremises] = useState<NewPremiseInput[]>([{ name: "", address: "" }]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [missing, setMissing] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const input = (field: keyof typeof draft) =>
+  const clinic = accountType === "clinic";
+  const isDoctor = !clinic && roles.includes("doctor");
+  const isNurse = !clinic && roles.includes("nurse");
+
+  const input = (field: string) =>
     `w-full rounded-field border bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint ${missing.includes(field) ? "border-rose" : "border-line"}`;
 
   function toggleRole(role: Role) {
     setRoles((r) => (r.includes(role) ? r.filter((x) => x !== role) : [...r, role]));
   }
 
+  function payload(): NewUserInput {
+    if (clinic) {
+      return {
+        ...draft, ahpra: undefined, principalPlace: undefined, premises: undefined,
+        accountType: "clinic", roles: ["clinicAdmin"],
+      };
+    }
+    return {
+      ...draft,
+      clinicAddress: undefined,
+      principalPlace: roles.includes("doctor") ? draft.principalPlace : undefined,
+      premises: roles.includes("nurse") ? premises : undefined,
+      roles,
+    };
+  }
+
   async function submit() {
-    const inputPayload = { ...draft, roles };
+    const inputPayload = payload();
     const invalid = validateNewUser(inputPayload);
     setMissing(invalid);
     setServerError(null);
@@ -269,26 +296,87 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   return (
     <section className="mt-4 rounded-card border border-line bg-card px-5 py-4 shadow-card">
       <h3 className="font-display text-base text-ink">New user</h3>
+      <div className="mt-3 flex gap-1.5">
+        {([["practitioner", "Practitioner"], ["clinic", "Clinic"]] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => { setAccountType(value); setMissing([]); }}
+            aria-pressed={accountType === value}
+            className={`rounded-btn px-3 py-1.5 text-sm ${accountType === value ? "text-card" : "border border-line text-ink-soft"}`}
+            style={accountType === value ? { background: "var(--color-tint)" } : undefined}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {clinic && (
+        <p className="mt-2 text-sm text-ink-soft">
+          A clinic signs in as its own organisation: the full name is the clinic name, no AHPRA,
+          and its address is the premise printed on every clinic authorisation document.
+        </p>
+      )}
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {field("Full name", "name")}
+        {field(clinic ? "Clinic name" : "Full name", "name")}
         {field("Email", "email", { type: "email" })}
         {field("Phone", "phone")}
         {field("ABN", "abn")}
         {field("Business name", "businessName")}
-        {field("AHPRA", "ahpra", { hint: "Required for doctors and nurses" })}
+        {!clinic && field("AHPRA", "ahpra", { hint: "Required for doctors and nurses" })}
+        {clinic && field("Clinic address", "clinicAddress", { hint: "Printed as the premises of administration on clinic authorisations" })}
         {field("Temporary password", "temporaryPassword", { type: "password", hint: "At least 8 characters — they change it on first login" })}
-        <div>
-          <span className="micro">Roles</span>
-          <div className={`mt-1 flex gap-4 rounded-field border px-2.5 py-1.5 ${missing.includes("roles") ? "border-rose" : "border-line"}`}>
-            {(["doctor", "nurse"] as const).map((role) => (
-              <label key={role} className="flex items-center gap-1.5 text-sm text-ink">
-                <input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} className="accent-[var(--color-tint)]" />
-                {ROLE_LABEL[role]}
-              </label>
+        {!clinic && (
+          <div>
+            <span className="micro">Roles</span>
+            <div className={`mt-1 flex gap-4 rounded-field border px-2.5 py-1.5 ${missing.some((m) => m.startsWith("roles")) ? "border-rose" : "border-line"}`}>
+              {(["doctor", "nurse"] as const).map((role) => (
+                <label key={role} className="flex items-center gap-1.5 text-sm text-ink">
+                  <input type="checkbox" checked={roles.includes(role)} onChange={() => toggleRole(role)} className="accent-[var(--color-tint)]" />
+                  {ROLE_LABEL[role]}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {isDoctor && field("Principal place of practice", "principalPlace", { hint: "Prints in the Clause 68C direction and PDF signature block" })}
+      </div>
+      {isNurse && (
+        <div className="mt-3">
+          <span className="micro">Premises of administration</span>
+          <p className="micro mt-0.5 text-ink-soft">At least one — the first becomes the default; the nurse can add more later.</p>
+          <div className="mt-1.5 flex flex-col gap-2">
+            {premises.map((p, i) => (
+              <div key={i} className={`grid grid-cols-1 gap-2 rounded-field border p-2.5 sm:grid-cols-[1fr_2fr_auto] ${missing.includes("premises") ? "border-rose" : "border-line"}`}>
+                <input
+                  value={p.name} placeholder="Premise name" aria-label={`Premise ${i + 1} name`}
+                  onChange={(e) => setPremises((rows) => rows.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))}
+                  className="rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+                />
+                <input
+                  value={p.address} placeholder="Street address" aria-label={`Premise ${i + 1} address`}
+                  onChange={(e) => setPremises((rows) => rows.map((r, j) => (j === i ? { ...r, address: e.target.value } : r)))}
+                  className="rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPremises((rows) => rows.filter((_, j) => j !== i))}
+                  disabled={premises.length <= 1}
+                  className="text-sm text-ink-soft hover:text-ink disabled:opacity-40"
+                >
+                  Remove
+                </button>
+              </div>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => setPremises((rows) => [...rows, { name: "", address: "" }])}
+            className="mt-2 rounded-btn border border-line px-3 py-1 text-sm text-ink-soft hover:border-tint/50"
+          >
+            Add another premise
+          </button>
         </div>
-      </div>
+      )}
       {missing.length > 0 && (
         <p className="mt-3 text-sm" style={{ color: "var(--color-rose)" }}>
           Please complete the highlighted fields.
@@ -302,7 +390,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
           Cancel
         </button>
         <button onClick={() => void submit()} disabled={submitting} className="rounded-btn px-4 py-1.5 text-sm font-medium text-card disabled:opacity-60" style={{ background: "var(--color-tint)" }}>
-          {submitting ? "Creating…" : "Create user"}
+          {submitting ? "Creating…" : clinic ? "Create clinic" : "Create user"}
         </button>
       </div>
     </section>

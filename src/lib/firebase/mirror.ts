@@ -244,10 +244,18 @@ export async function mirrorSetAppointmentReminder(uid: string, lead: Appointmen
 // never abn/roles/clinics/mustChangePassword (rules reject the whole write if any is
 // touched) and never the demo-only avatarDataUrl preview bytes.
 export async function mirrorUpdateProfile(uid: string, edits: import("@/lib/demo/types").UserProfileEdit): Promise<void> {
-  const values: Record<string, string> = {};
+  const values: Record<string, unknown> = {};
   if (edits.ahpra !== undefined) values.ahpra = edits.ahpra;
   if (edits.phone !== undefined) values.phone = edits.phone;
   if (edits.address !== undefined) values.address = edits.address;
+  // Round 6: principal place (doctor) + premises CRUD/selection (nurse) — owner-writable
+  // users/{uid} fields per the round-6 firestore.rules.
+  if (edits.principalPlace !== undefined) values.principalPlace = edits.principalPlace;
+  if (edits.premises !== undefined) {
+    values.premises = edits.premises.map((p) => ({ id: p.id, name: p.name, address: p.address }));
+  }
+  if (edits.defaultPremiseId !== undefined) values.defaultPremiseId = edits.defaultPremiseId;
+  if (edits.selectedPremiseId !== undefined) values.selectedPremiseId = edits.selectedPremiseId;
   if (edits.avatarFileId !== undefined) values.avatarFileId = edits.avatarFileId;
   if (Object.keys(values).length === 0) return; // demo-only edit (avatarDataUrl) — nothing to persist
   await setDoc(doc(firestore(), "users", uid), values, { merge: true });
@@ -413,6 +421,13 @@ export async function mirrorCreateUser(input: import("@/lib/demo/userAdmin").New
     email: input.email, name: input.name, abn: input.abn, businessName: input.businessName,
     phone: input.phone, temporaryPassword: input.temporaryPassword, roles: input.roles,
     ...(input.ahpra ? { ahpra: input.ahpra } : {}),
+    // Round 6: the deployed callable validates + persists these — dropping any of them
+    // fails doctor/nurse creation server-side, and omitting accountType would silently
+    // skip clinic provisioning (an orphaned clinicAdmin claim with no clinic doc).
+    ...(input.accountType ? { accountType: input.accountType } : {}),
+    ...(input.clinicAddress ? { clinicAddress: input.clinicAddress } : {}),
+    ...(input.principalPlace ? { principalPlace: input.principalPlace } : {}),
+    ...(input.premises ? { premises: input.premises.map((p) => ({ name: p.name, address: p.address })) } : {}),
   });
   const d = res.data as { uid?: unknown };
   if (typeof d.uid !== "string" || !d.uid) throw new Error("createUser returned no uid");

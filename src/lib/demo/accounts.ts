@@ -1,7 +1,13 @@
 // Port of SessionState.demoAccounts + the Lumière clinic ref.
 import type { ClinicRef, Identity, PatientOwner, UserRef } from "./types";
 
-export const LUMIERE: ClinicRef = { id: "clinic-lumiere", name: "Lumière Clinic" };
+export const LUMIERE: ClinicRef = {
+  id: "clinic-lumiere",
+  name: "Lumière Clinic",
+  // The clinic's fixed premise of administration (round 6) — prints on clinic-context
+  // authorisation documents.
+  address: "2 Notts Ave, Bondi Beach NSW 2026",
+};
 
 const sarah: UserRef = { id: "u-sarah", name: "Sarah Chen" };
 const ruby: UserRef = { id: "u-ruby", name: "Ruby Walsh" };

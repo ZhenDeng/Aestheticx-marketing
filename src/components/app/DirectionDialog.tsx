@@ -8,12 +8,14 @@
 import { useState } from "react";
 import type { Authorisation, EmergencyAuthorisation, Patient } from "@/lib/demo/types";
 import { fullName } from "@/lib/demo/types";
+import { useDemoStore } from "@/lib/demo/store";
 import {
   DEFAULT_CAPTURED_FIELDS,
   buildDirectionDraft,
   directionPrescriberName,
   directionResponsibleProvider,
   missingDirectionFields,
+  premiseDisplayLine,
   type CapturedDirectionFields,
 } from "@/lib/demo/direction";
 import { directionPdfFilename, renderDirectionPdf } from "@/lib/demo/directionPdf";
@@ -24,9 +26,24 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   emergencies: EmergencyAuthorisation[];
   onClose: () => void;
 }) {
-  const [captured, setCaptured] = useState<CapturedDirectionFields>(DEFAULT_CAPTURED_FIELDS);
+  const store = useDemoStore();
+  // Round 6: capture fields prefill from persisted data — the premise STAMPED on the
+  // authorisation at request time, and the prescriber's profile contact when hydrated
+  // (a nurse exporting live can't read the doctor's users doc; the fields stay editable).
+  const [captured, setCaptured] = useState<CapturedDirectionFields>(() => {
+    const doctorProfile = store.profileForUser(authorisation.doctorID);
+    return {
+      ...DEFAULT_CAPTURED_FIELDS,
+      prescriberPhone: doctorProfile.phone,
+      prescriberPrincipalPlace: doctorProfile.principalPlace,
+      premisesOfAdministration: premiseDisplayLine(authorisation.premise) ?? "",
+    };
+  });
   const [previewing, setPreviewing] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Round 6: items carry their route; the capture field only appears for legacy
+  // authorisations whose medication predates per-item routes.
+  const needsRouteCapture = !authorisation.medication.route;
 
   const direction = buildDirectionDraft({
     directionId: authorisation.id,
@@ -38,7 +55,9 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
     responsibleProvider: directionResponsibleProvider(authorisation.nurseID, authorisation.clinicID),
     medications: [authorisation.medication],
     expiresAt: authorisation.expiresAt,
-    approvedAt: authorisation.createdAt,
+    // Round 6: reviewedAt is the server-stamped approval instant; createdAt covers
+    // authorisations approved before the stamp existed.
+    approvedAt: authorisation.reviewedAt ?? authorisation.createdAt,
     // The direction is this prescriber's; reference only their emergency standing orders.
     emergencies: emergencies.filter((e) => e.doctorID === authorisation.doctorID),
     captured,
@@ -89,11 +108,14 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
 
             <p className="micro mt-2">Administration</p>
             <Field label="Premises of administration" value={captured.premisesOfAdministration} onChange={(v) => set("premisesOfAdministration", v)} />
-            <Field label="Route (applies to all)" value={captured.route} onChange={(v) => set("route", v)} />
+            {needsRouteCapture && (
+              <Field label="Route (applies to all)" value={captured.route} onChange={(v) => set("route", v)} />
+            )}
             <Field label="Number & intervals" value={captured.administrationCountAndIntervals} onChange={(v) => set("administrationCountAndIntervals", v)} />
 
             <p className="micro mt-2">Direction</p>
-            <Field label="Patient reviewed (YYYY-MM-DD)" value={captured.patientReviewedISO} onChange={(v) => set("patientReviewedISO", v)} />
+            {/* Round 6: the reviewed date is always the approval day — shown, not captured. */}
+            <p className="text-sm text-ink">Patient reviewed: <span className="text-ink-soft">{direction.patientReviewedISO}</span></p>
             <Field label="Period direction has effect" value={captured.directionPeriod} onChange={(v) => set("directionPeriod", v)} />
 
             {missing.length === 0 ? (

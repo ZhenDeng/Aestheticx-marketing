@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   RECENTLY_USED_CAPACITY, RECENTLY_USED_STORAGE_KEY,
   recordRecentlyUsed, resolveRecentlyUsed, loadRecentlyUsed, recordRecentlyUsedProduct,
-  composeOtherDosage, splitCustomAreas,
+  splitCustomAreas,
 } from "@/lib/demo/requestBuilder";
 
 // Port of iOS RecentlyUsedProducts (AXDomain/PrescribingProducts.swift):
@@ -94,24 +94,9 @@ describe("recently-used persistence (device-local)", () => {
   });
 });
 
-// Port of iOS LineItemEditorView.commit() for the .other category:
-// route is folded into dosage as "dose · route"; areas come from comma-split free text.
+// Round 6 replaced the old route→dosage fold (composeOtherDosage) with a first-class
+// MedicationItem.route on every line, so only the area splitter remains here.
 describe("other / compounded medication helpers", () => {
-  it("composes dosage with route as 'dose · route'", () => {
-    expect(composeOtherDosage("5mg", "oral")).toBe("5mg · oral");
-    expect(composeOtherDosage(" 5mg ", " oral ")).toBe("5mg · oral");
-  });
-
-  it("uses the route alone when the dose is empty", () => {
-    expect(composeOtherDosage("", "topical")).toBe("topical");
-    expect(composeOtherDosage("   ", "topical")).toBe("topical");
-  });
-
-  it("leaves the dosage untouched when the route is empty", () => {
-    expect(composeOtherDosage("5mg", "")).toBe("5mg");
-    expect(composeOtherDosage("5mg", "   ")).toBe("5mg");
-  });
-
   it("splits custom areas on commas, trimming and dropping empties", () => {
     expect(splitCustomAreas("Scalp, Beard area")).toEqual(["Scalp", "Beard area"]);
     expect(splitCustomAreas("  Face ,, ")).toEqual(["Face"]);

@@ -12,10 +12,10 @@ const MARGIN = 56;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 const BOTTOM_LIMIT = PAGE_HEIGHT - MARGIN;
 
-type Rgb = readonly [number, number, number];
-const INK: Rgb = [0x21 / 255, 0x1c / 255, 0x16 / 255]; // #211C16
-const GOLD: Rgb = [0x8f / 255, 0x6f / 255, 0x3c / 255]; // #8F6F3C
-const SOFT: Rgb = [0x71 / 255, 0x66 / 255, 0x5a / 255]; // #71665A
+export type Rgb = readonly [number, number, number];
+export const INK: Rgb = [0x21 / 255, 0x1c / 255, 0x16 / 255]; // #211C16
+export const GOLD: Rgb = [0x8f / 255, 0x6f / 255, 0x3c / 255]; // #8F6F3C
+export const SOFT: Rgb = [0x71 / 255, 0x66 / 255, 0x5a / 255]; // #71665A
 
 // Standard Helvetica AFM advance widths (per 1000 units) for ASCII 32–126.
 const HELVETICA_WIDTHS = [
@@ -92,8 +92,10 @@ interface Run {
   charSpace?: number;
 }
 
-/** Flowing-text cursor over one or more pages (the tiny subset of pdfkit we mirror). */
-class DirectionWriter {
+/** Flowing-text cursor over one or more pages (the tiny subset of pdfkit we mirror).
+ *  Exported for the approval-document renderer (approvalPdf.ts), which shares the
+ *  same hand-rolled single-font writer. */
+export class DirectionWriter {
   readonly pages: string[][] = [[]];
   private y = MARGIN; // distance from the top of the page, like pdfkit's doc.y
   private lastSize = 12;
@@ -149,7 +151,7 @@ class DirectionWriter {
 }
 
 /** Serialise content streams into a complete single-font PDF file. */
-function buildPdfFile(pageStreams: string[]): Uint8Array {
+export function buildPdfFile(pageStreams: string[]): Uint8Array {
   const objects: string[] = [];
   const pageObjectIds = pageStreams.map((_, i) => 4 + i * 2);
   objects.push("<< /Type /Catalog /Pages 2 0 R >>");
@@ -178,7 +180,7 @@ function buildPdfFile(pageStreams: string[]): Uint8Array {
 }
 
 /** A labelled field block: small soft caps label over the ink value (backend `field()`). */
-function field(writer: DirectionWriter, label: string, value: string): void {
+export function field(writer: DirectionWriter, label: string, value: string): void {
   writer.text(label.toUpperCase(), 8, SOFT, { charSpace: 0.5 });
   writer.text(value.trim() === "" ? "—" : value, 11.5, INK);
   writer.moveDown(0.45);

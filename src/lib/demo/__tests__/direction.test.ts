@@ -159,7 +159,6 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
         prescriberPhone: "02 9388 4410",
         prescriberPrincipalPlace: "88 Oxford St",
         premisesOfAdministration: "12 Hall St",
-        patientReviewedISO: "2026-06-17",
         directionPeriod: "6 months",
         administrationCountAndIntervals: "Up to 5, ≥4 wks",
         route: "IM",
@@ -174,8 +173,20 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
     expect(direction.administrations).toHaveLength(1);
     expect(direction.administrations[0].substanceAndForm).toBe("Letybo");
     expect(direction.administrations[0].bodySite).toBe("Forehead, Glabella");
+    // letybo carries no per-item route (legacy) → the captured fallback applies.
     expect(direction.administrations[0].route).toBe("IM");
     expect(direction.administrations[0].quantity).toBe("16 U");
+  });
+
+  it("labels the item's stored route, ignoring the captured fallback (round 6)", () => {
+    const direction = draft({ medications: [{ ...letybo, route: "supraPeriosteal" }] });
+    expect(direction.administrations[0].route).toBe("Supra-periosteal");
+  });
+
+  it("derives the reviewed date from the approval instant in Sydney time (round 6)", () => {
+    expect(draft().patientReviewedISO).toBe("2026-06-17");
+    // 22:00 UTC on 17 Jun is already 18 Jun in Sydney — the document must not drift.
+    expect(draft({ approvedAt: Date.UTC(2026, 5, 17, 22, 0) }).patientReviewedISO).toBe("2026-06-18");
   });
 
   it("derives the patient DOB, allergies, category, expiry, approval and attestation", () => {
@@ -207,10 +218,10 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
     expect(missingDirectionFields(direction)).toContain("Prescriber phone");
   });
 
-  it("captures iOS's prefilled defaults (period, intervals, route)", () => {
+  it("captures iOS's prefilled defaults (period, intervals) — route never defaults (round 6)", () => {
     expect(DEFAULT_CAPTURED_FIELDS.directionPeriod).toBe("6 months");
     expect(DEFAULT_CAPTURED_FIELDS.administrationCountAndIntervals).toBe("Up to 5, ≥ 4 weeks apart");
-    expect(DEFAULT_CAPTURED_FIELDS.route).toBe("IM");
+    expect(DEFAULT_CAPTURED_FIELDS.route).toBe("");
     expect(DEFAULT_CAPTURED_FIELDS.prescriberPhone).toBe("");
   });
 });

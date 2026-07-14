@@ -15,6 +15,9 @@ export interface UserRef {
 export interface ClinicRef {
   id: string;
   name: string;
+  /** Street address — the clinic's fixed premise of administration (round 6). Demo-side
+   *  convenience; live documents resolve it from the clinics/{id} doc server-side. */
+  address?: string;
 }
 
 export type PracticeContext =
@@ -62,6 +65,29 @@ export type ProductCategory =
 
 export type ProductUnit = "units" | "millilitres" | "vial" | "syringe" | "tube" | "freeText";
 
+// Clause 68C route of administration (round 6). Wire strings mirror the backend's
+// ROUTES_OF_ADMINISTRATION / iOS RouteOfAdministration.rawValue — exactly these five are
+// ever accepted on new items; legacy items may have none (renderers print an em dash).
+export const ROUTES_OF_ADMINISTRATION = [
+  "intradermal", "subdermal", "subcutaneous", "intramuscular", "supraPeriosteal",
+] as const;
+export type RouteOfAdministration = (typeof ROUTES_OF_ADMINISTRATION)[number];
+
+/** Display labels printed on documents — must match backend ROUTE_DISPLAY_LABELS. */
+export const ROUTE_DISPLAY_LABELS: Record<RouteOfAdministration, string> = {
+  intradermal: "Intradermal",
+  subdermal: "Subdermal",
+  subcutaneous: "Subcutaneous",
+  intramuscular: "Intramuscular",
+  supraPeriosteal: "Supra-periosteal",
+};
+
+/** Label for a route wire string; raw passthrough for unknown values; null when absent. */
+export function routeLabel(route: string | null | undefined): string | null {
+  if (route == null || route === "") return null;
+  return ROUTE_DISPLAY_LABELS[route as RouteOfAdministration] ?? route;
+}
+
 export interface MedicationItem {
   name: string;
   dosage: string;
@@ -70,6 +96,8 @@ export interface MedicationItem {
   unit: ProductUnit;
   areas: string[];
   timing?: string;
+  /** Route of administration wire string (round 6); absent on legacy items. */
+  route?: string;
 }
 
 export interface Patient {
@@ -111,6 +139,16 @@ export interface PatientSummary {
   alert?: string;
 }
 
+// A premise of administration (round 6): a named location an independent RN works
+// from. Rows live on users/{uid}.premises; a copy is STAMPED onto each authorisation
+// request at submission (immutable afterwards — documents must reflect the premise at
+// request time even if the nurse later edits/deletes it). Mirrors backend PremiseStamp.
+export interface Premise {
+  id: string;
+  name: string;
+  address: string;
+}
+
 export interface AuthorisationRequest {
   id: string;
   patientID: string;
@@ -121,6 +159,8 @@ export interface AuthorisationRequest {
   status: RequestStatus;
   createdAt: number; // epoch ms
   patientSummary?: PatientSummary;
+  /** Premise of administration stamped at submission (round 6); absent on legacy/clinic requests. */
+  premise?: Premise | null;
 }
 
 export interface Authorisation {
@@ -135,6 +175,11 @@ export interface Authorisation {
   expiresAt: number; // epoch ms
   createdAt: number; // epoch ms — when approved (for invoice month grouping)
   invoiced: boolean; // set true when an invoice includes it
+  /** Approval time — the Clause 68C "date the prescriber reviewed the patient" (round 6).
+   *  Absent on authorisations approved before the stamp existed. */
+  reviewedAt?: number;
+  /** Copy of the request's stamped premise (round 6); absent on legacy documents. */
+  premise?: Premise | null;
 }
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";
@@ -316,13 +361,22 @@ export interface UserProfile {
   abn: string;     // display-only on the client (rules-immutable)
   phone: string;
   address: string;
+  /** Doctors: the Clause 68C principal place of practice (round 6). */
+  principalPlace: string;
+  /** Nurses: premises of administration (round 6); empty for other roles. */
+  premises: Premise[];
+  defaultPremiseId?: string;
+  /** The active premise — persists across sign-outs on the users doc (most-recent
+   *  selection wins until changed; falls back to default when missing/dangling). */
+  selectedPremiseId?: string;
   avatarFileId?: string;  // live: Storage object under users/{uid}/** (storage.rules avatar path)
   avatarDataUrl?: string; // demo only: inline preview bytes (never written to Firestore)
 }
 
 // The client-writable subset — mirrors the users/{uid} update rule, which rejects
 // any write touching roles/clinics/abn/mustChangePassword.
-export type UserProfileEdit = Partial<Pick<UserProfile, "ahpra" | "phone" | "address" | "avatarFileId" | "avatarDataUrl">>;
+export type UserProfileEdit = Partial<Pick<UserProfile,
+  "ahpra" | "phone" | "address" | "principalPlace" | "premises" | "defaultPremiseId" | "selectedPremiseId" | "avatarFileId" | "avatarDataUrl">>;
 
 // One row of the super-admin account inventory. Live: a users/{uid} doc (rules allow
 // superAdmin to list the collection); demo: derived from DEMO_ACCOUNTS. mustChangePassword
