@@ -31,6 +31,7 @@ import type {
   PatientField,
   PatientOwner,
   PatientSummary,
+  Premise,
   SignedFormRecord,
   FormAnswer,
   TreatmentAvailability,
@@ -388,6 +389,12 @@ export function submitRequest(
   if (input.identity.role !== "nurse" || !patientPermissions(input.identity, patient).canView) {
     throw new BackendError("notPermitted");
   }
+  // Round 6: an independent nurse's active premise is STAMPED onto the request at
+  // submission (immutable afterwards). Clinic-context requests stamp null — the
+  // generated document always uses the clinic's address (backend buildApprovalDocumentModel).
+  const premise = input.identity.context.kind === "independent"
+    ? activePremise(profileForUser(state, input.identity.user.id))
+    : null;
   const request: AuthorisationRequest = {
     id: makeID("req"),
     patientID: input.patientID,
@@ -398,6 +405,7 @@ export function submitRequest(
     status: "pending",
     createdAt: now,
     patientSummary: patientSummary(patient),
+    premise,
   };
   const next = syncReviewerAccess({ ...state, requests: { ...state.requests, [request.id]: request } }, input.patientID);
   return { state: next, request };
@@ -441,6 +449,10 @@ export function approveRequest(
     expiresAt: expiry,
     createdAt: now,
     invoiced: false,
+    // Round 6: approval time IS the Clause 68C patient-reviewed date, and the request's
+    // stamped premise rides onto every fanned-out authorisation (backend fanOutAuthorisations).
+    reviewedAt: now,
+    premise: request.premise ?? null,
   }));
 
   const authorisations = { ...state.authorisations };
@@ -1148,7 +1160,7 @@ export function setDoctorStatus(state: DemoState, doctorID: string, patch: Parti
 // iOS's InMemoryBackend seeds no profile data (ProfileView hardcodes its demo rows),
 // so an unseeded user resolves to empty fields rather than sample values.
 export function profileForUser(state: DemoState, userID: string): UserProfile {
-  return state.profileByUser[userID] ?? { ahpra: "", abn: "", phone: "", address: "" };
+  return state.profileByUser[userID] ?? { ahpra: "", abn: "", phone: "", address: "", principalPlace: "", premises: [] };
 }
 
 // Merges only the client-writable fields — abn (and roles/clinics/mustChangePassword)
@@ -1161,10 +1173,63 @@ export function updateProfile(state: DemoState, userID: string, edits: UserProfi
     ...(edits.ahpra !== undefined ? { ahpra: edits.ahpra } : {}),
     ...(edits.phone !== undefined ? { phone: edits.phone } : {}),
     ...(edits.address !== undefined ? { address: edits.address } : {}),
+    ...(edits.principalPlace !== undefined ? { principalPlace: edits.principalPlace } : {}),
+    ...(edits.premises !== undefined ? { premises: edits.premises } : {}),
+    ...(edits.defaultPremiseId !== undefined ? { defaultPremiseId: edits.defaultPremiseId } : {}),
+    ...(edits.selectedPremiseId !== undefined ? { selectedPremiseId: edits.selectedPremiseId } : {}),
     ...(edits.avatarFileId !== undefined ? { avatarFileId: edits.avatarFileId } : {}),
     ...(edits.avatarDataUrl !== undefined ? { avatarDataUrl: edits.avatarDataUrl } : {}),
   };
   return { ...state, profileByUser: { ...state.profileByUser, [userID]: next } };
+}
+
+// --- Premises of administration (round 6, spec auth-pdf-feedback-round-6) ---
+
+/** The premise stamped on new requests: selected → default → first → null. A dangling
+ *  selection (premise since deleted) falls back rather than erroring — backend D3. */
+export function activePremise(profile: UserProfile): Premise | null {
+  const byId = (id?: string) => profile.premises.find((p) => p.id === id);
+  return byId(profile.selectedPremiseId) ?? byId(profile.defaultPremiseId) ?? profile.premises[0] ?? null;
+}
+
+const blankStr = (v: string) => v.trim() === "";
+
+/** Profile patch that adds (new id) or edits (existing id) a premise. The first premise
+ *  becomes default + selected, mirroring the backend's provisionPremises. Throws on a
+ *  blank name/address — a junk row is rejected, never persisted. */
+export function premisesAfterSave(profile: UserProfile, premise: Premise): UserProfileEdit {
+  if (blankStr(premise.name) || blankStr(premise.address)) throw new BackendError("invalidInput");
+  const trimmed: Premise = { id: premise.id, name: premise.name.trim(), address: premise.address.trim() };
+  const exists = profile.premises.some((p) => p.id === trimmed.id);
+  const premises = exists
+    ? profile.premises.map((p) => (p.id === trimmed.id ? trimmed : p))
+    : [...profile.premises, trimmed];
+  if (profile.premises.length === 0) {
+    return { premises, defaultPremiseId: trimmed.id, selectedPremiseId: trimmed.id };
+  }
+  return { premises };
+}
+
+/** Profile patch that removes a premise. The last premise cannot be deleted (a nurse
+ *  must always have one); a dangling default/selected pointer repoints to the first
+ *  remaining premise so activePremise never silently changes semantics. */
+export function premisesAfterDelete(profile: UserProfile, premiseId: string): UserProfileEdit {
+  if (!profile.premises.some((p) => p.id === premiseId)) throw new BackendError("notFound");
+  if (profile.premises.length <= 1) throw new BackendError("lastPremise");
+  const premises = profile.premises.filter((p) => p.id !== premiseId);
+  const repoint = (id?: string) => (id === premiseId || !premises.some((p) => p.id === id) ? premises[0].id : id);
+  return {
+    premises,
+    defaultPremiseId: repoint(profile.defaultPremiseId),
+    selectedPremiseId: repoint(profile.selectedPremiseId),
+  };
+}
+
+/** Profile patch that makes a premise the active selection (persists on the users doc —
+ *  survives sign-out until the user changes it; backend D3). */
+export function premisesAfterSelect(profile: UserProfile, premiseId: string): UserProfileEdit {
+  if (!profile.premises.some((p) => p.id === premiseId)) throw new BackendError("notFound");
+  return { selectedPremiseId: premiseId };
 }
 
 // Per-identity address (owner feedback #2). Key: `${uid}:${identityKey}` so the same user

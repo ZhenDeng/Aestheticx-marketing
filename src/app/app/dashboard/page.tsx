@@ -1,9 +1,67 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
+import { activePremise, premisesAfterSelect } from "@/lib/demo/backend";
+import type { Identity } from "@/lib/demo/types";
+
+// Round 6 (spec auth-pdf-feedback-round-6): an independent RN picks the premise they are
+// working from here. The selection persists on the users doc — it survives sign-out and
+// stays until changed — and is stamped onto every authorisation request they submit
+// (that stamp is the premise printed on the generated authorisation document).
+function PremiseSwitcher({ me }: { me: Identity }) {
+  const store = useDemoStore();
+  const [error, setError] = useState<string | null>(null);
+  const profile = store.profileForUser(me.user.id);
+  if (me.role !== "nurse" || me.context.kind !== "independent" || profile.premises.length === 0) return null;
+  const active = activePremise(profile);
+
+  function select(id: string) {
+    setError(null);
+    try {
+      store.updateProfile(premisesAfterSelect(profile, id), me);
+    } catch {
+      setError("Could not switch premise.");
+    }
+  }
+
+  return (
+    <section className="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-lg text-ink">Working from</h2>
+        <Link href="/app/profile" className="text-sm text-ink-soft hover:text-ink">Manage premises ›</Link>
+      </div>
+      <p className="mt-1 text-sm text-ink-soft">New authorisation requests are stamped with this premise.</p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {profile.premises.map((p) => {
+          const on = p.id === active?.id;
+          return (
+            <li key={p.id}>
+              <button
+                onClick={() => select(p.id)}
+                aria-pressed={on}
+                className="flex w-full items-center gap-3 rounded-inner border px-4 py-2.5 text-left transition-colors"
+                style={on ? { borderColor: "var(--color-tint)" } : { borderColor: "var(--color-line)" }}
+              >
+                <span aria-hidden className="flex-none text-base" style={{ color: on ? "var(--color-tint)" : "var(--color-line)" }}>
+                  {on ? "●" : "○"}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-ink">{p.name}</span>
+                  <span className="block text-sm text-ink-soft">{p.address}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
+    </section>
+  );
+}
 
 export default function DashboardPage() {
   const { identity, availableIdentities } = useDemoAuth();
@@ -52,6 +110,8 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-ink-soft">Open the calendar</p>
         </Link>
       </div>
+
+      <PremiseSwitcher me={identity} />
     </div>
   );
 }

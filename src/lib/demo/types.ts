@@ -136,6 +136,16 @@ export interface PatientSummary {
   alert?: string;
 }
 
+// A premise of administration (round 6): a named location an independent RN works
+// from. Rows live on users/{uid}.premises; a copy is STAMPED onto each authorisation
+// request at submission (immutable afterwards — documents must reflect the premise at
+// request time even if the nurse later edits/deletes it). Mirrors backend PremiseStamp.
+export interface Premise {
+  id: string;
+  name: string;
+  address: string;
+}
+
 export interface AuthorisationRequest {
   id: string;
   patientID: string;
@@ -146,6 +156,8 @@ export interface AuthorisationRequest {
   status: RequestStatus;
   createdAt: number; // epoch ms
   patientSummary?: PatientSummary;
+  /** Premise of administration stamped at submission (round 6); absent on legacy/clinic requests. */
+  premise?: Premise | null;
 }
 
 export interface Authorisation {
@@ -160,6 +172,11 @@ export interface Authorisation {
   expiresAt: number; // epoch ms
   createdAt: number; // epoch ms — when approved (for invoice month grouping)
   invoiced: boolean; // set true when an invoice includes it
+  /** Approval time — the Clause 68C "date the prescriber reviewed the patient" (round 6).
+   *  Absent on authorisations approved before the stamp existed. */
+  reviewedAt?: number;
+  /** Copy of the request's stamped premise (round 6); absent on legacy documents. */
+  premise?: Premise | null;
 }
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";
@@ -341,13 +358,22 @@ export interface UserProfile {
   abn: string;     // display-only on the client (rules-immutable)
   phone: string;
   address: string;
+  /** Doctors: the Clause 68C principal place of practice (round 6). */
+  principalPlace: string;
+  /** Nurses: premises of administration (round 6); empty for other roles. */
+  premises: Premise[];
+  defaultPremiseId?: string;
+  /** The active premise — persists across sign-outs on the users doc (most-recent
+   *  selection wins until changed; falls back to default when missing/dangling). */
+  selectedPremiseId?: string;
   avatarFileId?: string;  // live: Storage object under users/{uid}/** (storage.rules avatar path)
   avatarDataUrl?: string; // demo only: inline preview bytes (never written to Firestore)
 }
 
 // The client-writable subset — mirrors the users/{uid} update rule, which rejects
 // any write touching roles/clinics/abn/mustChangePassword.
-export type UserProfileEdit = Partial<Pick<UserProfile, "ahpra" | "phone" | "address" | "avatarFileId" | "avatarDataUrl">>;
+export type UserProfileEdit = Partial<Pick<UserProfile,
+  "ahpra" | "phone" | "address" | "principalPlace" | "premises" | "defaultPremiseId" | "selectedPremiseId" | "avatarFileId" | "avatarDataUrl">>;
 
 // One row of the super-admin account inventory. Live: a users/{uid} doc (rules allow
 // superAdmin to list the collection); demo: derived from DEMO_ACCOUNTS. mustChangePassword

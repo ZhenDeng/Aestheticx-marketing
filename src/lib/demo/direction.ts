@@ -6,7 +6,14 @@
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
 import { routeLabel } from "./types";
-import type { DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem } from "./types";
+import type { DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
+
+/** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
+export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
+  if (!premise || premise.address.trim() === "") return null;
+  const name = premise.name.trim();
+  return name ? `${name}, ${premise.address.trim()}` : premise.address.trim();
+}
 
 export interface DirectionAdministration {
   substanceAndForm: string;

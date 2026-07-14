@@ -87,6 +87,27 @@ export function buildSeedState(): DemoState {
   // (live hydrates productsByID from Firestore instead). Selection still works via effectiveCatalog.
   state = { ...state, productsByID: Object.fromEntries(PRODUCT_CATALOG.map((p) => [p.id, p])) };
 
+  // Round 6: premises of administration for the independent nurse (drives the dashboard
+  // premise switcher + request stamping) and the demo doctor's contact/principal place
+  // (prefills the Clause 68C direction). Seeded BEFORE the request replays below so
+  // Sarah's independent requests carry her active premise stamp, like live submissions.
+  state = { ...state, profileByUser: {
+    "u-sarah": {
+      ahpra: "", abn: "", phone: "", address: "", principalPlace: "",
+      premises: [
+        { id: "prem-sarah-bondi", name: "Sarah Chen Aesthetics", address: "12 Hall St, Bondi Beach NSW 2026" },
+        { id: "prem-sarah-surry", name: "The Skin Room", address: "3/21 Crown St, Surry Hills NSW 2010" },
+      ],
+      defaultPremiseId: "prem-sarah-bondi",
+      selectedPremiseId: "prem-sarah-bondi",
+    },
+    "u-voss": {
+      ahpra: "", abn: "", phone: "02 9388 4410", address: "",
+      principalPlace: "A. Voss Medical, 88 Oxford St, Paddington NSW 2021",
+      premises: [],
+    },
+  } };
+
   // Tier 3 #4: seed demo business entities so the admin editor has a real dataset (live hydrates
   // businessEntitiesByID from Firestore). The clinic starts with a BLANK ABN — the exact gap the
   // editor fills (a clinic-billed tax invoice needs the clinic's ABN); the doctor issuer has one.

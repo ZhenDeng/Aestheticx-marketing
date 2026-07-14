@@ -3,7 +3,7 @@
 import type {
   AccountRecord, Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
   ExternalBusyCalendar, ExternalBusyEvent,
-  MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, ProductCategory,
+  MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, Premise, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
@@ -127,8 +127,18 @@ export function mapNote(id: string, patientID: string, data: Doc): Note {
   };
 }
 
+// A stamped premise on a request/authorisation doc (round 6): {id, name, address}
+// strings; anything malformed maps to null (legacy docs simply have none).
+export function mapPremise(raw: unknown): Premise | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const d = raw as Doc;
+  if (typeof d.address !== "string" || d.address.trim() === "") return null;
+  return { id: str(d.id), name: str(d.name), address: d.address };
+}
+
 export function mapAuthorisation(id: string, data: Doc): Authorisation {
   const expiresAt = data.expiresAtMillis != null ? intValue(data.expiresAtMillis) : toMillis(data.expiresAt);
+  const premise = mapPremise(data.premise);
   return {
     id,
     requestID: str(data.requestId),
@@ -141,6 +151,9 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     expiresAt,
     createdAt: toMillis(data.createdAt),
     invoiced: data.invoiced === true,
+    // Round 6 stamps; legacy docs stay undefined/absent.
+    ...(typeof data.reviewedAtMillis === "number" ? { reviewedAt: data.reviewedAtMillis } : {}),
+    ...(premise ? { premise } : {}),
   };
 }
 
@@ -269,6 +282,7 @@ export function mapAuthRequest(id: string, data: Doc): AuthorisationRequest {
     status: (str(data.status) || "pending") as RequestStatus,
     createdAt: toMillis(data.createdAt),
     patientSummary,
+    premise: mapPremise(data.premise),
   };
 }
 
@@ -389,6 +403,8 @@ export function encodeAuthRequest(r: AuthorisationRequest): Doc {
     createdAt: r.createdAt,
     items: r.items.map(encodeMedication),
     patientSummary: summary,
+    // Round 6: the premise stamped at submission (immutable per firestore.rules).
+    premise: r.premise ? { id: r.premise.id, name: r.premise.name, address: r.premise.address } : null,
   };
 }
 
