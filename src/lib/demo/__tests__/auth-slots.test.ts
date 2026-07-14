@@ -4,7 +4,7 @@ import {
   doctorsWithAvailability, isSlotTaken, openSlotsForDoctorOnDay, withdrawAvailability,
   bookAuthSlot, requestAdHocAuth, BackendError, setDoctorStatus,
   appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentOwnerScope,
-  canRescheduleAppointment, rescheduleAppointment,
+  canRescheduleAppointment, rescheduleAppointment, upcomingAuthCalls,
 } from "@/lib/demo/backend";
 import { LUMIERE } from "@/lib/demo/accounts";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
@@ -177,5 +177,38 @@ describe("auth slot calendar visibility (bookedByID)", () => {
     const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah }).state;
     const id = Object.keys(s.appointments)[0];
     expect(() => rescheduleAppointment(s, id, DAY, 560, 10, sarah)).toThrow(BackendError);
+  });
+});
+
+describe("upcomingAuthCalls (round 6 doctor schedule)", () => {
+  const NOON = Date.UTC(2026, 5, 26, 12, 0); // "now": 12:00 on DAY, UTC frame like isoDay
+  function booked(state: DemoState, dateISO: string, startMinute: number): DemoState {
+    const published = publishAvailability(state, { doctorID: "u-voss", dateISO, startMinute, endMinute: startMinute + 30 }, voss).state;
+    return bookAuthSlot(published, { doctorID: "u-voss", dateISO, startMinute, patientID: "p1", patientName: "Amara Boyd", identity: sarah }).state;
+  }
+
+  it("lists confirmed future authSlot appointments chronologically", () => {
+    let s = booked(emptyState(), "2026-06-27", 540);
+    s = booked(s, DAY, 800); // later today (13:20)
+    const calls = upcomingAuthCalls(s, "u-voss", NOON);
+    expect(calls.map((a) => [a.dateISO, a.startMinute])).toEqual([[DAY, 800], ["2026-06-27", 540]]);
+    expect(calls[0].appointmentNote).toBe("Auth request · Sarah Chen");
+  });
+
+  it("hides finished calls, other doctors' calls, and non-auth appointments", () => {
+    let s = booked(emptyState(), DAY, 540); // 09:00–09:10, already past at noon
+    s = booked(s, "2026-06-27", 540);
+    const other: Appointment = {
+      id: "x", type: "authSlot", ownerID: "u-else", dateISO: "2026-06-27", startMinute: 540,
+      endMinute: 550, status: "confirmed",
+    };
+    const treatment: Appointment = {
+      id: "t", type: "treatment", ownerID: "u-voss", dateISO: "2026-06-27", startMinute: 600,
+      endMinute: 660, status: "confirmed",
+    };
+    s = { ...s, appointments: { ...s.appointments, [other.id]: other, [treatment.id]: treatment } };
+    const calls = upcomingAuthCalls(s, "u-voss", NOON);
+    expect(calls.map((a) => a.dateISO)).toEqual(["2026-06-27"]);
+    expect(calls[0].type).toBe("authSlot");
   });
 });

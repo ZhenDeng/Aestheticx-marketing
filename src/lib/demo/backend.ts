@@ -762,6 +762,19 @@ export function isPastSlot(dateISO: string, minute: number, nowMs: number): bool
   return minute < nowFlooredTo10(nowMs);
 }
 
+/**
+ * A doctor's upcoming authorisation calls (round 6 booking surface): confirmed authSlot
+ * appointments they own that haven't finished yet, chronological. Feeds the dashboard
+ * "Upcoming authorisation calls" schedule so a doctor sees booked teleconsults in advance.
+ */
+export function upcomingAuthCalls(state: DemoState, doctorID: string, now: number): Appointment[] {
+  return Object.values(state.appointments)
+    .filter((a) =>
+      a.type === "authSlot" && a.ownerID === doctorID && a.status === "confirmed"
+      && !isPastSlot(a.dateISO, a.endMinute, now))
+    .sort((a, b) => (a.dateISO === b.dateISO ? a.startMinute - b.startMinute : a.dateISO < b.dateISO ? -1 : 1));
+}
+
 // --- Most-recently-called doctor (iOS recordCalledDoctor/mostRecentlyCalledDoctor parity) ---
 
 /** Recorded whenever the user starts a consult call; latest call wins. */

@@ -5,8 +5,46 @@ import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
-import { activePremise, premisesAfterSelect } from "@/lib/demo/backend";
+import { activePremise, appointmentTitle, premisesAfterSelect, upcomingAuthCalls } from "@/lib/demo/backend";
+import { dayHeaderLabel } from "@/lib/demo/calendar";
 import type { Identity } from "@/lib/demo/types";
+
+const timeLabel = (minute: number): string =>
+  `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+
+// Round 6 booking surface, doctor side: the chronological schedule of booked
+// authorisation teleconsults, so upcoming calls are visible in advance (the call itself
+// starts from the Authorisations inbox when the request lands).
+function UpcomingAuthCalls({ doctorID }: { doctorID: string }) {
+  const store = useDemoStore();
+  const calls = upcomingAuthCalls(store.state, doctorID, store.now);
+  return (
+    <section className="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <h2 className="font-display text-lg text-ink">Upcoming authorisation calls</h2>
+      {calls.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-soft">
+          No calls booked. Nurses book against your published availability — manage it under{" "}
+          <Link href="/app/availability" className="underline hover:text-ink">Availability</Link>.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2">
+          {calls.map((a) => (
+            <li key={a.id} className="flex items-center justify-between gap-3 rounded-inner border border-line px-4 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-ink">{appointmentTitle(a, "Authorisation call")}</span>
+                {a.appointmentNote && <span className="block text-sm text-ink-soft">{a.appointmentNote}</span>}
+              </span>
+              <span className="flex-none text-right">
+                <span className="block text-sm text-ink">{dayHeaderLabel(a.dateISO)}</span>
+                <span className="block text-sm text-ink-soft">{timeLabel(a.startMinute)}–{timeLabel(a.endMinute)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 // Round 6 (spec auth-pdf-feedback-round-6): an independent RN picks the premise they are
 // working from here. The selection persists on the users doc — it survives sign-out and
@@ -105,11 +143,22 @@ export default function DashboardPage() {
             <p className="mt-1 text-sm text-ink-soft">Requests awaiting your review</p>
           </Link>
         )}
+        {/* Round 6 booking surface, nurse side: an obvious entry to book an authorisation
+            teleconsult with a cooperating doctor (the existing Availability flow). */}
+        {identity.role === "nurse" && (
+          <Link href="/app/availability" className="rounded-card border p-6 shadow-card transition-colors hover:border-tint"
+            style={{ borderColor: "var(--color-tint)", background: "var(--color-tint-soft)" }}>
+            <p className="font-display text-2xl text-ink">Book an authorisation call</p>
+            <p className="mt-1 text-sm text-ink-soft">Pick a doctor’s open slot, or request now</p>
+          </Link>
+        )}
         <Link href="/app/calendar" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
           <p className="font-display text-3xl text-ink">Today</p>
           <p className="mt-1 text-sm text-ink-soft">Open the calendar</p>
         </Link>
       </div>
+
+      {asDoctor && <UpcomingAuthCalls doctorID={asDoctor.user.id} />}
 
       <PremiseSwitcher me={identity} />
     </div>
