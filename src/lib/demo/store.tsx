@@ -318,10 +318,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         applyAndMirror(() => next, (m) => m.mirrorCreateRequest(request));
       },
       approveRequest: (requestID, id) =>
-        // generateEmergency/recordAudit: !live — in live mode the backend Cloud Function writes the
-        // emergency records AND the §21 audit entry, and hydrate reads them; the optimistic client
+        // generateEmergency/recordAudit/generateApprovalNote: !live — in live mode the backend
+        // Cloud Function writes the emergency records, the §21 audit entry, AND the combined
+        // approval-PDF treatment note (round 6), and hydrate reads them; the optimistic client
         // must not fabricate phantom ones that would vanish on the next hydrate.
-        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now, { generateEmergency: !live, recordAudit: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
+        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now, { generateEmergency: !live, recordAudit: !live, generateApprovalNote: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
       requireEdit: (requestID, id) =>
         // auditNow: demo writes the §21 `request_edit_requested` entry with the session clock; live
         // passes undefined so the requireEdit Cloud Function + hydrate own the durable entry.

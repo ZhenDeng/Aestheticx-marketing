@@ -28,7 +28,7 @@ export interface ApplyEmergencyArgs {
   expiresAt: number;
 }
 
-function emergencyID(patientID: string, doctorID: string, kind: EmergencyKind): string {
+export function emergencyID(patientID: string, doctorID: string, kind: EmergencyKind): string {
   return `${patientID}_${doctorID}_${kind}`;
 }
 

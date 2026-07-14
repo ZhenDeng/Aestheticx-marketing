@@ -15,6 +15,9 @@ export interface UserRef {
 export interface ClinicRef {
   id: string;
   name: string;
+  /** Street address — the clinic's fixed premise of administration (round 6). Demo-side
+   *  convenience; live documents resolve it from the clinics/{id} doc server-side. */
+  address?: string;
 }
 
 export type PracticeContext =

@@ -58,7 +58,8 @@ import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } fr
 import { PRODUCT_CATEGORIES, productSlug, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
-import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyKindsFor } from "./emergency";
+import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
+import { approvalNote, buildApprovalDocumentModel, renderApprovalPdf } from "./approvalPdf";
 import { cooperatingDoctorsFor, relationshipFor, priceCentsFor, invoiceAppliesFor, cooperationDocId } from "./cooperation";
 
 export const REPEATS_PER_AUTHORISATION = 5;
@@ -428,7 +429,7 @@ export function approveRequest(
   requestID: string,
   identity: Identity,
   now: number,
-  options: { generateEmergency?: boolean; recordAudit?: boolean } = {},
+  options: { generateEmergency?: boolean; recordAudit?: boolean; generateApprovalNote?: boolean } = {},
 ): { state: DemoState; granted: Authorisation[] } {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
@@ -482,7 +483,7 @@ export function approveRequest(
     patients[patient.id] = { ...patient, prescribingDoctorIDs: [...patient.prescribingDoctorIDs, identity.user.id] };
   }
 
-  const approvedState = syncReviewerAccess(
+  let approvedState = syncReviewerAccess(
     {
       ...state,
       patients,
@@ -492,6 +493,63 @@ export function approveRequest(
     },
     request.patientID,
   );
+
+  // Round 6: every approval produces ONE combined Treatment Authorisation document (all
+  // items of the request in a single file) saved as a treatment note with the PDF
+  // attached. Skipped in live mode (`generateApprovalNote: false`): the deployed
+  // approveRequest Cloud Function renders/uploads the real artifact server-side and
+  // hydrate reads the persisted note — the client must not fabricate a diverging copy.
+  // Deliberately NOT surfaced under Active authorisations (owner: the audit file lives
+  // in treatment notes; active cards are unchanged).
+  if (options.generateApprovalNote ?? true) {
+    const doctorProfile = profileForUser(state, request.doctorID);
+    const kinds = emergencyKindsFor(request.items);
+    const emergencyRefs = kinds.flatMap((kind) => {
+      const rec = emergencyAuthorisationsByID[emergencyID(request.patientID, request.doctorID, kind)];
+      return rec ? [{ kind, expiresAtMillis: rec.expiresAt }] : [];
+    });
+    const model = buildApprovalDocumentModel({
+      requestId: request.id,
+      request: { items: request.items, premise: request.premise ?? null, nurseName: request.nurse.name, clinicId: clinicID },
+      approvedAtMillis: now,
+      expiresAtMillis: expiry,
+      prescriber: {
+        name: identity.user.name,
+        phone: doctorProfile.phone,
+        principalPlace: doctorProfile.principalPlace,
+        prescriberNumber: doctorProfile.ahpra,
+      },
+      clinic: request.context.kind === "clinic"
+        ? { name: request.context.clinic.name, address: request.context.clinic.address }
+        : null,
+      patient: patient
+        ? {
+            name: fullName(patient),
+            address: patient.address,
+            dobText: `${patient.dateOfBirth.day}/${patient.dateOfBirth.month}/${patient.dateOfBirth.year}`,
+            allergies: patient.allergies,
+          }
+        : {
+            name: request.patientSummary?.fullName,
+            allergies: request.patientSummary?.allergies,
+          },
+      emergencyRefs,
+    });
+    const note = approvalNote({
+      patientId: request.patientID,
+      requestId: request.id,
+      doctorId: request.doctorID,
+      doctorName: identity.user.name,
+      approvedAtMillis: now,
+      pdf: renderApprovalPdf(model),
+    });
+    // Deterministic id: a re-approval replay overwrites rather than duplicating.
+    const rest = (approvedState.notesByPatient[request.patientID] ?? []).filter((n) => n.id !== note.id);
+    approvedState = {
+      ...approvedState,
+      notesByPatient: { ...approvedState.notesByPatient, [request.patientID]: [...rest, note] },
+    };
+  }
 
   // Demo audit write (constitution §21) — representative parity with the backend's approveRequest
   // Cloud Function, which writes the durable `request_approved` entry in live. Gated by
