@@ -59,17 +59,9 @@ export function recordRecentlyUsedProduct(id: string): string[] {
   return next;
 }
 
-// Port of LineItemEditorView.commit() for .other: a non-empty route is folded
-// into the dosage as "dose · route" (route alone when the dose is empty);
-// an empty route leaves the dosage exactly as typed.
-export function composeOtherDosage(dosage: string, route: string): string {
-  const trimmedRoute = route.trim();
-  if (!trimmedRoute) return dosage;
-  const dose = dosage.trim();
-  return dose ? `${dose} · ${trimmedRoute}` : trimmedRoute;
-}
-
 // Port of LineItemEditorView.customAreas(): comma-split, trimmed, empties dropped.
+// (The old composeOtherDosage fold is gone — round 6 made route a first-class
+// MedicationItem field on every line, matching iOS.)
 export function splitCustomAreas(text: string): string[] {
   return text
     .split(",")

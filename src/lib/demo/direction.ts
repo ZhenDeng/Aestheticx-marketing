@@ -5,6 +5,7 @@
 // fields — it is never persisted. Wording pending practitioner/legal sign-off.
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
+import { routeLabel } from "./types";
 import type { DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem } from "./types";
 
 export interface DirectionAdministration {
@@ -88,28 +89,28 @@ export function missingDirectionFields(content: DirectionContent): string[] {
 
 /**
  * The Clause 68C fields a clinician captures at export that can't be derived from
- * the patient/authorisation (iOS CapturedDirectionFields). `route` applies to every
- * administration; substance/site/quantity come from the authorisation's medication.
+ * the patient/authorisation (iOS CapturedDirectionFields). Round 6: the reviewed
+ * date is DERIVED (always the approval day — never captured), and `route` is only
+ * a legacy fallback for authorisations whose medication predates per-item routes.
  */
 export interface CapturedDirectionFields {
   prescriberPhone: string;
   prescriberPrincipalPlace: string;
   premisesOfAdministration: string;
-  patientReviewedISO: string;
   directionPeriod: string;
   administrationCountAndIntervals: string;
   route: string;
 }
 
-/** iOS DirectionCaptureView's initial state: sensible defaults, the rest captured. */
+/** iOS DirectionCaptureView's initial state. Route is NEVER defaulted (round 6 —
+ *  the owner: route must be an active choice; legacy exports capture it here). */
 export const DEFAULT_CAPTURED_FIELDS: CapturedDirectionFields = {
   prescriberPhone: "",
   prescriberPrincipalPlace: "",
   premisesOfAdministration: "",
-  patientReviewedISO: "",
   directionPeriod: "6 months",
   administrationCountAndIntervals: "Up to 5, ≥ 4 weeks apart",
-  route: "IM",
+  route: "",
 };
 
 /** "16" + units → "16 U" — the quantity wording on the direction's administration rows. */
@@ -138,6 +139,19 @@ export function formatDocDate(epochMs: number): string {
   }).formatToParts(new Date(epochMs));
   const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value ?? "0");
   return `${part("day")} ${DOC_MONTHS[part("month") - 1]} ${part("year")}`;
+}
+
+/**
+ * The Clause 68C "date patient reviewed" as yyyy-mm-dd, read in Australia/Sydney like
+ * formatDocDate. Round 6: this is ALWAYS the day the doctor approved — derived from the
+ * authorisation, never captured by the exporter.
+ */
+export function formatReviewedISO(epochMs: number): string {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney", day: "2-digit", month: "2-digit", year: "numeric",
+  }).formatToParts(new Date(epochMs));
+  const part = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 /** Emergency-kind display label — the single source shared with the patient-file panel. */
@@ -178,14 +192,17 @@ export function buildDirectionDraft(input: {
     responsibleProvider: input.responsibleProvider,
     authorisationStatus: `Approved ${formatDocDate(input.approvedAt)}`,
     authorisationExpires: formatDocDate(input.expiresAt),
-    patientReviewedISO: captured.patientReviewedISO,
+    // Round 6: reviewed date = approval date, always derived (never captured).
+    patientReviewedISO: formatReviewedISO(input.approvedAt),
     directionPeriod: captured.directionPeriod,
     administrationCountAndIntervals: captured.administrationCountAndIntervals,
     administrations: input.medications.map((m) => ({
       substanceAndForm: m.name,
       category: categoryDisplayName(m.category),
       bodySite: m.areas.join(", "),
-      route: captured.route,
+      // Round 6: the item's stored route (labelled); captured route only covers
+      // legacy authorisations that predate per-item routes.
+      route: routeLabel(m.route) ?? captured.route,
       quantity: medicationQuantity(m),
     })),
     prescriberAttestation: `Electronically authorised by ${input.prescriberName}`,

@@ -66,6 +66,8 @@ export function mapMedication(data: Doc): MedicationItem {
     unit: (str(data.unit) || "freeText") as ProductUnit,
     areas,
     timing: typeof data.timing === "string" ? data.timing : undefined,
+    // Route wire string (round 6) — absent/blank on legacy items stays undefined.
+    route: typeof data.route === "string" && data.route ? data.route : undefined,
   };
 }
 
@@ -362,6 +364,7 @@ export function encodeMedication(m: MedicationItem): Doc {
   return {
     name: m.name, dosage: m.dosage, category: m.category, brand: m.brand ?? null,
     unit: m.unit, areas: m.areas, timing: m.timing ?? null, area: m.areas.join(", "),
+    route: m.route ?? null,
   };
 }
 

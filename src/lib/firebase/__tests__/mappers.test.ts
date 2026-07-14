@@ -313,6 +313,22 @@ describe("encoders", () => {
     expect(doc.clinicId).toBe("clinic-lumiere");
     expect(doc.status).toBe("pending");
     expect((doc.items as unknown[]).length).toBe(1);
+    // Round 6: legacy items encode route: null (never undefined — Firestore rejects it).
+    expect((doc.items as Record<string, unknown>[])[0].route).toBeNull();
+  });
+  it("round-trips the per-item route of administration (round 6)", () => {
+    const doc = encodeAuthRequest({
+      id: "r1", patientID: "p1", nurse: { id: "u-sarah", name: "Sarah Chen" }, doctorID: "u-voss",
+      context: { kind: "independent" },
+      items: [{ name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"], route: "intramuscular" }],
+      status: "pending", createdAt: 1750000000000,
+    });
+    expect((doc.items as Record<string, unknown>[])[0].route).toBe("intramuscular");
+    const back = mapAuthRequest("r1", doc);
+    expect(back.items[0].route).toBe("intramuscular");
+    // Absent/blank wire routes map to undefined (legacy docs).
+    expect(mapAuthRequest("r2", { ...doc, items: [{ name: "Botox", route: "" }] }).items[0].route).toBeUndefined();
+    expect(mapAuthRequest("r3", { ...doc, items: [{ name: "Botox" }] }).items[0].route).toBeUndefined();
   });
   it("encodeNote writes a general note", () => {
     const doc = encodeNote({

@@ -62,6 +62,29 @@ export type ProductCategory =
 
 export type ProductUnit = "units" | "millilitres" | "vial" | "syringe" | "tube" | "freeText";
 
+// Clause 68C route of administration (round 6). Wire strings mirror the backend's
+// ROUTES_OF_ADMINISTRATION / iOS RouteOfAdministration.rawValue — exactly these five are
+// ever accepted on new items; legacy items may have none (renderers print an em dash).
+export const ROUTES_OF_ADMINISTRATION = [
+  "intradermal", "subdermal", "subcutaneous", "intramuscular", "supraPeriosteal",
+] as const;
+export type RouteOfAdministration = (typeof ROUTES_OF_ADMINISTRATION)[number];
+
+/** Display labels printed on documents — must match backend ROUTE_DISPLAY_LABELS. */
+export const ROUTE_DISPLAY_LABELS: Record<RouteOfAdministration, string> = {
+  intradermal: "Intradermal",
+  subdermal: "Subdermal",
+  subcutaneous: "Subcutaneous",
+  intramuscular: "Intramuscular",
+  supraPeriosteal: "Supra-periosteal",
+};
+
+/** Label for a route wire string; raw passthrough for unknown values; null when absent. */
+export function routeLabel(route: string | null | undefined): string | null {
+  if (route == null || route === "") return null;
+  return ROUTE_DISPLAY_LABELS[route as RouteOfAdministration] ?? route;
+}
+
 export interface MedicationItem {
   name: string;
   dosage: string;
@@ -70,6 +93,8 @@ export interface MedicationItem {
   unit: ProductUnit;
   areas: string[];
   timing?: string;
+  /** Route of administration wire string (round 6); absent on legacy items. */
+  route?: string;
 }
 
 export interface Patient {

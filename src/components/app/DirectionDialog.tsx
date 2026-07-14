@@ -27,6 +27,9 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   const [captured, setCaptured] = useState<CapturedDirectionFields>(DEFAULT_CAPTURED_FIELDS);
   const [previewing, setPreviewing] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  // Round 6: items carry their route; the capture field only appears for legacy
+  // authorisations whose medication predates per-item routes.
+  const needsRouteCapture = !authorisation.medication.route;
 
   const direction = buildDirectionDraft({
     directionId: authorisation.id,
@@ -89,11 +92,14 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
 
             <p className="micro mt-2">Administration</p>
             <Field label="Premises of administration" value={captured.premisesOfAdministration} onChange={(v) => set("premisesOfAdministration", v)} />
-            <Field label="Route (applies to all)" value={captured.route} onChange={(v) => set("route", v)} />
+            {needsRouteCapture && (
+              <Field label="Route (applies to all)" value={captured.route} onChange={(v) => set("route", v)} />
+            )}
             <Field label="Number & intervals" value={captured.administrationCountAndIntervals} onChange={(v) => set("administrationCountAndIntervals", v)} />
 
             <p className="micro mt-2">Direction</p>
-            <Field label="Patient reviewed (YYYY-MM-DD)" value={captured.patientReviewedISO} onChange={(v) => set("patientReviewedISO", v)} />
+            {/* Round 6: the reviewed date is always the approval day — shown, not captured. */}
+            <p className="text-sm text-ink">Patient reviewed: <span className="text-ink-soft">{direction.patientReviewedISO}</span></p>
             <Field label="Period direction has effect" value={captured.directionPeriod} onChange={(v) => set("directionPeriod", v)} />
 
             {missing.length === 0 ? (
