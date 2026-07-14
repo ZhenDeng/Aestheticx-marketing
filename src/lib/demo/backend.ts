@@ -54,7 +54,7 @@ import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice } from "./invoicing";
+import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
 import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
@@ -2150,6 +2150,29 @@ export function billableAuthorisations(state: DemoState, doctorID: string): Bill
     .filter((r) => invoiceAppliesFor(relationshipFor(state.cooperationRelationshipsByID, doctorID, r.counterpartyType, r.counterpartyID)));
 }
 
+// An invoice party resolved from hydrated state (14/07 tax-invoice PDF): business name +
+// ABN from the party's Business Entity when active (backend entityParty parity), name
+// falling back through ownerDisplayLabel. Email/address aren't client-knowable outside a
+// snapshot — they stay empty here; the backend's generation-time snapshot wins when present.
+export function invoicePartyFor(state: DemoState, kind: "doctor" | "nurse" | "clinic", id: string): InvoiceParty {
+  const entity = state.businessEntitiesByID[id];
+  const entityName = entity?.isActive ? (entity.tradingName || entity.legalName) : "";
+  return {
+    businessName: entityName || ownerDisplayLabel(state, { kind, id } as PatientOwner),
+    abn: entity?.isActive ? entity.abn : "",
+    email: "",
+  };
+}
+
+/** The issuer/bill-to pair for a tax invoice: generation-time snapshots when present
+ *  (live invoices, Tier 3 #4), else resolved from state (demo + legacy invoices). */
+export function invoicePartiesFor(state: DemoState, invoice: Invoice): { issuer: InvoiceParty; billTo: InvoiceParty } {
+  return {
+    issuer: invoice.issuer ?? invoicePartyFor(state, "doctor", invoice.doctorID),
+    billTo: invoice.billTo ?? invoicePartyFor(state, invoice.counterpartyType, invoice.counterpartyID),
+  };
+}
+
 export interface CounterpartyAuthDetail {
   requestID: string;
   createdAt: number;
@@ -2235,6 +2258,10 @@ export function generateInvoice(
     ...computed,
     authorisationIDs: rows.map((r) => r.id),
     createdAt: now,
+    // Tier 3 #4 parity with the backend: freeze the party identities at generation so
+    // the tax-invoice PDF is self-describing (demo has no post-commit snapshot step).
+    issuer: invoicePartyFor(state, "doctor", input.doctorID),
+    billTo: invoicePartyFor(state, input.counterpartyType, input.counterpartyID),
     paid: false,
   };
   const invoicedIDs = new Set(rows.map((r) => r.id));

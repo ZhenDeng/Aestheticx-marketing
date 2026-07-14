@@ -7,13 +7,16 @@ export interface NavItem {
   label: string;
 }
 
-// iOS parity: Billing is reached from Profile (not a top-level tab); /app/billing still routes.
+// 14/07 feedback: Invoice is a first-class tab (the owner asked for "a section 'invoice'
+// in doctor's login" — the same /app/billing page serves every clinical role's view).
+// Profile's Billing link still routes there too.
 const CLINICAL_NAV: NavItem[] = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/patients", label: "Patients" },
   { href: "/app/authorisations", label: "Authorisations" },
   { href: "/app/calendar", label: "Calendar" },
   { href: "/app/availability", label: "Availability" },
+  { href: "/app/billing", label: "Invoice" },
   { href: "/app/templates", label: "Templates" },
   { href: "/app/bookings", label: "Bookings" },
   { href: "/app/profile", label: "Profile" },
