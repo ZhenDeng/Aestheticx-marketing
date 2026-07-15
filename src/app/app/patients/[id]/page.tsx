@@ -15,7 +15,8 @@ import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { emergencyKindLabel } from "@/lib/demo/direction";
-import { displayName, fullName, hasAlert, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, routeLabel, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
+import { unitSuffix } from "@/lib/demo/catalog";
 
 const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
 function deliveryColor(s: DeliveryStatus): string {
@@ -152,6 +153,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         )}
 
         <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
+          {/* 15/07 feedback: email + address belong with the other basic information. */}
+          <div><dt className="micro">Email</dt><dd className="mt-0.5 break-words text-ink">{patient.email || "—"}</dd></div>
+          <div><dt className="micro">Address</dt><dd className="mt-0.5 text-ink">{patient.address || "—"}</dd></div>
           <div><dt className="micro">Allergies</dt><dd className="mt-0.5 text-ink">{patient.allergies}</dd></div>
           <div><dt className="micro">Medications</dt><dd className="mt-0.5 text-ink">{patient.currentMedications}</dd></div>
         </dl>
@@ -304,6 +308,11 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                   </button>
                 </p>
                 <p className="text-sm text-ink-soft">{a.medication.areas.join(", ")}</p>
+                {/* 15/07 feedback: show the approved dosing + route for each medication. */}
+                <p className="text-sm text-ink-soft">
+                  {a.medication.dosage} {unitSuffix(a.medication.unit)}
+                  {routeLabel(a.medication.route) ? ` · ${routeLabel(a.medication.route)}` : ""}
+                </p>
                 <p className="mt-1 flex gap-1" aria-label={`${a.repeatsRemaining} repeats remaining`}>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <span key={i} className="h-2 w-2 rounded-full" style={{ background: i < a.repeatsRemaining ? "var(--color-tint)" : "var(--color-line)" }} />

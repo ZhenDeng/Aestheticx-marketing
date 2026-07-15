@@ -18,6 +18,19 @@ function approved(): DemoState {
   return s;
 }
 
+// One request carrying THREE medication items — fans into 3 item-authorisations that share
+// a requestID (15/07 feedback: one script = one authorisation, priced once).
+function approvedMultiItem(): DemoState {
+  let s: DemoState = { ...emptyState(), patients: { p1: patient("p1") } };
+  const r = submitRequest(s, { patientID: "p1", doctorID: "u-voss", items: [
+    { name: "Profhilo", dosage: "2", category: "skinBooster", unit: "millilitres", areas: [] },
+    { name: "Filler", dosage: "1", category: "haFiller", unit: "syringe", areas: [] },
+    { name: "Sculptra", dosage: "1", category: "collagenStimulator", unit: "vial", areas: [] },
+  ], identity: sarah }, NOW);
+  s = approveRequest(r.state, r.request.id, voss, NOW).state;
+  return s;
+}
+
 describe("setScriptPrice", () => {
   it("stores a per-counterparty price", () => {
     const s = setScriptPrice(emptyState(), "u-voss", "u-sarah", 3000);
@@ -63,6 +76,38 @@ describe("generateInvoice", () => {
   });
   it("throws when nothing is selectable", () => {
     expect(() => generateInvoice(approved(), { doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse", periodLabel: "x", authIDs: ["nope"] }, voss, NOW)).toThrow();
+  });
+
+  // 15/07 feedback: invoice per authorisation (script), not per medication item.
+  it("bills a multi-item request as ONE script line, not one per medication", () => {
+    const s0 = approvedMultiItem();
+    const rows = billableAuthorisations(s0, "u-voss");
+    expect(rows).toHaveLength(3); // three item-authorisations from one request
+    expect(new Set(rows.map((r) => r.requestID)).size).toBe(1); // …all sharing a requestID
+    const { state, invoice } = generateInvoice(s0, {
+      doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse",
+      periodLabel: "June 2026", authIDs: rows.map((r) => r.id),
+    }, voss, NOW);
+    expect(invoice.lines).toHaveLength(1);        // ONE line for the script, not 3
+    expect(invoice.subtotalCents).toBe(2500);     // 1 × $25, not 3 × $25
+    expect(invoice.totalCents).toBe(2750);
+    // every member item-authorisation is flagged invoiced (none left billable)
+    expect(rows.every((r) => state.authorisations[r.id].invoiced)).toBe(true);
+    expect(billableAuthorisations(state, "u-voss")).toHaveLength(0);
+  });
+
+  it("bills two separate requests as two script lines", () => {
+    let s = approvedMultiItem(); // request A (3 items) already approved
+    const rB = submitRequest(s, { patientID: "p1", doctorID: "u-voss",
+      items: [{ name: "Botox", dosage: "20", category: "skinBooster", unit: "units", areas: [] }], identity: sarah }, NOW);
+    s = approveRequest(rB.state, rB.request.id, voss, NOW).state;
+    const rows = billableAuthorisations(s, "u-voss");
+    const { invoice } = generateInvoice(s, {
+      doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse",
+      periodLabel: "June 2026", authIDs: rows.map((r) => r.id),
+    }, voss, NOW);
+    expect(invoice.lines).toHaveLength(2);     // two scripts
+    expect(invoice.subtotalCents).toBe(5000);  // 2 × $25
   });
 });
 

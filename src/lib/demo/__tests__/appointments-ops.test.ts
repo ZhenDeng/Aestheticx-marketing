@@ -1,15 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
   emptyState, bookTreatmentAppointment, rescheduleAppointment, markAppointment,
-  appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentsForPatient, BackendError,
+  appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentsForPatient,
+  canManageAppointment, BackendError,
 } from "@/lib/demo/backend";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
 
 const voss: Identity = { user: { id: "u-voss", name: "Voss" }, role: "doctor", context: { kind: "independent" } };
 const sarah: Identity = { user: { id: "u-sarah", name: "Sarah" }, role: "nurse", context: { kind: "independent" } };
+const nadia: Identity = { user: { id: "u-nadia", name: "Nadia" }, role: "nurse", context: { kind: "independent" } };
 
 const mk = (id: string, ownerID: string, dateISO: string, startMinute: number, status: Appointment["status"]): Appointment =>
   ({ id, type: "treatment", ownerID, dateISO, startMinute, endMinute: startMinute + 30, status });
+// An auth teleconsult: owned by the doctor, booked by a nurse/clinic (bookedByID).
+const authSlot = (id: string, ownerID: string, bookedByID: string, status: Appointment["status"] = "confirmed"): Appointment =>
+  ({ id, type: "authSlot", ownerID, bookedByID, dateISO: "2026-06-26", startMinute: 600, endMinute: 610, status });
 
 function withAppts(...a: Appointment[]): DemoState {
   return { ...emptyState(), appointments: Object.fromEntries(a.map((x) => [x.id, x])) };
@@ -61,6 +66,41 @@ describe("rescheduleAppointment", () => {
   });
   it("rejects rescheduling a terminal (completed) appointment", () => {
     expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "completed")), "a1", "2026-06-26", 660, 30, voss)).toThrow(BackendError);
+  });
+});
+
+// 15/07 feedback: the nurse/clinic who booked an auth teleconsult may reschedule/cancel it.
+describe("canManageAppointment (auth-slot booker)", () => {
+  it("lets the owner manage any appointment", () => {
+    expect(canManageAppointment(mk("a1", "u-voss", "2026-06-26", 600, "confirmed"), "u-voss")).toBe(true);
+    expect(canManageAppointment(authSlot("a1", "u-voss", "u-sarah"), "u-voss")).toBe(true);
+  });
+  it("lets the auth-slot booker manage it", () => {
+    expect(canManageAppointment(authSlot("a1", "u-voss", "u-sarah"), "u-sarah")).toBe(true);
+  });
+  it("does NOT let a non-booker non-owner manage it", () => {
+    expect(canManageAppointment(authSlot("a1", "u-voss", "u-sarah"), "u-nadia")).toBe(false);
+  });
+  it("does NOT extend to non-auth appointments (a booker field is only set on auth slots)", () => {
+    // A treatment appt has no bookedByID; only its owner manages it.
+    expect(canManageAppointment(mk("a1", "u-voss", "2026-06-26", 600, "confirmed"), "u-sarah")).toBe(false);
+  });
+});
+
+describe("auth-slot booker reschedule / cancel (15/07)", () => {
+  it("lets the booking nurse reschedule the doctor-owned auth slot", () => {
+    const s = rescheduleAppointment(withAppts(authSlot("a1", "u-voss", "u-sarah")), "a1", "2026-06-27", 660, 10, sarah);
+    expect(s.appointments.a1).toMatchObject({ dateISO: "2026-06-27", startMinute: 660, endMinute: 670 });
+  });
+  it("lets the booking nurse cancel it", () => {
+    const s = markAppointment(withAppts(authSlot("a1", "u-voss", "u-sarah")), "a1", "cancelled", sarah);
+    expect(s.appointments.a1.status).toBe("cancelled");
+  });
+  it("still rejects a nurse who did not book it", () => {
+    expect(() => markAppointment(withAppts(authSlot("a1", "u-voss", "u-sarah")), "a1", "cancelled", nadia)).toThrow(BackendError);
+  });
+  it("does not let a nurse touch the doctor's treatment appointment", () => {
+    expect(() => rescheduleAppointment(withAppts(mk("a1", "u-voss", "2026-06-26", 600, "confirmed")), "a1", "2026-06-26", 660, 30, sarah)).toThrow(BackendError);
   });
 });
 

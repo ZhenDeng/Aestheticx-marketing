@@ -168,16 +168,20 @@ describe("auth slot calendar visibility (bookedByID)", () => {
     expect(appointmentsForOwnerInRange(s, "u-sarah", DAY, DAY)).toHaveLength(1);
   });
 
-  it("is reschedulable only by the owner — the booking nurse sees it read-only", () => {
+  // 15/07 feedback: the booking nurse/clinic may now reschedule/cancel the auth slot they booked
+  // (the doctor still owns and also manages it; it's one shared record so the change syncs both ways).
+  it("is reschedulable by the owner AND by the booking nurse", () => {
     const { appt } = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah });
     expect(canRescheduleAppointment(appt, "u-voss")).toBe(true);   // doctor owns it
-    expect(canRescheduleAppointment(appt, "u-sarah")).toBe(false); // nurse only booked it
+    expect(canRescheduleAppointment(appt, "u-sarah")).toBe(true);  // nurse booked it → may manage it
+    expect(canRescheduleAppointment(appt, "u-other")).toBe(false); // unrelated viewer cannot
   });
 
-  it("rejects the booking nurse rescheduling the doctor's auth slot", () => {
+  it("lets the booking nurse reschedule the doctor's auth slot", () => {
     const s = bookAuthSlot(withWindow(), { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p1", patientName: "A", identity: sarah }).state;
     const id = Object.keys(s.appointments)[0];
-    expect(() => rescheduleAppointment(s, id, DAY, 560, 10, sarah)).toThrow(BackendError);
+    const moved = rescheduleAppointment(s, id, DAY, 560, 10, sarah);
+    expect(moved.appointments[id]).toMatchObject({ startMinute: 560, endMinute: 570 });
   });
 });
 

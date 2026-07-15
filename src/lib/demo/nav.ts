@@ -7,9 +7,9 @@ export interface NavItem {
   label: string;
 }
 
-// 14/07 feedback: Invoice is a first-class tab (the owner asked for "a section 'invoice'
-// in doctor's login" — the same /app/billing page serves every clinical role's view).
-// Profile's Billing link still routes there too.
+// 14/07 feedback: Invoice is a first-class tab. 15/07 feedback: the Invoice section is
+// DOCTOR-ONLY — nurses/clinics no longer see it (they receive generated invoices by email).
+// navItemsFor drops /app/billing for non-doctors below.
 const CLINICAL_NAV: NavItem[] = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/patients", label: "Patients" },
@@ -32,7 +32,9 @@ const ADMIN_NAV: NavItem[] = [
 ];
 
 export function navItemsFor(role: Role): NavItem[] {
-  return role === "superAdmin" ? ADMIN_NAV : CLINICAL_NAV;
+  if (role === "superAdmin") return ADMIN_NAV;
+  // 15/07 feedback: the Invoice section is doctor-only.
+  return role === "doctor" ? CLINICAL_NAV : CLINICAL_NAV.filter((i) => i.href !== "/app/billing");
 }
 
 // The nav href that should render active for a pathname: the longest item href that is the

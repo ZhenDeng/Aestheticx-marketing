@@ -54,7 +54,7 @@ import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
+import { computeInvoice, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
 import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
@@ -905,11 +905,19 @@ export function appointmentOwnerScope(identity: Identity): string {
   return identity.context.kind === "clinic" ? identity.context.clinic.id : identity.user.id;
 }
 
-// Whether the viewer (at `ownerScope`) may reschedule/resize/mutate the appointment: only its
-// owner can, and only while it is still live. A booking nurse viewing the doctor's auth slot on
-// their own calendar sees it read-only (a.ownerID is the doctor, not the nurse's scope).
+// Who may reschedule/cancel/mark an appointment: its owner always, PLUS — for an authorisation
+// teleconsult (type "authSlot") — the nurse/clinic who booked it (15/07 feedback: "allow
+// nurses/clinics to reschedule or cancel booked authorisation appointments"). Because the auth
+// slot is one shared record owned by the doctor, any permitted change is already visible on the
+// doctor's calendar too. Non-auth appointments (treatment, block time) stay owner-only.
+export function canManageAppointment(a: Appointment, scope: string): boolean {
+  return a.ownerID === scope || (a.type === "authSlot" && a.bookedByID === scope);
+}
+
+// Whether the viewer (at `ownerScope`) may reschedule/resize the appointment: a manager (owner or
+// auth-slot booker) and only while it is still live.
 export function canRescheduleAppointment(a: Appointment, ownerScope: string): boolean {
-  return a.ownerID === ownerScope && (a.status === "awaitingConfirmation" || a.status === "confirmed");
+  return canManageAppointment(a, ownerScope) && (a.status === "awaitingConfirmation" || a.status === "confirmed");
 }
 
 export function bookingTokenForUser(state: DemoState, userID: string): string | undefined {
@@ -987,7 +995,7 @@ export function rescheduleAppointment(
 ): DemoState {
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
-  if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (!canManageAppointment(appt, appointmentOwnerScope(identity))) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive"); // terminal appts aren't reschedulable
   if (appt.type === "treatment") {
     const config = treatmentAvailabilityForOwner(state, appt.ownerID);
@@ -1005,7 +1013,7 @@ export function markAppointment(
 ): DemoState {
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
-  if (appt.ownerID !== appointmentOwnerScope(identity)) throw new BackendError("notPermitted");
+  if (!canManageAppointment(appt, appointmentOwnerScope(identity))) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive");
   return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status } } };
 }
@@ -2158,6 +2166,9 @@ export function auditLogEntries(state: DemoState): AuditLogEntry[] {
 
 export interface BillableAuthorisation {
   id: string;
+  // The approval request this item belongs to; multiple items of one request share it, so an
+  // invoice can be priced per script (15/07 feedback) rather than per medication item.
+  requestID: string;
   counterpartyID: string;
   counterpartyType: "nurse" | "clinic";
   monthKey: string;
@@ -2174,6 +2185,7 @@ export function billableAuthorisations(state: DemoState, doctorID: string): Bill
       const counterpartyType: "clinic" | "nurse" = a.clinicID ? "clinic" : "nurse";
       return {
         id: a.id,
+        requestID: a.requestID,
         counterpartyID: a.clinicID ?? a.nurseID,
         counterpartyType,
         monthKey: monthKey(a.createdAt),
@@ -2278,12 +2290,16 @@ export function generateInvoice(
   const rows = billableAuthorisations(state, input.doctorID)
     .filter((r) => input.authIDs.includes(r.id) && r.counterpartyID === input.counterpartyID && !r.invoiced);
   if (rows.length === 0) throw new BackendError("validationFailed");
+  // 15/07 feedback: invoice per authorisation/script, not per medication item. approveRequest
+  // fans a request into one item-authorisation each; regroup them to one script per request so a
+  // multi-item request bills ONE line (priced once), while every member item is flagged invoiced.
+  const scripts = scriptsFromBillable(rows);
   // Spec 2026-07-08: price precedence is relationship override → legacy scriptPricing → default.
   const priceRel = relationshipFor(state.cooperationRelationshipsByID, input.doctorID, input.counterpartyType, input.counterpartyID);
   const priceCents = priceCentsFor(priceRel, state.scriptPricing[scriptPriceKey(input.doctorID, input.counterpartyID)]);
   const computed = computeInvoice({
     pricePerScriptCents: priceCents, gstRate: GST_RATE,
-    authorisations: rows.map((r) => ({ id: r.id, dateISO: r.dateISO, patientName: r.patientName })),
+    authorisations: scripts.map((sc) => ({ id: sc.requestID, dateISO: sc.dateISO, patientName: sc.patientName })),
   });
   const invoice: Invoice = {
     id: makeID("inv"),
