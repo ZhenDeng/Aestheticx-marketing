@@ -1,9 +1,31 @@
 import { describe, it, expect } from "vitest";
 import {
-  computeInvoice, selectableForInvoice, formatAUD, invoicesFor, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE,
+  computeInvoice, selectableForInvoice, scriptsFromBillable, formatAUD, invoicesFor, DEFAULT_SCRIPT_PRICE_CENTS, GST_RATE,
 } from "@/lib/demo/invoicing";
-import type { Invoice } from "@/lib/demo/invoicing";
+import type { Invoice, BillableItemRow } from "@/lib/demo/invoicing";
 import type { Identity } from "@/lib/demo/types";
+
+// 15/07 feedback: an invoice counts per authorisation (script), not per medication item.
+describe("scriptsFromBillable", () => {
+  const row = (id: string, requestID: string): BillableItemRow =>
+    ({ id, requestID, counterpartyID: "u-sarah", counterpartyType: "nurse", monthKey: "2026-06", dateISO: "2026-06-26", patientName: "Mara", invoiced: false });
+
+  it("groups a request's item rows into one script carrying all member authIDs", () => {
+    const scripts = scriptsFromBillable([row("a-0", "req-1"), row("a-1", "req-1"), row("a-2", "req-1")]);
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0].requestID).toBe("req-1");
+    expect(scripts[0].authIDs).toEqual(["a-0", "a-1", "a-2"]);
+  });
+  it("keeps distinct requests as distinct scripts", () => {
+    const scripts = scriptsFromBillable([row("a-0", "req-1"), row("b-0", "req-2")]);
+    expect(scripts).toHaveLength(2);
+    expect(scripts.map((s) => s.requestID)).toEqual(["req-1", "req-2"]);
+    expect(scripts.every((s) => s.authIDs.length === 1)).toBe(true);
+  });
+  it("is empty for no rows", () => {
+    expect(scriptsFromBillable([])).toEqual([]);
+  });
+});
 
 describe("computeInvoice", () => {
   it("computes per-line fee + GST and totals (one $25 script)", () => {

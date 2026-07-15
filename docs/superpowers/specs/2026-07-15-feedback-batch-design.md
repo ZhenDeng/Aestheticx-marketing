@@ -31,10 +31,11 @@ permitted change already propagates to the doctor automatically — no new sync 
 Today reschedule/cancel are blocked for the booker in **both** the UI and the backend (owner-only gates).
 
 - **Web/demo (this PR):** new pure `canManageAppointment(appt, scope)` = owner **or** (`authSlot` &&
-  `bookedByID === scope`). Relax `rescheduleAppointment`, `markAppointment`, and `canRescheduleAppointment`
-  (drag/resize) to it. UI: `AppointmentActions` shows the actions to the booker on auth slots. Lead-linking
-  stays **owner-only** (`isOwner` unchanged) — a booker resolving a lead would only ever hit the owner-gated
-  `linkAppointmentPatient`.
+  `bookedByID === scope`). `rescheduleAppointment` and `canRescheduleAppointment` (drag/resize) use it, so the
+  booker can reschedule. Per the feedback's literal "reschedule or **cancel**", `markAppointment` admits the
+  booker **only for `cancelled`** — `completed`/`noShow` stay the owner's (doctor's) clinical determination;
+  `confirmAppointment` stays owner-only. UI: `AppointmentActions` shows Reschedule + Cancel to the booker;
+  Confirm/Complete/No-show render only for the owner. Lead-linking stays owner-only (`isOwner`).
 - **BACKEND FOLLOW-UP (live):** the deployed `rescheduleAppointment` / `markAppointment` Cloud Functions +
   Firestore rules enforce owner-only server-side. They must accept the `authSlot` booker
   (`bookedById === caller scope`) for live to work. Until deployed, a nurse's live reschedule/cancel is

@@ -96,6 +96,21 @@ describe("generateInvoice", () => {
     expect(billableAuthorisations(state, "u-voss")).toHaveLength(0);
   });
 
+  it("bills the WHOLE script even if only one of a request's items is selected (no double-bill)", () => {
+    const s0 = approvedMultiItem();
+    const rows = billableAuthorisations(s0, "u-voss"); // 3 items, one request
+    // Select just ONE item id — the request must still bill once and flag all its items invoiced.
+    const { state, invoice } = generateInvoice(s0, {
+      doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse",
+      periodLabel: "June 2026", authIDs: [rows[0].id],
+    }, voss, NOW);
+    expect(invoice.lines).toHaveLength(1);
+    expect(invoice.subtotalCents).toBe(2500);
+    expect(invoice.authorisationIDs).toHaveLength(3);          // all three flagged on the invoice
+    expect(rows.every((r) => state.authorisations[r.id].invoiced)).toBe(true);
+    expect(billableAuthorisations(state, "u-voss")).toHaveLength(0); // nothing left to re-bill
+  });
+
   it("bills two separate requests as two script lines", () => {
     let s = approvedMultiItem(); // request A (3 items) already approved
     const rB = submitRequest(s, { patientID: "p1", doctorID: "u-voss",

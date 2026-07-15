@@ -1013,7 +1013,11 @@ export function markAppointment(
 ): DemoState {
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
-  if (!canManageAppointment(appt, appointmentOwnerScope(identity))) throw new BackendError("notPermitted");
+  const scope = appointmentOwnerScope(identity);
+  // 15/07 feedback is "reschedule or CANCEL": an auth-slot booker may cancel the teleconsult they
+  // booked, but completed/noShow stay the owner's (doctor's) clinical determination.
+  const bookerCancelling = status === "cancelled" && appt.type === "authSlot" && appt.bookedByID === scope;
+  if (appt.ownerID !== scope && !bookerCancelling) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive");
   return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status } } };
 }
@@ -2287,17 +2291,25 @@ export function generateInvoice(
   state: DemoState, input: GenerateInvoiceInput, identity: Identity, now: number,
 ): { state: DemoState; invoice: Invoice } {
   if (identity.role !== "doctor" || identity.user.id !== input.doctorID) throw new BackendError("notPermitted");
-  const rows = billableAuthorisations(state, input.doctorID)
+  const selected = billableAuthorisations(state, input.doctorID)
     .filter((r) => input.authIDs.includes(r.id) && r.counterpartyID === input.counterpartyID && !r.invoiced);
-  if (rows.length === 0) throw new BackendError("validationFailed");
+  if (selected.length === 0) throw new BackendError("validationFailed");
   // 15/07 feedback: invoice per authorisation/script, not per medication item. approveRequest
   // fans a request into one item-authorisation each; regroup them to one script per request so a
   // multi-item request bills ONE line (priced once), while every member item is flagged invoiced.
+  // Bill WHOLE scripts: expand the selection to every un-invoiced sibling of any selected request,
+  // so a partial per-item selection can never split one request across two invoices (double-billing
+  // it) — the grain is the request, not the item.
+  const requestIDs = new Set(selected.map((r) => r.requestID));
+  const rows = billableAuthorisations(state, input.doctorID)
+    .filter((r) => requestIDs.has(r.requestID) && r.counterpartyID === input.counterpartyID && !r.invoiced);
   const scripts = scriptsFromBillable(rows);
   // Spec 2026-07-08: price precedence is relationship override → legacy scriptPricing → default.
   const priceRel = relationshipFor(state.cooperationRelationshipsByID, input.doctorID, input.counterpartyType, input.counterpartyID);
   const priceCents = priceCentsFor(priceRel, state.scriptPricing[scriptPriceKey(input.doctorID, input.counterpartyID)]);
   const computed = computeInvoice({
+    // One line per script: the line's `authorisationID` therefore carries the REQUEST id (the
+    // script), not an item-authorisation id. The full member item ids live on Invoice.authorisationIDs.
     pricePerScriptCents: priceCents, gstRate: GST_RATE,
     authorisations: scripts.map((sc) => ({ id: sc.requestID, dateISO: sc.dateISO, patientName: sc.patientName })),
   });

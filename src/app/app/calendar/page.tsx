@@ -1237,7 +1237,9 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   // The owner can always manage; the nurse/clinic who BOOKED an auth teleconsult can reschedule
-  // or cancel it too (15/07 feedback). Confirm stays owner-only below (auth slots start confirmed).
+  // or cancel it too (15/07 feedback). Confirm + Complete/No-show stay owner-only below — the
+  // booker's grant is limited to reschedule + cancel, matching the feedback's literal scope.
+  const isOwner = appt.ownerID === appointmentOwnerScope(me);
   const canManage = canManageAppointment(appt, appointmentOwnerScope(me));
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
 
@@ -1279,12 +1281,17 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
           </div>
           {scheduleError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            {appt.status === "awaitingConfirmation" && (
+            {isOwner && appt.status === "awaitingConfirmation" && (
               <button onClick={() => act(() => store.confirmAppointment(appt.id, me))}
                       className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Confirm</button>
             )}
-            <button onClick={() => act(() => store.markAppointment(appt.id, "completed", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
-            <button onClick={() => act(() => store.markAppointment(appt.id, "noShow", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
+            {/* Complete / No-show are the owner's (doctor's) clinical determination. */}
+            {isOwner && (
+              <>
+                <button onClick={() => act(() => store.markAppointment(appt.id, "completed", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
+                <button onClick={() => act(() => store.markAppointment(appt.id, "noShow", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
+              </>
+            )}
             <button onClick={() => act(() => store.markAppointment(appt.id, "cancelled", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>Cancel</button>
           </div>
         </>

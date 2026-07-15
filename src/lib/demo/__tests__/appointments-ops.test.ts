@@ -96,6 +96,15 @@ describe("auth-slot booker reschedule / cancel (15/07)", () => {
     const s = markAppointment(withAppts(authSlot("a1", "u-voss", "u-sarah")), "a1", "cancelled", sarah);
     expect(s.appointments.a1.status).toBe("cancelled");
   });
+  it("does NOT let the booker mark it completed or no-show (owner's clinical call)", () => {
+    const s = withAppts(authSlot("a1", "u-voss", "u-sarah"));
+    expect(() => markAppointment(s, "a1", "completed", sarah)).toThrow(BackendError);
+    expect(() => markAppointment(s, "a1", "noShow", sarah)).toThrow(BackendError);
+  });
+  it("still lets the OWNER mark it completed", () => {
+    const s = markAppointment(withAppts(authSlot("a1", "u-voss", "u-sarah")), "a1", "completed", voss);
+    expect(s.appointments.a1.status).toBe("completed");
+  });
   it("still rejects a nurse who did not book it", () => {
     expect(() => markAppointment(withAppts(authSlot("a1", "u-voss", "u-sarah")), "a1", "cancelled", nadia)).toThrow(BackendError);
   });
