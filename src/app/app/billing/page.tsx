@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { partyLabel, monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
-import { counterpartyMonthDetail, invoicePartiesFor, isoDay } from "@/lib/demo/backend";
-import { formatAUD, computeInvoice, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
+import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
+import { counterpartyMonthDetail, invoicePartiesFor, ownerDisplayLabel, isoDay } from "@/lib/demo/backend";
+import { formatAUD, computeInvoice, scriptsFromBillable, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
 import { buildTaxInvoiceModel, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
-import { DEMO_ACCOUNTS, LUMIERE } from "@/lib/demo/accounts";
 
 export default function BillingPage() {
   const { identity } = useDemoAuth();
@@ -21,6 +20,16 @@ export default function BillingPage() {
 
   const me = identity;
   const isDoctor = me.role === "doctor";
+  // 15/07 feedback: the Invoice section is doctor-only. Nurses/clinics receive generated
+  // invoices by email; guard the route in case it's reached directly (the nav tab is hidden).
+  if (!isDoctor) {
+    return (
+      <div className="max-w-3xl">
+        <h1 className="font-display text-3xl text-ink">Invoice</h1>
+        <p className="mt-2 text-ink-soft">Invoices are issued by your prescribing doctor and sent to you by email.</p>
+      </div>
+    );
+  }
   const summary = store.billingSummary(me);
   const invoices = store.invoicesFor(me);
   const heading = isDoctor ? "Authorisation requests you've approved" : "Approvals billed to you";
@@ -81,7 +90,7 @@ export default function BillingPage() {
                   return (
                     <li key={`${p.type}:${p.id}`} className="rounded-inner border border-line bg-card px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-ink"><span className="micro mr-2">{partyNoun}</span>{partyLabel(p.type, p.id, DEMO_ACCOUNTS, LUMIERE)}</span>
+                        <span className="text-sm text-ink"><span className="micro mr-2">{partyNoun}</span>{ownerDisplayLabel(store.state, { kind: p.type, id: p.id })}</span>
                         <span className="flex items-center gap-3">
                           <span className="text-sm font-medium text-ink">{p.count}</span>
                           {canGenerate && (
@@ -127,7 +136,7 @@ export default function BillingPage() {
             return (
             <li key={inv.id} className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3">
               <span className="text-sm text-ink">
-                {inv.periodLabel} · {partyLabel(isDoctor ? inv.counterpartyType : "doctor", isDoctor ? inv.counterpartyID : inv.doctorID, DEMO_ACCOUNTS, LUMIERE)}
+                {inv.periodLabel} · {ownerDisplayLabel(store.state, isDoctor ? { kind: inv.counterpartyType, id: inv.counterpartyID } : { kind: "doctor", id: inv.doctorID })}
                 <span className="ml-2 font-medium">{formatAUD(inv.totalCents)}</span>
                 <span className="ml-2 rounded-btn px-2 py-0.5 text-xs" style={inv.paid
                   ? { background: "var(--color-tint)", color: "var(--color-card)" }
@@ -188,7 +197,7 @@ function ThisMonthRow({ party, monthKey: mk }: { party: BillingParty; monthKey: 
   return (
     <li className="rounded-inner border border-line bg-card px-4 py-3">
       <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center justify-between text-left">
-        <span className="text-sm font-medium text-ink">{partyLabel(party.type, party.id, DEMO_ACCOUNTS, LUMIERE)}</span>
+        <span className="text-sm font-medium text-ink">{ownerDisplayLabel(store.state, { kind: party.type, id: party.id })}</span>
         <span className="flex items-center gap-2 text-sm text-ink">
           {party.count} authorisation{party.count === 1 ? "" : "s"}
           <span aria-hidden className="text-ink-soft">{open ? "▾" : "›"}</span>
@@ -333,10 +342,13 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
   const me = identity!;
   const rows = store.billableAuthorisations(me.user.id)
     .filter((r) => r.counterpartyID === counterpartyID && r.monthKey === monthKey && !r.invoiced);
+  // 15/07 feedback: count + price per authorisation (script), not per medication item — a
+  // multi-item request is one script. Regroup the request's items before pricing/previewing.
+  const scripts = scriptsFromBillable(rows);
   const storedPrice = store.scriptPrice(me.user.id, counterpartyID);
   const previewPrice = Math.round((parseFloat(priceInput) || 0) * 100) || storedPrice || DEFAULT_SCRIPT_PRICE_CENTS;
-  const preview = rows.length > 0
-    ? computeInvoice({ pricePerScriptCents: previewPrice, gstRate: GST_RATE, authorisations: rows.map((r) => ({ id: r.id, dateISO: r.dateISO, patientName: r.patientName })) })
+  const preview = scripts.length > 0
+    ? computeInvoice({ pricePerScriptCents: previewPrice, gstRate: GST_RATE, authorisations: scripts.map((sc) => ({ id: sc.requestID, dateISO: sc.dateISO, patientName: sc.patientName })) })
     : null;
 
   function savePrice() {
@@ -344,14 +356,15 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
     if (cents > 0) store.setScriptPrice(counterpartyID, cents, me);
   }
   function generate() {
-    if (rows.length === 0) return;
+    if (scripts.length === 0) return;
+    // Pass every member item-authorisation id; the backend regroups them into one line per script.
     store.generateInvoice({ doctorID: me.user.id, counterpartyID, counterpartyType, periodLabel: monthLabel(monthKey), authIDs: rows.map((r) => r.id) }, me);
     onDone();
   }
 
   return (
     <div className="mt-3 rounded-inner border border-line p-3">
-      <p className="text-sm text-ink-soft">{rows.length} selectable authorisation{rows.length === 1 ? "" : "s"}.</p>
+      <p className="text-sm text-ink-soft">{scripts.length} selectable authorisation{scripts.length === 1 ? "" : "s"}.</p>
       <div className="mt-2 flex items-end gap-2">
         <label className="block">
           <span className="micro">Price per script (AUD)</span>
@@ -366,7 +379,7 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
         </p>
       )}
       <div className="mt-3">
-        <button type="button" onClick={generate} disabled={rows.length === 0}
+        <button type="button" onClick={generate} disabled={scripts.length === 0}
           className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
           Generate invoice
         </button>

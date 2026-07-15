@@ -13,13 +13,21 @@ describe("navItemsFor", () => {
     expect(admin).not.toContain("Authorisations");
   });
 
-  it("gives every clinical role the full clinical nav (unchanged)", () => {
+  it("gives every clinical role the core clinical nav", () => {
     for (const role of ["doctor", "nurse", "clinicAdmin"] as const) {
       const nav = labels(role);
       expect(nav).toContain("Calendar");
       expect(nav).toContain("Patients");
       expect(nav).not.toContain("Admin");
     }
+  });
+
+  it("shows the Invoice tab to doctors only (15/07 — nurses/clinics receive invoices by email)", () => {
+    expect(labels("doctor")).toContain("Invoice");
+    expect(labels("nurse")).not.toContain("Invoice");
+    expect(labels("clinicAdmin")).not.toContain("Invoice");
+    // …but the rest of the clinical nav is untouched for them
+    expect(labels("nurse")).toContain("Calendar");
   });
 
   it("keeps Profile reachable for both admin and clinical roles", () => {

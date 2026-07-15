@@ -89,14 +89,13 @@ export default function ProfilePage() {
 
       {holdsNurseRole && <PremisesSection me={me} profile={profile} />}
 
-      {!isSuperAdmin && (
+      {/* 15/07 feedback: the Invoice section is doctor-only; nurses/clinics receive invoices by email. */}
+      {me.role === "doctor" && (
         <>
-          <h2 className="mt-8 font-display text-lg text-ink">{me.role === "doctor" ? "Approvals" : "Authorised"}</h2>
+          <h2 className="mt-8 font-display text-lg text-ink">Approvals</h2>
           <Link href="/app/billing" className="mt-3 flex items-center justify-between gap-3 rounded-card border border-line bg-card px-5 py-4 shadow-card transition-colors hover:border-tint/50">
             <span>
-              <span className="block text-sm font-medium text-ink">
-                {me.role === "doctor" ? "Approvals & invoices" : "Authorised scripts"}
-              </span>
+              <span className="block text-sm font-medium text-ink">Approvals &amp; invoices</span>
               <span className="block text-sm text-ink-soft">Monthly counts &amp; invoicing</span>
             </span>
             <span aria-hidden className="text-ink-soft">›</span>

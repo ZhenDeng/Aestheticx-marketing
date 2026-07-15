@@ -22,6 +22,11 @@ export function AftercareForm({
   const [selected, setSelected] = useState<AftercareCategory[]>([]);
   const [content, setContent] = useState(DEFAULT_CONTENT);
   const [includeMeds, setIncludeMeds] = useState(true);
+  // 15/07 bug: aftercare is emailed to the patient's address. It's the one email path with no
+  // empty-recipient guard, so a blank email silently queued a doomed send. Surface the recipient
+  // and block sending when there's nothing to send to, rather than fail invisibly.
+  const recipient = store.state.patients[patientID]?.email?.trim() ?? "";
+  const canSend = recipient.length > 0;
 
   // Each toggle re-assembles the editable body (matching iOS — manual edits persist
   // until the next toggle), preserving selection order.
@@ -32,6 +37,7 @@ export function AftercareForm({
   }
 
   function send() {
+    if (!canSend) return; // no recipient — the button is disabled, but guard the handler too
     store.sendAftercare({ patientID, content, medications: includeMeds ? lastMeds : [], categories: selected, identity });
     onDone();
   }
@@ -62,8 +68,17 @@ export function AftercareForm({
         </label>
       )}
 
+      {canSend ? (
+        <p className="mt-3 text-sm text-ink-soft">Will be emailed to {recipient}.</p>
+      ) : (
+        <p className="mt-3 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
+          No email address on file for this patient — add one in the patient file before sending aftercare.
+        </p>
+      )}
+
       <div className="mt-3 flex gap-2">
-        <button onClick={send} className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+        <button onClick={send} disabled={!canSend}
+                className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
           Send{selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}
         </button>
         <button onClick={onDone} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">Cancel</button>

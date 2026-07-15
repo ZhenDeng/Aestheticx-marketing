@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
 import { usableAuthorisations } from "@/lib/demo/backend";
+import { unitSuffix } from "@/lib/demo/catalog";
 import { NoteAttachmentsInput } from "@/components/app/NoteAttachments";
-import type { Identity, NoteAttachment, TreatmentMedication } from "@/lib/demo/types";
+import { routeLabel, type Identity, type NoteAttachment, type TreatmentMedication } from "@/lib/demo/types";
 
 type MedEdit = { batch: string; expiry: string; dosage: string };
 
@@ -72,9 +73,12 @@ export function TreatmentNoteForm({
           <ul className="mt-2 flex flex-col gap-2">
             {usable.map((a) => (
               <li key={a.id} className="rounded-inner border border-line px-3 py-2">
-                <label className="flex items-center gap-2 text-sm text-ink">
+                <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink">
                   <input type="checkbox" checked={ticked.has(a.id)} onChange={() => toggle(a.id)} />
                   <span className="font-medium">{a.medication.name}</span>
+                  {/* 15/07 feedback: show the approved dosing + route where the nurse selects. */}
+                  <span className="text-ink-soft">· {a.medication.dosage} {unitSuffix(a.medication.unit)}</span>
+                  {routeLabel(a.medication.route) && <span className="text-ink-soft">· {routeLabel(a.medication.route)}</span>}
                   <span className="text-ink-soft">· {a.repeatsRemaining} left</span>
                 </label>
                 {ticked.has(a.id) && (

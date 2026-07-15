@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
@@ -835,8 +835,10 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
         </div>
       )}
 
+      {/* 15/07 feedback: no left-right scroll on mobile — the min width only kicks in at sm+; below
+          that the flexible minmax(0,1fr) day columns compress to the viewport. */}
       <div className="mt-6 overflow-x-auto">
-        <div className="grid min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
+        <div className="grid sm:min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
           {/* header row */}
           <div />
           {days.map((iso) => (
@@ -1234,8 +1236,11 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  // Only the owner can mutate. A booking nurse viewing the doctor's auth slot sees it read-only.
+  // The owner can always manage; the nurse/clinic who BOOKED an auth teleconsult can reschedule
+  // or cancel it too (15/07 feedback). Confirm + Complete/No-show stay owner-only below — the
+  // booker's grant is limited to reschedule + cancel, matching the feedback's literal scope.
   const isOwner = appt.ownerID === appointmentOwnerScope(me);
+  const canManage = canManageAppointment(appt, appointmentOwnerScope(me));
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
 
   // Status actions can race (the appointment may have just been actioned elsewhere); the
@@ -1252,7 +1257,7 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
 
   return (
     <div className="mt-2 border-t border-line pt-2">
-      {!isOwner ? (
+      {!canManage ? (
         <p className="text-sm text-ink-soft">This appointment is managed on its owner&apos;s calendar — view only.</p>
       ) : canMark ? (
         <>
@@ -1276,12 +1281,17 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
           </div>
           {scheduleError && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{scheduleError}</p>}
           <div className="mt-2 flex flex-wrap gap-2">
-            {appt.status === "awaitingConfirmation" && (
+            {isOwner && appt.status === "awaitingConfirmation" && (
               <button onClick={() => act(() => store.confirmAppointment(appt.id, me))}
                       className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Confirm</button>
             )}
-            <button onClick={() => act(() => store.markAppointment(appt.id, "completed", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
-            <button onClick={() => act(() => store.markAppointment(appt.id, "noShow", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
+            {/* Complete / No-show are the owner's (doctor's) clinical determination. */}
+            {isOwner && (
+              <>
+                <button onClick={() => act(() => store.markAppointment(appt.id, "completed", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Complete</button>
+                <button onClick={() => act(() => store.markAppointment(appt.id, "noShow", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
+              </>
+            )}
             <button onClick={() => act(() => store.markAppointment(appt.id, "cancelled", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>Cancel</button>
           </div>
         </>

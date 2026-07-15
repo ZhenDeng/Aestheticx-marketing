@@ -72,6 +72,48 @@ export function selectableForInvoice<T extends BillableAuthRow>(
   );
 }
 
+// A billable "script" = one approved authorisation REQUEST. 15/07 feedback: an invoice counts
+// per authorisation/script, not per medication item — "if the nurse submits multiple items in one
+// go, it is one script containing multiple medications". approveRequest fans a request into one
+// authorisation doc per item; this regroups those items back to one script per requestID, keeping
+// every member authorisation id so generation can flag them all invoiced while pricing once.
+export interface BillableItemRow {
+  id: string;
+  requestID: string;
+  counterpartyID: string;
+  counterpartyType: "nurse" | "clinic";
+  monthKey: string;
+  dateISO: string;
+  patientName: string;
+  invoiced: boolean;
+}
+export interface BillableScriptRow {
+  requestID: string;
+  counterpartyID: string;
+  counterpartyType: "nurse" | "clinic";
+  monthKey: string;
+  dateISO: string;
+  patientName: string;
+  authIDs: string[];
+}
+export function scriptsFromBillable(rows: BillableItemRow[]): BillableScriptRow[] {
+  const byRequest = new Map<string, BillableScriptRow>();
+  for (const r of rows) {
+    const existing = byRequest.get(r.requestID);
+    if (existing) { existing.authIDs.push(r.id); continue; }
+    byRequest.set(r.requestID, {
+      requestID: r.requestID,
+      counterpartyID: r.counterpartyID,
+      counterpartyType: r.counterpartyType,
+      monthKey: r.monthKey,
+      dateISO: r.dateISO,
+      patientName: r.patientName,
+      authIDs: [r.id],
+    });
+  }
+  return [...byRequest.values()];
+}
+
 export function formatAUD(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(cents);
