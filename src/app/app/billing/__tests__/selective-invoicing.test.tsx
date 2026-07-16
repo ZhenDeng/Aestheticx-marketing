@@ -82,7 +82,8 @@ describe("Billing — selective invoicing (16/07 enhancement 2)", () => {
     await openPanel();
     await userEvent.click(screen.getByRole("checkbox", { name: /amara boyd/i }));
     expect(screen.getByText(/1 of 2 selected/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$27\.50/)).toBeInTheDocument(); // 1 × $25 + GST
+    // One selected script: it appears as both the line total and the footer total in the preview table.
+    expect(screen.getAllByText(/\$27\.50/).length).toBeGreaterThanOrEqual(1);
     // Two "Generate invoice" buttons exist (the row toggle + the panel submit); the panel's is last.
     const generateButtons = screen.getAllByRole("button", { name: /^generate invoice$/i });
     await userEvent.click(generateButtons[generateButtons.length - 1]);

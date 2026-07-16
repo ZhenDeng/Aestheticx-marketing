@@ -438,13 +438,53 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
         </label>
         <button type="button" onClick={savePrice} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Save price</button>
       </div>
-      <p className="mt-2 text-sm" style={{ color: preview ? undefined : "var(--color-ink-faint)" }}>
-        {preview ? (
-          <span className="text-ink-soft">Subtotal {formatAUD(preview.subtotalCents)} · GST {formatAUD(preview.gstCents)} · <span className="font-medium text-ink">Total {formatAUD(preview.totalCents)}</span></span>
-        ) : (
-          <span className="text-ink-soft">Select at least one authorisation to invoice.</span>
-        )}
-      </p>
+      {/* 16/07 enhancement 3: an on-screen preview that mirrors the PDF's bordered table
+          (Description / Qty / Unit / GST / Total) so what the doctor sees matches paper. */}
+      {preview ? (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-y border-line text-left">
+                <th className="py-1.5 pr-2 font-medium text-ink-soft">Description</th>
+                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">Qty</th>
+                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">Unit</th>
+                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">GST</th>
+                <th className="py-1.5 pl-2 text-right font-medium text-ink-soft">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.lines.map((l) => (
+                <tr key={l.authorisationID} className="border-b border-line">
+                  <td className="py-1.5 pr-2 text-ink">{invoiceLineDay(l.dateISO)} — {l.patientName}</td>
+                  <td className="py-1.5 px-2 text-right text-ink-soft">1</td>
+                  <td className="py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.feeCents)}</td>
+                  <td className="py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.gstCents)}</td>
+                  <td className="py-1.5 pl-2 text-right text-ink">{formatAUD(l.feeCents + l.gstCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3} />
+                <td className="py-1.5 px-2 text-right text-ink-soft">Subtotal</td>
+                <td className="py-1.5 pl-2 text-right text-ink-soft">{formatAUD(preview.subtotalCents)}</td>
+              </tr>
+              <tr>
+                <td colSpan={3} />
+                <td className="py-0.5 px-2 text-right text-ink-soft">GST (10%)</td>
+                <td className="py-0.5 pl-2 text-right text-ink-soft">{formatAUD(preview.gstCents)}</td>
+              </tr>
+              <tr className="border-t border-line">
+                <td colSpan={3} />
+                <td className="py-1.5 px-2 text-right font-medium text-ink">Total</td>
+                <td className="py-1.5 pl-2 text-right font-medium text-ink">{formatAUD(preview.totalCents)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-ink-soft">Select at least one authorisation to invoice.</p>
+      )}
       <div className="mt-3">
         <button type="button" onClick={generate} disabled={selectedScripts.length === 0}
           className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
