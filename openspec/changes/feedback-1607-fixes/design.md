@@ -47,6 +47,40 @@ New pure reducer `deleteInvoice(state, invoiceID, identity, now)` in `backend.ts
 
 Web billing page: invoice rows keep the list layout; the *generate preview* gains a mini table (columns mirroring the PDF) replacing the single-line totals text, so on-screen matches paper.
 
-## Diagnosis outcome (filled after backend exploration)
+## Diagnosis outcome (task 1.1 — backend exploration 2026-07-16)
 
-_To be completed by tasks 1.1–1.2: exact createUser/rules deltas recorded here before backend implementation starts._
+**Bug A root cause (nurse lockout): first-login claims wipe.** `completeFirstLogin`
+(`backend functions/src/index.ts:645-651`) re-sets the FULL custom-claim set from the
+client-presented ID token (`requireAuth` returns `auth.token`; `claimsAfterFirstLogin`
+maps `existing.roles ?? []`). A stale token at the moment the nurse completes the forced
+password change wipes `roles` to `[]` **permanently**: every Firestore rule gated on
+`hasRole('nurse')` (patient create `firestore.rules:108-112`, request create `:264`,
+notes `:150-153`) then denies, the web's `applyAndMirror` catch shows the hardcoded
+banner on every action, and refresh can't help because the server-side claims are truly
+empty. The account cannot self-heal — with `mustChangePassword` gone from the wiped
+claims the first-login gate never shows again. Claims/rules are otherwise structurally
+correct (rules-tests prove the created claim shape `{roles:['nurse'],clinics:{}}` passes
+every nurse write; `createUser` sets claims before the user can ever sign in).
+
+**Fixes:**
+- `completeFirstLogin` derives the reset claims from **server-side truth** —
+  `getAuth().getUser(uid).customClaims`, falling back to the `users/{uid}` doc's
+  `roles`/`clinics` fields if claims are missing/empty — never from the presented token.
+- New superAdmin callable `syncUserClaims({ userId })` re-sets claims from the users doc:
+  the repair tool for already-wiped accounts (e.g. Yinghua Xu). Web admin console gains a
+  per-account "Repair access" action (live mode).
+- Web `applyAndMirror` categorises failures (permission vs transient); `AppShell` shows
+  category-specific copy; on a permission failure the client force-refreshes the ID token
+  once so stale-claims sessions self-heal.
+
+**Bug B confirmed split:** `abn` IS persisted by `createUser` (`index.ts:537`) — its
+"missing" symptom is bug A's hydrate/live failures. `address` is genuinely dropped:
+no `users.address` field exists server-side, while web hydrate reads `d.address`
+(`hydrate.ts:251-252`). Fix: `createUser` accepts + persists optional `address`; the web
+create form gains the Address input and sends it.
+
+**Linkage gap:** `createUser` has no doctor-linkage parameter — the nurse↔doctor
+cooperation relationship is a separate manual `setCooperationRelationship` call. Fix:
+optional `supervisingDoctorId` on `createUser` creates the relationship atomically
+(reusing the cooperation core); the web nurse-creation form gains a supervising-doctor
+select.

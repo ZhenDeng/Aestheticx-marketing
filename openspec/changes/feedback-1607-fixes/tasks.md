@@ -1,10 +1,10 @@
 ## 1. Nurse account init + ABN/Address (bugs 1–2)
 
-- [ ] 1.1 Backend diagnosis: pin the exact createUser/rules gap that locks a fresh nurse (claims shape, users-doc fields, linkage) and record it in design.md "Diagnosis outcome"
-- [ ] 1.2 Backend repo: fix `createUser` to fully initialise the created role (incl. persisting `abn` + `address`); adjust rules only if required; backend tests green
-- [ ] 1.3 Web: add Address field to `CreateUserForm`; send `address` in `mirrorCreateUser`; validation unchanged for optional field
-- [ ] 1.4 Web: categorised sync errors — `applyAndMirror` stores `{category: "permission"|"sync"}`; `AppShell` renders permission-specific copy; unit test the categoriser
-- [ ] 1.5 Tests: creation payload carries abn+address (userAdmin/mirror mapping test)
+- [x] 1.1 Backend diagnosis: pin the exact createUser/rules gap that locks a fresh nurse (claims shape, users-doc fields, linkage) and record it in design.md "Diagnosis outcome"
+- [ ] 1.2 Backend repo: `completeFirstLogin` derives claims from server-side truth (getUser + users-doc fallback); `createUser` persists `address` + optional `supervisingDoctorId` → cooperation relationship; new `syncUserClaims` repair callable; backend tests green
+- [ ] 1.3 Web: add Address field + supervising-doctor select to `CreateUserForm`; send both in `mirrorCreateUser`
+- [ ] 1.4 Web: categorised sync errors — `applyAndMirror` stores category (permission vs sync); `AppShell` renders category copy; one-shot token force-refresh on permission failure; unit test the categoriser
+- [ ] 1.5 Web: admin console "Repair access" action per account (live) calling `syncUserClaims`
 
 ## 2. Calendar ↔ Dashboard sync + safe cancel (bug 3)
 
