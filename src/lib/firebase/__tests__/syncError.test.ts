@@ -43,4 +43,12 @@ describe("syncErrorMessage", () => {
     const msg = syncErrorMessage({ code: "functions/unavailable" });
     expect(msg).toMatch(/reconcile on refresh/i);
   });
+
+  it("does NOT promise reconcile-on-refresh for a permanent failure (refresh won't fix it)", () => {
+    for (const code of ["functions/not-found", "functions/failed-precondition", "functions/invalid-argument"]) {
+      const msg = syncErrorMessage({ code });
+      expect(msg).not.toMatch(/reconcile on refresh/i);
+      expect(msg).toMatch(/could not be completed|couldn.t be completed/i);
+    }
+  });
 });

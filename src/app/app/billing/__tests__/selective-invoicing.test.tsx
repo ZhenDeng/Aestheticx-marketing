@@ -13,11 +13,11 @@ const voss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "d
 const NOW = Date.UTC(2026, 6, 16); // July 2026
 
 // Three item-authorisations forming TWO scripts: r1 has two items, r2 one.
-const billableRows = [
-  { id: "a1", requestID: "r1", counterpartyID: "u-sarah", counterpartyType: "nurse" as const, monthKey: "2026-05", dateISO: "2026-07-10", patientName: "Amara Boyd", invoiced: false },
-  { id: "a2", requestID: "r1", counterpartyID: "u-sarah", counterpartyType: "nurse" as const, monthKey: "2026-05", dateISO: "2026-07-10", patientName: "Amara Boyd", invoiced: false },
-  { id: "b1", requestID: "r2", counterpartyID: "u-sarah", counterpartyType: "nurse" as const, monthKey: "2026-05", dateISO: "2026-07-12", patientName: "Noah Reid", invoiced: false },
-];
+const ROW_A1 = { id: "a1", requestID: "r1", counterpartyID: "u-sarah", counterpartyType: "nurse" as const, monthKey: "2026-05", dateISO: "2026-07-10", patientName: "Amara Boyd", invoiced: false };
+const ROW_A2 = { id: "a2", requestID: "r1", counterpartyID: "u-sarah", counterpartyType: "nurse" as const, monthKey: "2026-05", dateISO: "2026-07-10", patientName: "Amara Boyd", invoiced: false };
+const ROW_B1 = { id: "b1", requestID: "r2", counterpartyID: "u-sarah", counterpartyType: "nurse" as const, monthKey: "2026-05", dateISO: "2026-07-12", patientName: "Noah Reid", invoiced: false };
+// Mutable so a test can simulate a live re-hydrate reordering state.authorisations.
+let billableRows: Array<typeof ROW_A1> = [ROW_A1, ROW_A2, ROW_B1];
 
 const invoice: Invoice = {
   id: "inv-1", doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse",
@@ -62,6 +62,7 @@ beforeEach(() => {
   generateInvoice.mockReset();
   deleteInvoice.mockReset();
   invoices = [invoice];
+  billableRows = [ROW_A1, ROW_A2, ROW_B1];
 });
 
 async function openPanel() {
@@ -91,6 +92,23 @@ describe("Billing — selective invoicing (16/07 enhancement 2)", () => {
       expect.objectContaining({ authIDs: ["b1"] }),
       voss,
     );
+  });
+
+  // Regression (engineer review, 16/07): a live re-hydrate replaces state.authorisations and
+  // Firestore gives no stable order. An order-sensitive reset would silently re-tick a script
+  // the doctor deliberately excluded → a mis-bill. The untick must survive a reorder.
+  it("keeps an untick when the billable set is re-ordered underneath (live re-hydrate)", async () => {
+    const { rerender } = render(<BillingPage />);
+    await userEvent.click(screen.getAllByRole("button", { name: /generate invoice/i })[0]);
+    await userEvent.click(screen.getByRole("checkbox", { name: /amara boyd/i }));
+    expect(screen.getByText(/1 of 2 selected/i)).toBeInTheDocument();
+    // Same SET of scripts, different order (as a fresh Firestore read may return them).
+    billableRows = [ROW_B1, ROW_A2, ROW_A1];
+    rerender(<BillingPage />);
+    // The Amara Boyd untick must persist — not silently re-selected.
+    expect(screen.getByText(/1 of 2 selected/i)).toBeInTheDocument();
+    expect((screen.getByRole("checkbox", { name: /amara boyd/i }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("checkbox", { name: /noah reid/i }) as HTMLInputElement).checked).toBe(true);
   });
 
   it("cannot generate with nothing selected", async () => {

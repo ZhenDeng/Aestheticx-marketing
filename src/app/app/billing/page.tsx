@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
@@ -360,16 +360,14 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
   // 16/07 feedback enhancement 2: the doctor selects WHICH scripts to bill (default all) so a
   // free script can be excluded. Selection is by requestID; generation expands the ticked
   // scripts back to their member item-authorisation ids.
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(scripts.map((s) => s.requestID)));
-  // If the billable membership changes underneath us (another tab generated/deleted an
-  // invoice), reset to all-selected — the default the doctor expects when the list shifts.
-  // A stable membership (the common case while ticking) leaves the selection untouched.
-  const scriptIDs = scripts.map((s) => s.requestID).join("|");
-  useEffect(() => {
-    setSelected(new Set(scriptIDs ? scriptIDs.split("|") : []));
-  }, [scriptIDs]);
-
-  const selectedScripts = scripts.filter((s) => selected.has(s.requestID));
+  // Track the scripts the doctor has EXPLICITLY unticked (by requestID), not the selected
+  // set — so the effective selection is purely derived from the live scripts each render:
+  // a newly-appeared script defaults to selected (it's not in `unticked`), a removed one
+  // just drops out, and an untick survives a live re-hydrate that reorders or replaces
+  // `state.authorisations`. No reconcile effect, no order sensitivity, no mis-bill.
+  const [unticked, setUnticked] = useState<Set<string>>(() => new Set());
+  const selectedScripts = scripts.filter((s) => !unticked.has(s.requestID));
+  const selectedRequestIDs = new Set(selectedScripts.map((s) => s.requestID));
   const storedPrice = store.scriptPrice(me.user.id, counterpartyID);
   const previewPrice = Math.round((parseFloat(priceInput) || 0) * 100) || storedPrice || DEFAULT_SCRIPT_PRICE_CENTS;
   const preview = selectedScripts.length > 0
@@ -377,7 +375,7 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
     : null;
 
   function toggle(requestID: string) {
-    setSelected((prev) => {
+    setUnticked((prev) => {
       const next = new Set(prev);
       if (next.has(requestID)) next.delete(requestID); else next.add(requestID);
       return next;
@@ -391,19 +389,19 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
     if (selectedScripts.length === 0) return;
     // Pass the member item-authorisation ids of ONLY the ticked scripts; the backend
     // regroups them into one line per script and flags every member invoiced.
-    store.generateInvoice({ doctorID: me.user.id, counterpartyID, counterpartyType, periodLabel: monthLabel(monthKey), authIDs: authIDsForSelectedScripts(scripts, selected) }, me);
+    store.generateInvoice({ doctorID: me.user.id, counterpartyID, counterpartyType, periodLabel: monthLabel(monthKey), authIDs: authIDsForSelectedScripts(scripts, selectedRequestIDs) }, me);
     onDone();
   }
 
   return (
     <div className="mt-3 rounded-inner border border-line p-3">
       <div className="flex items-baseline justify-between">
-        <p className="micro">{selected.size} of {scripts.length} selected</p>
+        <p className="micro">{selectedScripts.length} of {scripts.length} selected</p>
         {scripts.length > 0 && (
           <span className="flex gap-2 text-xs">
-            <button type="button" onClick={() => setSelected(new Set(scripts.map((s) => s.requestID)))} className="text-ink-soft hover:text-ink">Select all</button>
+            <button type="button" onClick={() => setUnticked(new Set())} className="text-ink-soft hover:text-ink">Select all</button>
             <span aria-hidden className="text-ink-soft">·</span>
-            <button type="button" onClick={() => setSelected(new Set())} className="text-ink-soft hover:text-ink">Select none</button>
+            <button type="button" onClick={() => setUnticked(new Set(scripts.map((s) => s.requestID)))} className="text-ink-soft hover:text-ink">Select none</button>
           </span>
         )}
       </div>
@@ -416,7 +414,7 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
               <label className="flex cursor-pointer items-center gap-3 rounded-inner px-1 py-1.5 text-sm hover:bg-[var(--color-tint-soft)]/40">
                 <input
                   type="checkbox"
-                  checked={selected.has(sc.requestID)}
+                  checked={!unticked.has(sc.requestID)}
                   onChange={() => toggle(sc.requestID)}
                   aria-label={`${sc.patientName} — ${invoiceLineDay(sc.dateISO)}`}
                   style={{ accentColor: "var(--color-tint)" }}
