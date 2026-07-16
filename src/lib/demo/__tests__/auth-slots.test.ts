@@ -216,6 +216,18 @@ describe("upcomingAuthCalls (round 6 doctor schedule)", () => {
     expect(calls.map((a) => a.dateISO)).toEqual(["2026-06-27"]);
     expect(calls[0].type).toBe("authSlot");
   });
+
+  // 16/07 feedback bug 3 (calendar↔dashboard sync contract): the dashboard list and the
+  // calendar mutate the SAME appointment record, so a cancel or complete from either
+  // surface must drop the call from the upcoming list.
+  it("drops a call the moment it is cancelled or completed", () => {
+    const s = booked(emptyState(), "2026-06-27", 540);
+    const id = Object.keys(s.appointments)[0];
+    const cancelled = { ...s, appointments: { ...s.appointments, [id]: { ...s.appointments[id], status: "cancelled" as const } } };
+    expect(upcomingAuthCalls(cancelled, "u-voss", NOON)).toEqual([]);
+    const completed = { ...s, appointments: { ...s.appointments, [id]: { ...s.appointments[id], status: "completed" as const } } };
+    expect(upcomingAuthCalls(completed, "u-voss", NOON)).toEqual([]);
+  });
 });
 
 describe("authSlot chip title (14/07: 'nurse/clinic – patient – teleconsult')", () => {

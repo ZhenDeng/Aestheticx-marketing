@@ -182,6 +182,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
     if (!live || !identity) return;
     let cancelled = false;
     let unsubscribeRequests: (() => void) | undefined;
+    let unsubscribeAppointments: (() => void) | undefined;
     (async () => {
       setStatus("loading");
       try {
@@ -225,11 +226,29 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         } catch {
           // Stay on the one-shot snapshot; manual rehydrate still works.
         }
+        // Keep appointments current too (16/07 feedback bug 3): a cancel from any client
+        // must drop off the dashboard's upcoming-calls list without a refresh. Same
+        // enhancement-over-snapshot contract as the requests listener — its failure must
+        // not error a store that already loaded.
+        try {
+          const { subscribeAppointments } = await import("@/lib/firebase/appointmentsLive");
+          unsubscribeAppointments = subscribeAppointments(
+            { uid: identity.user.id, clinicIds: Object.keys(allClinics), superAdmin: allRoles.includes("superAdmin") },
+            {
+              onAppointments: (appointments) => setState((s) => ({ ...s, appointments })),
+              onScopeError: () =>
+                setLastSyncError("Live calendar updates were interrupted — refresh to make sure appointments are current."),
+            },
+          );
+          if (cancelled) unsubscribeAppointments(); // cleanup ran while the module was loading
+        } catch {
+          // Stay on the one-shot snapshot; manual rehydrate still works.
+        }
       } catch (e) {
         if (!cancelled) { setStatus("error"); setLastSyncError(String(e)); }
       }
     })();
-    return () => { cancelled = true; unsubscribeRequests?.(); };
+    return () => { cancelled = true; unsubscribeRequests?.(); unsubscribeAppointments?.(); };
     // identitySetKey stands in for availableIdentities (content-keyed; read via ref) so
     // token-refresh array churn doesn't tear down the listeners.
   }, [live, identity, identitySetKey, refreshTick]);
