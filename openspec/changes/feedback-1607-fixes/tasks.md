@@ -39,4 +39,4 @@
 ## 6. Verification
 
 - [x] 6.1 Full web suite green (`npm run build` + `vitest run`); backend repo suite green
-- [ ] 6.2 Browser QA pass: create-account fields, cancel-confirm flow, dashboard complete, premises switch from profile, selective generate, delete+regenerate, PDF download
+- [x] 6.2 Browser QA pass: create-account fields, cancel-confirm flow, dashboard complete, premises switch from profile, selective generate, delete+regenerate, PDF download
