@@ -246,4 +246,15 @@ describe("authSlot chip title (14/07: 'nurse/clinic – patient – teleconsult'
     expect(appointmentChipTitle(emptyState(), treatment)).toBe("Coco Donovan");
     expect(appointmentChipTitle(emptyState(), { ...treatment, patientID: undefined, patientName: undefined }, "Blocked time")).toBe("Blocked time");
   });
+  it("marks Google-ingested bookings so staff can tell them from in-app ones", () => {
+    const booked: Appointment = {
+      id: "g", type: "treatment", ownerID: "u-voss", dateISO: DAY, startMinute: 600, endMinute: 630,
+      status: "confirmed", patientID: "p2", patientName: "Coco Donovan",
+      source: "google", externalCalendarRef: { provider: "google", eventId: "gevt-1" },
+    };
+    expect(appointmentChipTitle(emptyState(), booked)).toBe("Coco Donovan · Google");
+    // In-app appointments (source manual or absent) are unmarked.
+    expect(appointmentChipTitle(emptyState(), { ...booked, source: "manual" })).toBe("Coco Donovan");
+    expect(appointmentChipTitle(emptyState(), { ...booked, source: undefined })).toBe("Coco Donovan");
+  });
 });

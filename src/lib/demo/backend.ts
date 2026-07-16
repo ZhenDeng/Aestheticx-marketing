@@ -1425,10 +1425,13 @@ export function bookerLabel(state: DemoState, a: Appointment): string | null {
  * patient/lead title.
  */
 export function appointmentChipTitle(state: DemoState, a: Appointment, blockPlaceholder = "—"): string {
-  if (a.type !== "authSlot") return appointmentTitle(a, blockPlaceholder);
+  // Google-ingested bookings are marked so staff can tell at a glance the booking was
+  // made on the clinic's Google booking page (its patient link may still need checking).
+  const googleMark = a.source === "google" ? " · Google" : "";
+  if (a.type !== "authSlot") return appointmentTitle(a, blockPlaceholder) + googleMark;
   const booker = bookerLabel(state, a);
   const patient = appointmentTitle(a, "Authorisation call");
-  return [booker, patient, "teleconsult"].filter(Boolean).join(" – ");
+  return [booker, patient, "teleconsult"].filter(Boolean).join(" – ") + googleMark;
 }
 
 // Client contact details for a calendar item (spec: pending bookings on the calendar show
