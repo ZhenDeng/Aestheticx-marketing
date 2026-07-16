@@ -64,7 +64,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       {lastSyncError && (
         <div className="border-b px-5 py-2 text-center text-sm sm:px-8" style={{ background: "var(--color-rose-soft)", color: "var(--color-rose)" }}>
-          A change could not be saved to the server. It will reconcile on refresh.
+          {/* 16/07 feedback bug 1: show the ACTUAL categorised reason (permission vs
+              transient) the store stored, not one hardcoded string that hid a lockout. */}
+          {lastSyncError}
         </div>
       )}
       <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:px-8">{children}</main>

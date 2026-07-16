@@ -9,6 +9,9 @@ import * as billing from "./billing";
 import * as invoicing from "./invoicing";
 import * as emergency from "./emergency";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
+// Pure (no firebase SDK), safe to import statically — categorises mirror failures so the
+// banner distinguishes a permission lockout from a transient blip (16/07 feedback bug 1).
+import { syncErrorMessage } from "@/lib/firebase/syncError";
 import { useDemoAuth } from "./auth";
 
 type Status = "demo" | "loading" | "ready" | "error";
@@ -134,6 +137,7 @@ interface StoreValue {
   createUser: (input: import("./userAdmin").NewUserInput) => Promise<void>;
   resetUserPassword: (email: string) => Promise<void>;
   deleteUserAccount: (uid: string) => Promise<void>;
+  syncUserClaims: (uid: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -246,7 +250,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           // Stay on the one-shot snapshot; manual rehydrate still works.
         }
       } catch (e) {
-        if (!cancelled) { setStatus("error"); setLastSyncError(String(e)); }
+        if (!cancelled) { setStatus("error"); setLastSyncError(syncErrorMessage(e)); }
       }
     })();
     return () => { cancelled = true; unsubscribeRequests?.(); unsubscribeAppointments?.(); };
@@ -267,10 +271,17 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           const m = await import("@/lib/firebase/mirror");
           await mirror(m);
         } catch (e) {
-          // The optimistic local apply was never persisted. Surface the banner and
-          // rehydrate so the UI reconciles back to Firestore truth rather than
-          // showing phantom data until the next manual refresh.
-          setLastSyncError(String(e));
+          // The optimistic local apply was never persisted. Surface a CATEGORISED banner
+          // (permission vs transient — 16/07 feedback bug 1) and rehydrate so the UI
+          // reconciles back to Firestore truth rather than showing phantom data. On a
+          // permission failure, force one ID-token refresh: a nurse whose claims were just
+          // repaired server-side is stuck on a stale token until she refreshes, so do it
+          // for her — if it was a real denial the retry still fails, harmlessly.
+          const { syncErrorMessage, isPermissionError } = await import("@/lib/firebase/syncError");
+          setLastSyncError(syncErrorMessage(e));
+          if (isPermissionError(e)) {
+            try { const { refreshIdToken } = await import("@/lib/firebase/auth"); await refreshIdToken(); } catch { /* keep the old token */ }
+          }
           setRefreshTick((t) => t + 1);
         }
       })();
@@ -302,7 +313,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) { setState((s) => backend.setScriptPrice(s, id.user.id, cid, priceCents)); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/invoices"); await m.setScriptPrice(cid, priceCents); setRefreshTick((t) => t + 1); }
-          catch (e) { setLastSyncError(String(e)); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       generateInvoice: (input, id) => {
@@ -312,7 +323,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             const m = await import("@/lib/firebase/invoices");
             await m.generateInvoice({ counterpartyID: input.counterpartyID, counterpartyType: input.counterpartyType, periodLabel: input.periodLabel, authorisationIDs: input.authIDs });
             setRefreshTick((t) => t + 1);
-          } catch (e) { setLastSyncError(String(e)); }
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       // Delete an invoice to correct an error (16/07 enhancement 2). Same demo-reducer /
@@ -325,7 +336,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             const m = await import("@/lib/firebase/invoices");
             await m.deleteInvoice(invoiceID);
             setRefreshTick((t) => t + 1);
-          } catch (e) { setLastSyncError(String(e)); }
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       // Mark an invoice paid (Tier 3 #6). Same demo-reducer / live-callable split as generateInvoice —
@@ -337,7 +348,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             const m = await import("@/lib/firebase/invoices");
             await m.markInvoicePaid(invoiceID);
             setRefreshTick((t) => t + 1);
-          } catch (e) { setLastSyncError(String(e)); }
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
@@ -427,7 +438,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             });
             setRefreshTick((t) => t + 1);
           } catch (e) {
-            setLastSyncError(String(e));
+            setLastSyncError(syncErrorMessage(e));
           }
         })();
       },
@@ -598,7 +609,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
               patientID: input.patientID, patientName: input.patientName, lead: input.lead, note: input.note,
             });
             setRefreshTick((t) => t + 1);
-          } catch (e) { setLastSyncError(String(e)); }
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) => {
@@ -684,7 +695,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (live) {
           void (async () => {
             try { const m = await import("@/lib/firebase/mirror"); await m.mirrorCreatePatient(patient); }
-            catch (e) { setLastSyncError(String(e)); setRefreshTick((t) => t + 1); }
+            catch (e) { setLastSyncError(syncErrorMessage(e)); setRefreshTick((t) => t + 1); }
           })();
         }
         return patient.id;
@@ -727,7 +738,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) { setState(() => next); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetCooperationRelationship(input); setRefreshTick((t) => t + 1); }
-          catch (e) { setLastSyncError(String(e)); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       removeCooperationRelationship: (relationshipID, actor) => {
@@ -735,7 +746,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) { setState(() => next); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorRemoveCooperationRelationship(relationshipID); setRefreshTick((t) => t + 1); }
-          catch (e) { setLastSyncError(String(e)); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       catalogProducts: () => backend.catalogProductsList(state),
@@ -745,7 +756,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) { setState(() => next); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetProduct(input); setRefreshTick((t) => t + 1); }
-          catch (e) { setLastSyncError(String(e)); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       setProductActive: (id, isActive, actor) => {
@@ -760,7 +771,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             if (isActive && prod) await m.mirrorSetProduct({ id: prod.id, category: prod.category, brand: prod.brand, name: prod.name, unit: prod.unit, isActive: true });
             else await m.mirrorDeactivateProduct(id);
             setRefreshTick((t) => t + 1);
-          } catch (e) { setLastSyncError(String(e)); }
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       businessEntities: () => backend.businessEntitiesList(state),
@@ -770,7 +781,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (!live) { setState(() => next); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetBusinessEntity(input); setRefreshTick((t) => t + 1); }
-          catch (e) { setLastSyncError(String(e)); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       setBusinessEntityActive: (id, isActive, actor) => {
@@ -786,7 +797,7 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
             if (isActive && entity) await m.mirrorSetBusinessEntity({ id: entity.id, type: entity.type, legalName: entity.legalName, tradingName: entity.tradingName, abn: entity.abn, isActive: true });
             else await m.mirrorDeactivateBusinessEntity(id);
             setRefreshTick((t) => t + 1);
-          } catch (e) { setLastSyncError(String(e)); }
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       auditLog: () => backend.auditLogEntries(state),
@@ -822,6 +833,15 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         const m = await import("@/lib/firebase/mirror");
         await m.mirrorDeleteUserAccount(uid);
         setRefreshTick((t) => t + 1);
+      },
+      // Repair an account whose custom claims were wiped (16/07 feedback bug 1): the
+      // superAdmin syncUserClaims Function re-derives roles/clinics from the users doc and
+      // re-sets the claims. Server-authoritative and live-only; the repaired user must
+      // re-authenticate (or force-refresh) for the restored claims to reach their token.
+      syncUserClaims: async (uid) => {
+        if (!live) throw new backend.BackendError("Claim repair is live-only in the demo.");
+        const m = await import("@/lib/firebase/mirror");
+        await m.mirrorSyncUserClaims(uid);
       },
       // Own-profile edit: optimistic local merge, then a rules-checked users/{uid} merge
       // write (mirrorUpdateProfile strips the demo-only avatarDataUrl + immutable abn).

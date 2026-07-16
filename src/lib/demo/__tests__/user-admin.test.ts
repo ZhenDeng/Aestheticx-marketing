@@ -51,6 +51,14 @@ describe("validateNewUser", () => {
     expect(validateNewUser({ ...doctor, principalPlace: undefined })).toContain("principalPlace");
   });
 
+  // 16/07 feedback bugs 1–2: the optional contact address and supervising-doctor link are
+  // additive — they never affect validity, so a complete account stays valid with or without.
+  it("accepts the optional address and supervisingDoctorId without affecting validity", () => {
+    expect(validateNewUser({ ...base, address: "14 Acland St, St Kilda VIC" })).toEqual([]);
+    expect(validateNewUser({ ...base, supervisingDoctorId: "u-voss" })).toEqual([]);
+    expect(validateNewUser({ ...base, address: "", supervisingDoctorId: "" })).toEqual([]);
+  });
+
   it("requires at least one COMPLETE premise for nurses", () => {
     expect(validateNewUser({ ...base, premises: undefined })).toContain("premises");
     expect(validateNewUser({ ...base, premises: [] })).toContain("premises");
