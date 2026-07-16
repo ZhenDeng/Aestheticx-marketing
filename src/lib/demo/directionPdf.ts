@@ -8,9 +8,11 @@ import type { DirectionContent } from "./direction";
 
 const PAGE_WIDTH = 595.28; // A4
 const PAGE_HEIGHT = 841.89;
-const MARGIN = 56;
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-const BOTTOM_LIMIT = PAGE_HEIGHT - MARGIN;
+// Exported for renderers that lay out absolute bands (the invoice table): the page
+// grid is part of the writer's contract, not something callers should re-derive.
+export const MARGIN = 56;
+export const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+export const BOTTOM_LIMIT = PAGE_HEIGHT - MARGIN;
 
 export type Rgb = readonly [number, number, number];
 export const INK: Rgb = [0x21 / 255, 0x1c / 255, 0x16 / 255]; // #211C16
@@ -147,6 +149,71 @@ export class DirectionWriter {
 
   moveDown(lines: number): void {
     this.y += lines * this.lineHeight(this.lastSize);
+  }
+
+  // ——— Graphics primitives (bordered-table support; 16/07 feedback) ———
+  // Strokes are emitted as self-contained ops between the BT..ET text blocks, which
+  // the PDF grammar allows — graphics state never leaks into a text object.
+
+  /** Top-down cursor position (pdfkit's doc.y) — lets a table renderer compute row bands. */
+  currentY(): number {
+    return this.y;
+  }
+
+  /** Move the cursor to an absolute top-down y (for cell text and band advances). */
+  setY(y: number): void {
+    this.y = y;
+  }
+
+  /** Start a fresh page with the cursor at the top margin (manual page break). */
+  newPage(): void {
+    this.pages.push([]);
+    this.y = MARGIN;
+  }
+
+  /** Self-contained stroke op: width + RG stroke colour + the path, defaults 0.5pt SOFT. */
+  private stroke(path: string, opts: { width?: number; color?: Rgb }): void {
+    const color = opts.color ?? SOFT;
+    this.pages[this.pages.length - 1].push(`${num(opts.width ?? 0.5)} w ${color.map(num).join(" ")} RG ${path}`);
+  }
+
+  /** Horizontal rule at the current y (does not advance the cursor). */
+  hline(x1: number, x2: number, opts: { width?: number; color?: Rgb } = {}): void {
+    const y = PAGE_HEIGHT - this.y;
+    this.stroke(`${num(x1)} ${num(y)} m ${num(x2)} ${num(y)} l S`, opts);
+  }
+
+  /** Vertical rule between two absolute top-down y positions (column separators). */
+  vline(x: number, yTop: number, yBottom: number, opts: { width?: number; color?: Rgb } = {}): void {
+    this.stroke(`${num(x)} ${num(PAGE_HEIGHT - yTop)} m ${num(x)} ${num(PAGE_HEIGHT - yBottom)} l S`, opts);
+  }
+
+  /** Stroked rectangle whose top edge sits at top-down yTop (table frames, total band). */
+  rect(x: number, yTop: number, w: number, h: number, opts: { width?: number; color?: Rgb } = {}): void {
+    this.stroke(`${num(x)} ${num(PAGE_HEIGHT - (yTop + h))} ${num(w)} ${num(h)} re S`, opts);
+  }
+
+  /** One cell line at the current y, absolutely positioned at column x — clipped to the
+   *  first wrapped line so a cell can never spill into its neighbour; right alignment
+   *  uses the Helvetica metrics. Does not advance the cursor. */
+  textAt(
+    value: string,
+    size: number,
+    color: Rgb,
+    x: number,
+    opts: { width: number; align?: "left" | "right"; charSpace?: number },
+  ): void {
+    const charSpace = opts.charSpace ?? 0;
+    const [line] = wrapText(toWinAnsi(value), size, opts.width, charSpace);
+    const tx = opts.align === "right" ? x + opts.width - textWidth(line, size, charSpace) : x;
+    this.emit(line, size, color, charSpace, tx);
+  }
+
+  /** Wrapped (WinAnsi-encoded) cell lines for a column width, so the caller can size the
+   *  row before drawing it; feed each line back through textAt (re-encoding is idempotent
+   *  because every Latin-1 code point maps to itself). */
+  cellLines(value: string, size: number, width: number, charSpace = 0): string[] {
+    return wrapText(toWinAnsi(value), size, width, charSpace);
   }
 }
 

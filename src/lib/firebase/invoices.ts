@@ -27,3 +27,9 @@ export async function generateInvoice(args: GenerateInvoiceArgs): Promise<string
 export async function markInvoicePaid(invoiceID: string): Promise<void> {
   await httpsCallable(functions(), "markInvoicePaid")({ invoiceId: invoiceID });
 }
+
+// 16/07 feedback enhancement 2: delete an invoice to correct an error — the backend
+// transactionally removes the doc and returns its member authorisations to un-invoiced.
+export async function deleteInvoice(invoiceID: string): Promise<void> {
+  await httpsCallable(functions(), "deleteInvoice")({ invoiceId: invoiceID });
+}

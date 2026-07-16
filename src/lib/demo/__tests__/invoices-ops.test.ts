@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { emptyState, submitRequest, approveRequest, setScriptPrice, generateInvoice, markInvoicePaid, billableAuthorisations } from "@/lib/demo/backend";
+import { emptyState, submitRequest, approveRequest, setScriptPrice, generateInvoice, markInvoicePaid, deleteInvoice, billableAuthorisations } from "@/lib/demo/backend";
+import { authIDsForSelectedScripts, scriptsFromBillable } from "@/lib/demo/invoicing";
 import type { DemoState, Identity, Patient } from "@/lib/demo/types";
 
 const NOW = Date.UTC(2026, 5, 26);
@@ -123,6 +124,79 @@ describe("generateInvoice", () => {
     }, voss, NOW);
     expect(invoice.lines).toHaveLength(2);     // two scripts
     expect(invoice.subtotalCents).toBe(5000);  // 2 × $25
+  });
+});
+
+// 16/07 feedback enhancement 2: the generate panel selects at SCRIPT grain — the helper
+// expands the ticked scripts back to their member item-authorisation ids for generation.
+describe("authIDsForSelectedScripts", () => {
+  it("returns the member auth ids of exactly the selected scripts", () => {
+    const s = approvedMultiItem();
+    const rB = submitRequest(s, { patientID: "p1", doctorID: "u-voss",
+      items: [{ name: "Botox", dosage: "20", category: "skinBooster", unit: "units", areas: [] }], identity: sarah }, NOW);
+    const s2 = approveRequest(rB.state, rB.request.id, voss, NOW).state;
+    const scripts = scriptsFromBillable(billableAuthorisations(s2, "u-voss"));
+    expect(scripts).toHaveLength(2);
+    const [a, b] = scripts;
+    expect(authIDsForSelectedScripts(scripts, new Set([a.requestID]))).toEqual(a.authIDs);
+    expect(authIDsForSelectedScripts(scripts, new Set([a.requestID, b.requestID])).sort())
+      .toEqual([...a.authIDs, ...b.authIDs].sort());
+    expect(authIDsForSelectedScripts(scripts, new Set())).toEqual([]);
+  });
+});
+
+// 16/07 feedback enhancement 2: delete returns the member authorisations to the
+// un-invoiced pool so a corrected invoice can be regenerated.
+describe("deleteInvoice", () => {
+  function withInvoice(state = approvedMultiItem()): { state: DemoState; invoiceID: string; authIDs: string[] } {
+    const rows = billableAuthorisations(state, "u-voss");
+    const { state: next, invoice } = generateInvoice(state, {
+      doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse",
+      periodLabel: "June 2026", authIDs: rows.map((r) => r.id),
+    }, voss, NOW);
+    return { state: next, invoiceID: invoice.id, authIDs: rows.map((r) => r.id) };
+  }
+
+  it("removes the invoice and returns every member authorisation to the billable pool", () => {
+    const { state, invoiceID, authIDs } = withInvoice();
+    expect(billableAuthorisations(state, "u-voss")).toHaveLength(0);
+    const next = deleteInvoice(state, invoiceID, voss, NOW + 1000);
+    expect(next.invoices).toHaveLength(0);
+    expect(authIDs.every((id) => next.authorisations[id].invoiced === false)).toBe(true);
+    expect(billableAuthorisations(next, "u-voss")).toHaveLength(authIDs.length);
+  });
+
+  it("delete → regenerate round-trips (the corrected invoice covers the returned scripts)", () => {
+    const { state, invoiceID } = withInvoice();
+    const returned = deleteInvoice(state, invoiceID, voss, NOW + 1000);
+    const rows = billableAuthorisations(returned, "u-voss");
+    const { state: regen, invoice } = generateInvoice(returned, {
+      doctorID: "u-voss", counterpartyID: "u-sarah", counterpartyType: "nurse",
+      periodLabel: "June 2026", authIDs: rows.map((r) => r.id),
+    }, voss, NOW + 2000);
+    expect(invoice.lines).toHaveLength(1);           // one script again
+    expect(regen.invoices).toHaveLength(1);          // replacement only
+    expect(billableAuthorisations(regen, "u-voss")).toHaveLength(0);
+  });
+
+  it("writes an invoice_deleted audit entry (notes paid state when deleting a paid invoice)", () => {
+    const { state, invoiceID } = withInvoice();
+    const paid = markInvoicePaid(state, invoiceID, voss, NOW + 500);
+    const next = deleteInvoice(paid, invoiceID, voss, NOW + 1000);
+    const entry = Object.values(next.auditLogByID).find((e) => e.action === "invoice_deleted" && e.targetID === invoiceID);
+    expect(entry).toBeDefined();
+    expect(entry!.summary).toMatch(/paid/i);
+  });
+
+  it("only the issuing doctor may delete", () => {
+    const { state, invoiceID } = withInvoice();
+    expect(() => deleteInvoice(state, invoiceID, sarah, NOW)).toThrow();
+    const other: Identity = { ...voss, user: { id: "u-okafor", name: "Dr Okafor" } };
+    expect(() => deleteInvoice(state, invoiceID, other, NOW)).toThrow();
+  });
+
+  it("throws for an unknown invoice", () => {
+    expect(() => deleteInvoice(emptyState(), "nope", voss, NOW)).toThrow();
   });
 });
 

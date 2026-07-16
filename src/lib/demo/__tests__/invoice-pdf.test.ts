@@ -65,9 +65,20 @@ describe("buildTaxInvoiceModel", () => {
 });
 
 describe("renderTaxInvoicePdf", () => {
-  it("produces a PDF whose text stream carries the Example 2 layout", () => {
-    const bytes = renderTaxInvoicePdf(buildTaxInvoiceModel(invoice(), issuer, billTo));
-    const file = new TextDecoder("latin1").decode(bytes);
+  const render = (inv: Invoice = invoice()): string =>
+    new TextDecoder("latin1").decode(renderTaxInvoicePdf(buildTaxInvoiceModel(inv, issuer, billTo)));
+  /** Per-page content streams (uncompressed, so directly greppable). */
+  const streams = (file: string): string[] =>
+    Array.from(file.matchAll(/stream\n([\s\S]*?)\nendstream/g), (m) => m[1]);
+  /** Tm x-coordinates of every glyph run whose literal string is exactly `text`. */
+  const tmXs = (file: string, text: string): number[] =>
+    Array.from(
+      file.matchAll(new RegExp(`1 0 0 1 ([\\d.]+) [\\d.]+ Tm \\(${text.replace(/[$().]/g, "\\$&")}\\) Tj`, "g")),
+      (m) => Number(m[1]),
+    );
+
+  it("produces a PDF whose text stream carries every ATO Example 2 element", () => {
+    const file = render();
     expect(file.startsWith("%PDF-1.4")).toBe(true);
     for (const needle of [
       "TAX INVOICE",
@@ -75,13 +86,60 @@ describe("renderTaxInvoicePdf", () => {
       "Lumi\xe8re Clinic Pty Ltd, 2 Notts Ave, Bondi Beach NSW 2026", // buyer identity + address
       "14 Jul 2026", "INV-INV7",
       "20/6/2026 \x96 Amara Boyd treatment authorisation", // en dash → WinAnsi 0x96
-      "1 \xd7 $25.00 + GST $2.50 = $27.50 incl. GST",
+      "($25.00) Tj", "($2.50) Tj", "($27.50) Tj", // unit / GST / GST-inclusive amount cells
       "GST \\(10%\\)", // parens are PDF-string-escaped in the stream
       "TOTAL AMOUNT PAYABLE", "$55.00",
       "The total price includes GST.",
     ]) {
       expect(file).toContain(needle);
     }
+  });
+
+  it("draws the bordered table: column headers, frame/rule ops, qty 1 per script", () => {
+    const file = render();
+    for (const label of ["DESCRIPTION", "QTY", "UNIT", "GST", "AMOUNT"]) {
+      expect(file).toContain(`(${label}) Tj`);
+    }
+    expect(file).toContain(" re S"); // outer frame + TOTAL band rectangles
+    expect(file).toContain(" l S"); // horizontal rules + column separators
+    expect(file).toContain("(1) Tj"); // per-script invoicing: qty is always 1
+  });
+
+  it("right-aligns the numeric cells within their columns", () => {
+    const file = render();
+    const [unitX] = tmXs(file, "$25.00");
+    const [gstX] = tmXs(file, "$2.50");
+    const [amountX] = tmXs(file, "$27.50");
+    // Right alignment puts each value at (column right edge − text width), so the
+    // three cells land at strictly increasing x, all right of the description column.
+    expect(unitX).toBeGreaterThan(56 + 483.28 * 0.55);
+    expect(gstX).toBeGreaterThan(unitX);
+    expect(amountX).toBeGreaterThan(gstX);
+  });
+
+  it("wraps a long description inside its column instead of spilling across the table", () => {
+    const base = invoice();
+    const file = render({
+      ...base,
+      lines: [{ ...base.lines[0], patientName: "Alexandrina Wolstenholme-Featherstonehaugh of Bondi Peninsula" }],
+    });
+    // The row wrapped: the full description is never a single glyph run…
+    expect(file).not.toContain("Peninsula treatment authorisation) Tj");
+    // …but nothing was dropped.
+    expect(file).toContain("authorisation");
+    expect(file).toContain("Peninsula");
+  });
+
+  it("paginates a 40-line invoice and re-draws the header band on the next page", () => {
+    const auths = Array.from({ length: 40 }, (_, i) => ({ id: `a${i}`, dateISO: "2026-06-20", patientName: `Patient ${i + 1}` }));
+    const computed = computeInvoice({ pricePerScriptCents: 2500, gstRate: GST_RATE, authorisations: auths });
+    const file = render(invoice({ ...computed, authorisationIDs: auths.map((a) => a.id) }));
+    const pageCount = (file.match(/\/Type \/Page \/Parent/g) || []).length;
+    expect(pageCount).toBeGreaterThanOrEqual(2);
+    const pagesWithHeader = streams(file).filter((s) => s.includes("(DESCRIPTION) Tj"));
+    expect(pagesWithHeader.length).toBe(pageCount); // header band repeats on every table page
+    expect(file).toContain("Patient 40 treatment authorisation"); // last row survived the break
+    expect(file).toContain("The total price includes GST."); // footer still lands after the table
   });
 });
 

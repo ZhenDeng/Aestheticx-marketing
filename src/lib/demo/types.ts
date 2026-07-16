@@ -469,6 +469,7 @@ export type AuditAction =
   | "request_approved"
   | "invoice_generated"
   | "invoice_marked_paid"
+  | "invoice_deleted"
   | "user_created"
   | "user_deleted"
   | "admin_patient_access";

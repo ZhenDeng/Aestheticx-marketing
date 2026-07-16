@@ -117,6 +117,7 @@ interface StoreValue {
   billableAuthorisations: (doctorID: string) => ReturnType<typeof backend.billableAuthorisations>;
   setScriptPrice: (counterpartyID: string, priceCents: number, identity: Identity) => void;
   generateInvoice: (input: import("./backend").GenerateInvoiceInput, identity: Identity) => void;
+  deleteInvoice: (invoiceID: string, identity: Identity) => void;
   markInvoicePaid: (invoiceID: string, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
@@ -310,6 +311,19 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
           try {
             const m = await import("@/lib/firebase/invoices");
             await m.generateInvoice({ counterpartyID: input.counterpartyID, counterpartyType: input.counterpartyType, periodLabel: input.periodLabel, authorisationIDs: input.authIDs });
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(String(e)); }
+        })();
+      },
+      // Delete an invoice to correct an error (16/07 enhancement 2). Same demo-reducer /
+      // live-callable split — invoices are Function-only docs; the callable returns the
+      // member authorisations to the un-invoiced pool transactionally.
+      deleteInvoice: (invoiceID, id) => {
+        if (!live) { setState((s) => backend.deleteInvoice(s, invoiceID, id, now)); return; }
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/invoices");
+            await m.deleteInvoice(invoiceID);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(String(e)); }
         })();
