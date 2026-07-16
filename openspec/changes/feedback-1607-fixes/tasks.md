@@ -33,7 +33,7 @@
 
 - [x] 5.1 TDD: `DirectionWriter` gains `hline`/`rect`/`textAt` (ops emitted, y-advance semantics); direction PDF output unchanged
 - [x] 5.2 Rewrite `renderTaxInvoicePdf` as bordered table + framed totals + ATO elements; page-break with repeated header
-- [ ] 5.3 Billing generate preview: mini table matching PDF columns
+- [x] 5.3 Billing generate preview: mini table matching PDF columns
 - [x] 5.4 Tests: PDF contains table ops + all ATO strings; snapshot-ish assertions on column content
 
 ## 6. Verification
