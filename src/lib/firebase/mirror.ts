@@ -428,6 +428,10 @@ export async function mirrorCreateUser(input: import("@/lib/demo/userAdmin").New
     ...(input.clinicAddress ? { clinicAddress: input.clinicAddress } : {}),
     ...(input.principalPlace ? { principalPlace: input.principalPlace } : {}),
     ...(input.premises ? { premises: input.premises.map((p) => ({ name: p.name, address: p.address })) } : {}),
+    // 16/07 feedback: contact address persisted to the profile, and atomic nurse→doctor
+    // linkage. The callable trims/validates both and ignores supervisingDoctorId for non-nurses.
+    ...(input.address ? { address: input.address } : {}),
+    ...(input.supervisingDoctorId ? { supervisingDoctorId: input.supervisingDoctorId } : {}),
   });
   const d = res.data as { uid?: unknown };
   if (typeof d.uid !== "string" || !d.uid) throw new Error("createUser returned no uid");
@@ -443,4 +447,11 @@ export async function mirrorResetUserPassword(email: string): Promise<void> {
 // the in-app Delete account flow is the self-serve path.
 export async function mirrorDeleteUserAccount(uid: string): Promise<void> {
   await httpsCallable(functions(), "deleteUserAccount")({ uid });
+}
+
+// Repairs an account whose custom claims were wiped (16/07 feedback bug 1): the superAdmin
+// syncUserClaims Function re-derives roles/clinics from the users/{userId} doc and re-sets
+// the claims. The repaired user must re-authenticate for the restored claims to take effect.
+export async function mirrorSyncUserClaims(userId: string): Promise<void> {
+  await httpsCallable(functions(), "syncUserClaims")({ userId });
 }

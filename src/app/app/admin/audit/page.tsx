@@ -15,6 +15,7 @@ const ACTION_LABEL: Record<AuditAction, string> = {
   request_approved: "Approved",
   invoice_generated: "Invoice generated",
   invoice_marked_paid: "Invoice marked paid",
+  invoice_deleted: "Invoice deleted",
   user_created: "User created",
   user_deleted: "User deleted",
   admin_patient_access: "Patient file access",

@@ -22,7 +22,19 @@ const timeLabel = (minute: number): string =>
 // (granting read access on booking alone needs a rules change, flagged backend-side).
 function UpcomingAuthCalls({ asDoctor }: { asDoctor: Identity }) {
   const store = useDemoStore();
+  const [error, setError] = useState<string | null>(null);
   const calls = upcomingAuthCalls(store.state, asDoctor.user.id, store.now);
+
+  // 16/07 feedback bug 3: the doctor closes the loop here — completing flips the SAME
+  // appointment record the calendar shows, so both surfaces stay in step by construction.
+  function complete(id: string) {
+    setError(null);
+    try {
+      store.markAppointment(id, "completed", asDoctor);
+    } catch {
+      setError("Could not mark that call completed — it may have just been actioned elsewhere.");
+    }
+  }
   return (
     <section className="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
       <h2 className="font-display text-lg text-ink">Upcoming authorisation calls</h2>
@@ -54,12 +66,20 @@ function UpcomingAuthCalls({ asDoctor }: { asDoctor: Identity }) {
                 <span className="flex-none text-right">
                   <span className="block text-sm text-ink">{dayHeaderLabel(a.dateISO)}</span>
                   <span className="block text-sm text-ink-soft">{timeLabel(a.startMinute)}–{timeLabel(a.endMinute)}</span>
+                  <button
+                    type="button"
+                    onClick={() => complete(a.id)}
+                    className="mt-1 rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint"
+                  >
+                    Mark completed
+                  </button>
                 </span>
               </li>
             );
           })}
         </ul>
       )}
+      {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
     </section>
   );
 }

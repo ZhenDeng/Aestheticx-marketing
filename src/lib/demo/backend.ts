@@ -2346,6 +2346,31 @@ export function generateInvoice(
   return { state: audited, invoice };
 }
 
+// The issuing doctor deletes an invoice to correct an error (16/07 feedback enhancement 2):
+// the invoice goes away and every member authorisation returns to the un-invoiced pool, so a
+// corrected invoice can be regenerated through the normal flow. Deleting a PAID invoice is
+// allowed (corrections happen after settlement too) — the audit summary records that state.
+// Live routes through the deleteInvoice callable (invoices are Function-only docs).
+export function deleteInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
+  const invoice = state.invoices.find((i) => i.id === invoiceID);
+  if (!invoice) throw new BackendError("notFound");
+  if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
+  const memberIDs = new Set(invoice.authorisationIDs);
+  const authorisations = { ...state.authorisations };
+  for (const id of memberIDs) {
+    if (authorisations[id]) authorisations[id] = { ...authorisations[id], invoiced: false };
+  }
+  const next = { ...state, authorisations, invoices: state.invoices.filter((i) => i.id !== invoiceID) };
+  return appendAuditEntry(
+    next,
+    {
+      actor: identity, action: "invoice_deleted", targetType: "invoice", targetID: invoiceID,
+      summary: `invoice deleted · ${invoice.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}${invoice.paid ? " · was marked paid" : ""} · ${memberIDs.size} authorisation${memberIDs.size === 1 ? "" : "s"} returned to un-invoiced`,
+    },
+    now,
+  );
+}
+
 // The issuing doctor marks an invoice paid once the counterparty settles (Tier 3 #6). Doctor-only
 // (matches issuance); records paidAt/markedBy and writes a §21 audit entry. Idempotent — marking an
 // already-paid invoice is a no-op (no overwritten timestamp, no duplicate audit), mirroring the

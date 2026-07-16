@@ -5,8 +5,9 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
 import { counterpartyMonthDetail, invoicePartiesFor, ownerDisplayLabel, isoDay } from "@/lib/demo/backend";
-import { formatAUD, computeInvoice, scriptsFromBillable, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
+import { formatAUD, computeInvoice, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
 import { buildTaxInvoiceModel, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
+import { ConfirmAction } from "@/components/app/ConfirmAction";
 
 export default function BillingPage() {
   const { identity } = useDemoAuth();
@@ -157,7 +158,7 @@ export default function BillingPage() {
                   </span>
                 )}
               </span>
-              <span className="flex items-center gap-3">
+              <span className="flex flex-wrap items-center justify-end gap-3">
                 {isDoctor && !inv.paid && (
                   <button type="button" disabled={marking === inv.id}
                     onClick={() => { setMarking(inv.id); store.markInvoicePaid(inv.id, me); }}
@@ -166,6 +167,17 @@ export default function BillingPage() {
                   </button>
                 )}
                 <InvoiceDownload invoice={inv} />
+                {/* 16/07 feedback enhancement 2: delete to correct an error — its authorisations
+                    return to the un-invoiced pool so a corrected invoice can be regenerated. */}
+                {isDoctor && (
+                  <ConfirmAction
+                    label="Delete"
+                    prompt="Delete this invoice? Its authorisations return to un-invoiced."
+                    confirmLabel="Delete invoice"
+                    onConfirm={() => store.deleteInvoice(inv.id, me)}
+                    triggerClassName="text-xs"
+                  />
+                )}
               </span>
             </li>
             );
@@ -345,27 +357,78 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
   // 15/07 feedback: count + price per authorisation (script), not per medication item — a
   // multi-item request is one script. Regroup the request's items before pricing/previewing.
   const scripts = scriptsFromBillable(rows);
+  // 16/07 feedback enhancement 2: the doctor selects WHICH scripts to bill (default all) so a
+  // free script can be excluded. Selection is by requestID; generation expands the ticked
+  // scripts back to their member item-authorisation ids.
+  // Track the scripts the doctor has EXPLICITLY unticked (by requestID), not the selected
+  // set — so the effective selection is purely derived from the live scripts each render:
+  // a newly-appeared script defaults to selected (it's not in `unticked`), a removed one
+  // just drops out, and an untick survives a live re-hydrate that reorders or replaces
+  // `state.authorisations`. No reconcile effect, no order sensitivity, no mis-bill.
+  const [unticked, setUnticked] = useState<Set<string>>(() => new Set());
+  const selectedScripts = scripts.filter((s) => !unticked.has(s.requestID));
+  const selectedRequestIDs = new Set(selectedScripts.map((s) => s.requestID));
   const storedPrice = store.scriptPrice(me.user.id, counterpartyID);
   const previewPrice = Math.round((parseFloat(priceInput) || 0) * 100) || storedPrice || DEFAULT_SCRIPT_PRICE_CENTS;
-  const preview = scripts.length > 0
-    ? computeInvoice({ pricePerScriptCents: previewPrice, gstRate: GST_RATE, authorisations: scripts.map((sc) => ({ id: sc.requestID, dateISO: sc.dateISO, patientName: sc.patientName })) })
+  const preview = selectedScripts.length > 0
+    ? computeInvoice({ pricePerScriptCents: previewPrice, gstRate: GST_RATE, authorisations: selectedScripts.map((sc) => ({ id: sc.requestID, dateISO: sc.dateISO, patientName: sc.patientName })) })
     : null;
 
+  function toggle(requestID: string) {
+    setUnticked((prev) => {
+      const next = new Set(prev);
+      if (next.has(requestID)) next.delete(requestID); else next.add(requestID);
+      return next;
+    });
+  }
   function savePrice() {
     const cents = Math.round((parseFloat(priceInput) || 0) * 100);
     if (cents > 0) store.setScriptPrice(counterpartyID, cents, me);
   }
   function generate() {
-    if (scripts.length === 0) return;
-    // Pass every member item-authorisation id; the backend regroups them into one line per script.
-    store.generateInvoice({ doctorID: me.user.id, counterpartyID, counterpartyType, periodLabel: monthLabel(monthKey), authIDs: rows.map((r) => r.id) }, me);
+    if (selectedScripts.length === 0) return;
+    // Pass the member item-authorisation ids of ONLY the ticked scripts; the backend
+    // regroups them into one line per script and flags every member invoiced.
+    store.generateInvoice({ doctorID: me.user.id, counterpartyID, counterpartyType, periodLabel: monthLabel(monthKey), authIDs: authIDsForSelectedScripts(scripts, selectedRequestIDs) }, me);
     onDone();
   }
 
   return (
     <div className="mt-3 rounded-inner border border-line p-3">
-      <p className="text-sm text-ink-soft">{scripts.length} selectable authorisation{scripts.length === 1 ? "" : "s"}.</p>
-      <div className="mt-2 flex items-end gap-2">
+      <div className="flex items-baseline justify-between">
+        <p className="micro">{selectedScripts.length} of {scripts.length} selected</p>
+        {scripts.length > 0 && (
+          <span className="flex gap-2 text-xs">
+            <button type="button" onClick={() => setUnticked(new Set())} className="text-ink-soft hover:text-ink">Select all</button>
+            <span aria-hidden className="text-ink-soft">·</span>
+            <button type="button" onClick={() => setUnticked(new Set(scripts.map((s) => s.requestID)))} className="text-ink-soft hover:text-ink">Select none</button>
+          </span>
+        )}
+      </div>
+      {scripts.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-soft">Nothing left to invoice for this counterparty.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col">
+          {scripts.map((sc) => (
+            <li key={sc.requestID}>
+              <label className="flex cursor-pointer items-center gap-3 rounded-inner px-1 py-1.5 text-sm hover:bg-[var(--color-tint-soft)]/40">
+                <input
+                  type="checkbox"
+                  checked={!unticked.has(sc.requestID)}
+                  onChange={() => toggle(sc.requestID)}
+                  aria-label={`${sc.patientName} — ${invoiceLineDay(sc.dateISO)}`}
+                  style={{ accentColor: "var(--color-tint)" }}
+                />
+                <span className="min-w-0">
+                  <span className="text-ink">{invoiceLineDay(sc.dateISO)} — {sc.patientName}</span>
+                  {sc.authIDs.length > 1 && <span className="ml-2 text-xs text-ink-soft">{sc.authIDs.length} items · one script</span>}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex items-end gap-2">
         <label className="block">
           <span className="micro">Price per script (AUD)</span>
           <input value={priceInput} onChange={(e) => setPriceInput(e.target.value)} inputMode="decimal"
@@ -373,19 +436,67 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
         </label>
         <button type="button" onClick={savePrice} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Save price</button>
       </div>
-      {preview && (
-        <p className="mt-2 text-sm text-ink-soft">
-          Subtotal {formatAUD(preview.subtotalCents)} · GST {formatAUD(preview.gstCents)} · <span className="font-medium text-ink">Total {formatAUD(preview.totalCents)}</span>
-        </p>
+      {/* 16/07 enhancement 3: an on-screen preview that mirrors the PDF's bordered table
+          (Description / Qty / Unit / GST / Total) so what the doctor sees matches paper. */}
+      {preview ? (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-y border-line text-left">
+                <th className="py-1.5 pr-2 font-medium text-ink-soft">Description</th>
+                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">Qty</th>
+                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">Unit</th>
+                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">GST</th>
+                <th className="py-1.5 pl-2 text-right font-medium text-ink-soft">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.lines.map((l) => (
+                <tr key={l.authorisationID} className="border-b border-line">
+                  <td className="py-1.5 pr-2 text-ink">{invoiceLineDay(l.dateISO)} — {l.patientName}</td>
+                  <td className="py-1.5 px-2 text-right text-ink-soft">1</td>
+                  <td className="py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.feeCents)}</td>
+                  <td className="py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.gstCents)}</td>
+                  <td className="py-1.5 pl-2 text-right text-ink">{formatAUD(l.feeCents + l.gstCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3} />
+                <td className="py-1.5 px-2 text-right text-ink-soft">Subtotal</td>
+                <td className="py-1.5 pl-2 text-right text-ink-soft">{formatAUD(preview.subtotalCents)}</td>
+              </tr>
+              <tr>
+                <td colSpan={3} />
+                <td className="py-0.5 px-2 text-right text-ink-soft">GST (10%)</td>
+                <td className="py-0.5 pl-2 text-right text-ink-soft">{formatAUD(preview.gstCents)}</td>
+              </tr>
+              <tr className="border-t border-line">
+                <td colSpan={3} />
+                <td className="py-1.5 px-2 text-right font-medium text-ink">Total</td>
+                <td className="py-1.5 pl-2 text-right font-medium text-ink">{formatAUD(preview.totalCents)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-ink-soft">Select at least one authorisation to invoice.</p>
       )}
       <div className="mt-3">
-        <button type="button" onClick={generate} disabled={scripts.length === 0}
+        <button type="button" onClick={generate} disabled={selectedScripts.length === 0}
           className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
           Generate invoice
         </button>
       </div>
     </div>
   );
+}
+
+// "10/7/2026" from an ISO day for the selection row (mirrors invoiceLineDate in invoicePdf).
+function invoiceLineDay(dateISO: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateISO);
+  return m ? `${Number(m[3])}/${Number(m[2])}/${Number(m[1])}` : dateISO;
 }
 
 // 14/07 feedback: the exported PDF follows the ATO's Example 2 tax-invoice layout and is

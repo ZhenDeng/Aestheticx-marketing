@@ -114,6 +114,13 @@ export function scriptsFromBillable(rows: BillableItemRow[]): BillableScriptRow[
   return [...byRequest.values()];
 }
 
+/** 16/07 feedback: the generate panel selects at SCRIPT grain (checkbox per script) —
+ *  expand the ticked scripts back to their member item-authorisation ids for generation.
+ *  Deselected scripts stay un-invoiced and selectable later. */
+export function authIDsForSelectedScripts(scripts: BillableScriptRow[], selectedRequestIDs: ReadonlySet<string>): string[] {
+  return scripts.filter((s) => selectedRequestIDs.has(s.requestID)).flatMap((s) => s.authIDs);
+}
+
 export function formatAUD(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(cents);

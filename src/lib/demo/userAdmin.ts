@@ -24,6 +24,13 @@ export interface NewUserInput {
   principalPlace?: string;
   /** Nurses: at least one premise of administration; the first becomes the default. */
   premises?: NewPremiseInput[];
+  /** Optional contact address persisted to the user profile (16/07 feedback bug 2):
+   *  the createUser Function writes it onto users/{uid}.address so it shows in Profile. */
+  address?: string;
+  /** Optional supervising doctor for a nurse (16/07 feedback bug 1): the createUser
+   *  Function creates the cooperation relationship atomically so the nurse can raise
+   *  requests immediately. Ignored for non-nurse accounts. */
+  supervisingDoctorId?: string;
 }
 
 const PRESCRIBER_ROLES = ["doctor", "nurse"];

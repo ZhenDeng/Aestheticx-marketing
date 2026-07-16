@@ -89,6 +89,15 @@ export async function completeFirstLogin(newPassword: string): Promise<void> {
   }
 }
 
+// Force a fresh ID token so newly-set custom claims land locally (16/07 feedback bug 1).
+// Custom claims reach the client only on sign-in or an explicit force-refresh; a nurse
+// whose claims were repaired server-side would otherwise stay locked on her stale token
+// until the next sign-in. Best-effort: a refresh failure just leaves the old token.
+export async function refreshIdToken(): Promise<void> {
+  const user = firebaseAuth().currentUser;
+  if (user) await user.getIdToken(true);
+}
+
 // Self-serve deletion (iOS FirebaseAuthClient.deleteAccount) is deliberately NOT ported:
 // on the web, account removal is an administrative act (super-admin console →
 // deleteUserAccount callable). iOS keeps its flow only because the App Store mandates it.

@@ -6,6 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
+import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
@@ -1295,7 +1296,16 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
                 <button onClick={() => act(() => store.markAppointment(appt.id, "noShow", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>No-show</button>
               </>
             )}
-            <button onClick={() => act(() => store.markAppointment(appt.id, "cancelled", me))} className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>Cancel</button>
+            {/* 16/07 feedback bug 3 (safety step): cancelling asks first — one accidental
+                tap must never kill an appointment. Keyed to the appointment so switching
+                selection resets the pending confirmation. */}
+            <ConfirmAction
+              key={appt.id}
+              label="Cancel"
+              prompt="Cancel this appointment?"
+              confirmLabel="Cancel appointment"
+              onConfirm={() => act(() => store.markAppointment(appt.id, "cancelled", me))}
+            />
           </div>
         </>
       ) : (

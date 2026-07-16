@@ -119,6 +119,8 @@ function AccountRow({ account }: { account: AccountRecord }) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [del, setDel] = useState<"idle" | "confirming" | "deleting" | "error">("idle");
   const [delError, setDelError] = useState<string | null>(null);
+  const [repair, setRepair] = useState<"idle" | "repairing" | "done" | "error">("idle");
+  const [repairError, setRepairError] = useState<string | null>(null);
   const display = account.name || account.email || account.id;
   // Own row gets no delete action: the Function rejects self-deletion (the in-app
   // Delete account flow below is the self-serve path), so don't render a dead button.
@@ -147,6 +149,20 @@ function AccountRow({ account }: { account: AccountRecord }) {
     } catch (e) {
       setDelError(e instanceof Error ? e.message : String(e));
       setDel("error");
+    }
+  }
+
+  // Repair an account locked out by wiped custom claims (16/07 feedback bug 1): re-derive
+  // and re-set the claims from the users doc. The user re-authenticates to pick them up.
+  async function repairAccess() {
+    setRepair("repairing");
+    setRepairError(null);
+    try {
+      await store.syncUserClaims(account.id);
+      setRepair("done");
+    } catch (e) {
+      setRepairError(e instanceof Error ? e.message : String(e));
+      setRepair("error");
     }
   }
 
@@ -200,6 +216,18 @@ function AccountRow({ account }: { account: AccountRecord }) {
               {reset === "error" && "Failed — retry"}
             </button>
           )}
+          {/* 16/07 feedback bug 1: re-provision an account locked out by wiped claims. */}
+          <button
+            onClick={() => void repairAccess()}
+            disabled={repair === "repairing" || repair === "done"}
+            className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
+            title={repairError ?? "Re-set this account's role permissions from its profile — for an account that can't save changes. They re-sign-in to pick it up."}
+          >
+            {repair === "idle" && "Repair access"}
+            {repair === "repairing" && "Repairing…"}
+            {repair === "done" && "Access repaired"}
+            {repair === "error" && "Repair failed — retry"}
+          </button>
           {!isSelf && (
             <button
               onClick={() => setDel("confirming")}
@@ -228,10 +256,11 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   const [accountType, setAccountType] = useState<"practitioner" | "clinic">("practitioner");
   const [draft, setDraft] = useState({
     name: "", email: "", phone: "", abn: "", businessName: "", ahpra: "", temporaryPassword: "",
-    principalPlace: "", clinicAddress: "",
+    principalPlace: "", clinicAddress: "", address: "",
   });
   const [premises, setPremises] = useState<NewPremiseInput[]>([{ name: "", address: "" }]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [supervisingDoctorId, setSupervisingDoctorId] = useState("");
   const [missing, setMissing] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -239,6 +268,17 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   const clinic = accountType === "clinic";
   const isDoctor = !clinic && roles.includes("doctor");
   const isNurse = !clinic && roles.includes("nurse");
+
+  // The prescribing-doctor directory for the nurse's optional supervising-doctor link
+  // (16/07 feedback bug 1): fetched once when a nurse role is first selected, like the
+  // cooperation-relationship picker. The link is optional — a nurse can be linked later.
+  const [doctorOptions, setDoctorOptions] = useState<{ doctorId: string; doctorName: string }[]>([]);
+  useEffect(() => {
+    if (!isNurse || doctorOptions.length > 0) return;
+    let cancelled = false;
+    void store.listDoctors().then((ds) => { if (!cancelled) setDoctorOptions(ds); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isNurse, doctorOptions.length, store]);
 
   const input = (field: string) =>
     `w-full rounded-field border bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint ${missing.includes(field) ? "border-rose" : "border-line"}`;
@@ -259,6 +299,10 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
       clinicAddress: undefined,
       principalPlace: roles.includes("doctor") ? draft.principalPlace : undefined,
       premises: roles.includes("nurse") ? premises : undefined,
+      // 16/07: optional contact address (persists to Profile) + optional supervising-doctor
+      // link (nurse only — the callable creates the cooperation relationship atomically).
+      address: draft.address.trim() || undefined,
+      supervisingDoctorId: roles.includes("nurse") && supervisingDoctorId ? supervisingDoctorId : undefined,
       roles,
     };
   }
@@ -339,7 +383,25 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
           </div>
         )}
         {isDoctor && field("Principal place of practice", "principalPlace", { hint: "Prints in the Clause 68C direction and PDF signature block" })}
+        {/* 16/07 feedback bug 2: a contact address entered here persists to the user's Profile. */}
+        {!clinic && field("Address", "address", { hint: "Contact address — shows on the user's profile (optional)" })}
       </div>
+      {isNurse && (
+        <label className="mt-3 block">
+          <span className="micro">Supervising doctor</span>
+          <p className="micro mt-0.5 text-ink-soft">Optional — links the nurse under this doctor so she can raise authorisation requests immediately. You can also set this up later.</p>
+          <select
+            value={supervisingDoctorId}
+            onChange={(e) => setSupervisingDoctorId(e.target.value)}
+            className="mt-1.5 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+          >
+            <option value="">No supervising doctor yet</option>
+            {doctorOptions.map((d) => (
+              <option key={d.doctorId} value={d.doctorId}>{d.doctorName}</option>
+            ))}
+          </select>
+        </label>
+      )}
       {isNurse && (
         <div className="mt-3">
           <span className="micro">Premises of administration</span>
