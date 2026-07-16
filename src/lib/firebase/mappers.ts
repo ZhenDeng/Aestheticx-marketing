@@ -369,7 +369,17 @@ export function mapAppointment(id: string, data: Doc): Appointment {
     patientName: typeof data.patientName === "string" ? data.patientName : undefined,
     lead: mapLead(data.lead),
     appointmentNote: typeof data.appointmentNote === "string" ? data.appointmentNote : undefined,
+    ...(data.source === "google" || data.source === "manual" ? { source: data.source } : {}),
+    ...(isGoogleRef(data.externalCalendarRef)
+      ? { externalCalendarRef: { provider: "google" as const, eventId: data.externalCalendarRef.eventId } }
+      : {}),
   };
+}
+
+function isGoogleRef(v: unknown): v is { provider: "google"; eventId: string } {
+  if (typeof v !== "object" || v === null) return false;
+  const ref = v as { provider?: unknown; eventId?: unknown };
+  return ref.provider === "google" && typeof ref.eventId === "string" && ref.eventId !== "";
 }
 
 // --- Encoders (writes) ---

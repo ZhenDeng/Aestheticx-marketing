@@ -295,6 +295,12 @@ export interface Appointment {
   patientName?: string;
   lead?: AppointmentLead; // set only while no patientID (cleared on linking)
   appointmentNote?: string;
+  // Where the booking came from: "google" = ingested from a linked Google calendar
+  // (e.g. the clinic's Google booking page); absent or "manual" = created in-app.
+  source?: "manual" | "google";
+  // The Google event behind a mirrored or ingested appointment — the server's dedupe
+  // and reconciliation key. Read-only on the web; written by the sync Functions.
+  externalCalendarRef?: { provider: "google"; eventId: string };
 }
 
 // A doctor's published availability window for authorisation teleconsults. Bookable 10-min

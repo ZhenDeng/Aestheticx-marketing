@@ -1182,6 +1182,9 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
         </span>
       </div>
       {contactLine && <p className="micro mt-0.5">{contactLine}</p>}
+      {appt.source === "google" && (
+        <p className="micro mt-0.5 text-ink-soft">Booked via Google Calendar — changes made there sync here automatically.</p>
+      )}
       {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
 
       {lead && !creating && isOwner && canCreatePatient(me) && (

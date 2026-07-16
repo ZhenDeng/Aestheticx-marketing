@@ -263,10 +263,11 @@ function ExternalCalendarCard({ ownerID }: { ownerID: string }) {
     <div className="mt-6 rounded-card border border-line bg-card p-5">
       <h2 className="font-display text-lg text-ink">External calendar</h2>
       <p className="mt-2 text-sm text-ink-soft">
-        Link your Google account so busy times across all your Google calendars — including a
-        dedicated appointments calendar — block public and self-service booking for the next 90 days,
-        and confirmed appointments appear on your calendar. Busy times show on the day and week
-        views. Apple Calendar sync runs on-device in the iOS app.
+        Link your Google account and it syncs automatically: bookings made on your Google booking
+        page appear here as appointments within moments, busy times across all your Google calendars
+        block public and self-service booking for the next 90 days, and confirmed appointments appear
+        on your Google calendar. Sync now is a manual fallback if something looks out of date. Apple
+        Calendar sync runs on-device in the iOS app.
       </p>
       {!isLive && (
         <p className="mt-2 rounded-inner border-l-4 p-2 text-sm" style={{ borderColor: "var(--color-tint)", background: "var(--color-tint-soft)" }}>

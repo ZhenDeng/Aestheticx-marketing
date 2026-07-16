@@ -175,6 +175,11 @@ export function buildSeedState(): DemoState {
     { id: "appt-3", type: "treatment" as const, ownerID: LUMIERE.id, dateISO: TODAY_ISO, startMinute: 570, endMinute: 615, status: "confirmed" as const, patientID: amara.id, patientName: "Mara Boyd", appointmentNote: "Antiwrinkle review" },
     { id: "appt-4", type: "treatment" as const, ownerID: LUMIERE.id, dateISO: TODAY_ISO, startMinute: 630, endMinute: 660, status: "completed" as const, patientID: claire.id, patientName: "Coco Donovan", appointmentNote: "Profhilo" },
     { id: "appt-5", type: "treatment" as const, ownerID: LUMIERE.id, dateISO: TODAY_ISO, startMinute: 720, endMinute: 780, status: "confirmed" as const, appointmentNote: "Lunch — clinic closed" },
+    // Google-ingested bookings (google-calendar-realtime-ingest): one auto-linked by a
+    // unique email match, one still a lead — so the "· Google" chip mark, the detail
+    // line, and the lead-linking flow are all demoable offline.
+    { id: "appt-6", type: "treatment" as const, ownerID: "u-voss", dateISO: TODAY_ISO, startMinute: 660, endMinute: 690, status: "confirmed" as const, patientID: grace.id, patientName: "Grace Huang", appointmentNote: "Skin consult — booked online", source: "google" as const, externalCalendarRef: { provider: "google" as const, eventId: "gevt-seed-1" } },
+    { id: "appt-7", type: "treatment" as const, ownerID: "u-voss", dateISO: TODAY_ISO, startMinute: 780, endMinute: 810, status: "confirmed" as const, lead: { givenName: "Noah", lastName: "Pratt", email: "noah.pratt@mail.com" }, appointmentNote: "New patient consult", source: "google" as const, externalCalendarRef: { provider: "google" as const, eventId: "gevt-seed-2" } },
   ];
   const appointments = { ...state.appointments };
   for (const a of appts) appointments[a.id] = a;
