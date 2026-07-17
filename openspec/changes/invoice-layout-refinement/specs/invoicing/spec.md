@@ -41,11 +41,15 @@ The tax-invoice document SHALL follow a professional financial-document layout:
 - **THEN** TAX INVOICE, seller ABN, buyer identity, issue date, per-line GST and the GST-inclusion statement are all present
 
 ### Requirement: Invoice party identity enrichment
-Invoice party resolution SHALL supply the seller and bill-to blocks with the richest identity available: an optional person name alongside the business name, plus address and email where knowable. Generation-time snapshots (live invoices) SHALL take precedence; state-resolved parties (demo and legacy invoices) SHALL fill name from the owner's account, address from the party's profile address / principal place (doctor), clinic address (clinic), or active premise (nurse), and email from the account record. Absent data SHALL stay empty rather than fabricated.
+Invoice party resolution SHALL supply the seller and bill-to blocks with the richest identity available: an optional person name alongside the business name, plus address and email where knowable. Generation-time snapshots (live invoices) SHALL take precedence; state-resolved parties (demo and legacy invoices) SHALL fill name from the owner's account, address from the party's principal place of practice falling back to the profile address (doctor), clinic address (clinic), or active premise (nurse), and email from the account record. Absent data SHALL stay empty rather than fabricated.
 
 #### Scenario: Demo doctor issuer resolves a full block
-- **WHEN** a demo invoice is rendered for a doctor with a business entity, profile address, and account email
+- **WHEN** a demo invoice is rendered for a doctor with a business entity, principal place of practice, and account email
 - **THEN** the issuer party carries the doctor's name, entity trading name, ABN, address, and email
+
+#### Scenario: Business address outranks the personal address
+- **WHEN** a doctor has both a principal place of practice and a personal profile address
+- **THEN** the seller address on the invoice is the principal place of practice
 
 #### Scenario: Legacy snapshot without new fields still renders
 - **WHEN** an invoice carries a legacy issuer/billTo snapshot with only businessName, abn, and email
