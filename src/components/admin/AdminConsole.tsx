@@ -119,8 +119,6 @@ function AccountRow({ account }: { account: AccountRecord }) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [del, setDel] = useState<"idle" | "confirming" | "deleting" | "error">("idle");
   const [delError, setDelError] = useState<string | null>(null);
-  const [repair, setRepair] = useState<"idle" | "repairing" | "done" | "error">("idle");
-  const [repairError, setRepairError] = useState<string | null>(null);
   const display = account.name || account.email || account.id;
   // Own row gets no delete action: the Function rejects self-deletion (the in-app
   // Delete account flow below is the self-serve path), so don't render a dead button.
@@ -152,22 +150,12 @@ function AccountRow({ account }: { account: AccountRecord }) {
     }
   }
 
-  // Repair an account locked out by wiped custom claims (16/07 feedback bug 1): re-derive
-  // and re-set the claims from the users doc. The user re-authenticates to pick them up.
-  async function repairAccess() {
-    setRepair("repairing");
-    setRepairError(null);
-    try {
-      await store.syncUserClaims(account.id);
-      setRepair("done");
-    } catch (e) {
-      setRepairError(e instanceof Error ? e.message : String(e));
-      setRepair("error");
-    }
-  }
-
+  // 17/07 feedback: no manual "Repair access" control here — wiped-claims accounts
+  // self-heal at their own next sign-in (see src/lib/firebase/selfHeal.ts).
+  // flex-wrap on the row + the actions cluster keeps every control inside the
+  // horizontal viewport at narrow widths (actions drop below the identity line).
   return (
-    <li className="flex items-center gap-3.5 border-b border-line px-4 py-3 last:border-b-0">
+    <li className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-b border-line px-4 py-3 last:border-b-0">
       <span className="grid h-9 w-9 flex-none place-items-center rounded-full font-display text-card" style={{ background: "var(--color-tint)" }}>
         {initials(display)[0] ?? "?"}
       </span>
@@ -182,64 +170,54 @@ function AccountRow({ account }: { account: AccountRecord }) {
           Awaiting first login
         </span>
       )}
-      {del === "confirming" || del === "deleting" ? (
-        <span className="flex flex-none items-center gap-2">
-          <span className="micro" style={{ color: "var(--color-rose)" }}>Delete login? Records kept.</span>
-          <button
-            onClick={() => void performDelete()}
-            disabled={del === "deleting"}
-            className="micro flex-none rounded-btn px-2.5 py-1 text-card disabled:opacity-60"
-            style={{ background: "var(--color-rose)" }}
-          >
-            {del === "deleting" ? "Deleting…" : "Confirm"}
-          </button>
-          <button
-            onClick={() => setDel("idle")}
-            disabled={del === "deleting"}
-            className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft disabled:opacity-60"
-          >
-            Cancel
-          </button>
-        </span>
-      ) : (
-        <>
-          {account.email && (
+      <span className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+        {del === "confirming" || del === "deleting" ? (
+          <>
+            <span className="micro" style={{ color: "var(--color-rose)" }}>Delete login? Records kept.</span>
             <button
-              onClick={() => void sendReset()}
-              disabled={reset === "sending" || reset === "sent"}
-              className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
-              title={resetError ?? "Email this account a password-reset link"}
+              onClick={() => void performDelete()}
+              disabled={del === "deleting"}
+              className="micro flex-none rounded-btn px-2.5 py-1 text-card disabled:opacity-60"
+              style={{ background: "var(--color-rose)" }}
             >
-              {reset === "idle" && "Reset password"}
-              {reset === "sending" && "Sending…"}
-              {reset === "sent" && "Reset sent"}
-              {reset === "error" && "Failed — retry"}
+              {del === "deleting" ? "Deleting…" : "Confirm"}
             </button>
-          )}
-          {/* 16/07 feedback bug 1: re-provision an account locked out by wiped claims. */}
-          <button
-            onClick={() => void repairAccess()}
-            disabled={repair === "repairing" || repair === "done"}
-            className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
-            title={repairError ?? "Re-set this account's role permissions from its profile — for an account that can't save changes. They re-sign-in to pick it up."}
-          >
-            {repair === "idle" && "Repair access"}
-            {repair === "repairing" && "Repairing…"}
-            {repair === "done" && "Access repaired"}
-            {repair === "error" && "Repair failed — retry"}
-          </button>
-          {!isSelf && (
             <button
-              onClick={() => setDel("confirming")}
-              className="micro flex-none rounded-btn border px-2.5 py-1 hover:opacity-80"
-              style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}
-              title={delError ?? "Delete this account's login — clinical records are retained"}
+              onClick={() => setDel("idle")}
+              disabled={del === "deleting"}
+              className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft disabled:opacity-60"
             >
-              {del === "error" ? "Delete failed — retry" : "Delete"}
+              Cancel
             </button>
-          )}
-        </>
-      )}
+          </>
+        ) : (
+          <>
+            {account.email && (
+              <button
+                onClick={() => void sendReset()}
+                disabled={reset === "sending" || reset === "sent"}
+                className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
+                title={resetError ?? "Email this account a password-reset link"}
+              >
+                {reset === "idle" && "Reset password"}
+                {reset === "sending" && "Sending…"}
+                {reset === "sent" && "Reset sent"}
+                {reset === "error" && "Failed — retry"}
+              </button>
+            )}
+            {!isSelf && (
+              <button
+                onClick={() => setDel("confirming")}
+                className="micro flex-none rounded-btn border px-2.5 py-1 hover:opacity-80"
+                style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}
+                title={delError ?? "Delete this account's login — clinical records are retained"}
+              >
+                {del === "error" ? "Delete failed — retry" : "Delete"}
+              </button>
+            )}
+          </>
+        )}
+      </span>
     </li>
   );
 }

@@ -137,7 +137,6 @@ interface StoreValue {
   createUser: (input: import("./userAdmin").NewUserInput) => Promise<void>;
   resetUserPassword: (email: string) => Promise<void>;
   deleteUserAccount: (uid: string) => Promise<void>;
-  syncUserClaims: (uid: string) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -833,15 +832,6 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         const m = await import("@/lib/firebase/mirror");
         await m.mirrorDeleteUserAccount(uid);
         setRefreshTick((t) => t + 1);
-      },
-      // Repair an account whose custom claims were wiped (16/07 feedback bug 1): the
-      // superAdmin syncUserClaims Function re-derives roles/clinics from the users doc and
-      // re-sets the claims. Server-authoritative and live-only; the repaired user must
-      // re-authenticate (or force-refresh) for the restored claims to reach their token.
-      syncUserClaims: async (uid) => {
-        if (!live) throw new backend.BackendError("Claim repair is live-only in the demo.");
-        const m = await import("@/lib/firebase/mirror");
-        await m.mirrorSyncUserClaims(uid);
       },
       // Own-profile edit: optimistic local merge, then a rules-checked users/{uid} merge
       // write (mirrorUpdateProfile strips the demo-only avatarDataUrl + immutable abn).
