@@ -74,9 +74,13 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
           setResolved(true);
         } catch (error) {
           // A resolution failure must not strand the app on the loading screen — land on
-          // the signed-out state (AuthGuard sends the user to /login to retry).
+          // the signed-out state (AuthGuard sends the user to /login to retry). Same stale
+          // guard as the success path: a late rejection from a PREVIOUS user's resolution
+          // must not stomp the current user's live session.
           console.error("Identity resolution failed:", error);
-          if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setResolved(true); }
+          if (!cancelled && currentUserUid() === user.uid) {
+            setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setResolved(true);
+          }
         }
       });
     });

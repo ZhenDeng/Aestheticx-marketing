@@ -55,6 +55,33 @@ describe("DemoAuthProvider (live watcher hardening)", () => {
     expect(result.current.availableIdentities).toEqual([]);
   });
 
+  it("ignores a stale rejection from a previous user after the next user resolved", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      let rejectA!: (e: Error) => void;
+      const resolutions: Array<() => Promise<Identity[]>> = [
+        () => new Promise((_r, rej) => { rejectA = rej; }), // user A: hangs, later rejects
+        () => Promise.resolve([nurse]),                      // user B: resolves normally
+      ];
+      identitiesImpl = () => resolutions.shift()!();
+      const { result } = renderHook(() => useDemoAuth(), { wrapper });
+      await act(async () => {}); // flush the dynamic import so the watcher subscribes
+
+      currentUid = "u-a";
+      await act(async () => { void watchCb({ uid: "u-a" }); }); // A's resolution hangs
+      currentUid = "u-1";
+      await act(async () => { await watchCb({ uid: "u-1" }); }); // B signs in and resolves
+      expect(result.current.identity).toEqual(nurse);
+
+      // A's stale rejection lands — it must not stomp B's live session.
+      await act(async () => { rejectA(new Error("late failure")); });
+      expect(result.current.identity).toEqual(nurse);
+      expect(result.current.resolved).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("resolves (signed-out) instead of loading forever when identity resolution rejects", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
