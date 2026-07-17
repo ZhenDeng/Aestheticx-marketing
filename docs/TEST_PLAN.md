@@ -61,22 +61,27 @@ The in-memory demo backend ([src/lib/demo](../src/lib/demo)) is a big advantage:
 | PatientRow, PatientAvatar, LeadFields | LOW (thin components) |
 | Marketing pages (/, /for-clinics, /for-doctors, /for-nurses, privacy, terms) | LOW — smoke only |
 
-## 3. E2E Layer (new — Playwright)
+## 3. E2E Layer (Playwright) — ✅ stood up
 
-Critical journeys, run against `next dev` with the demo seed (deterministic, resets on reload). One spec per journey, chromium-only in CI to start.
+Playwright is live: `npm run test:e2e`, chromium, `webServer` runs `next dev` on port 3097 with
+the Firebase env blanked so the app boots in the deterministic demo seed. Setup + the two
+demo-mode constraints (store resets on full load; no shared state across accounts) are documented
+in [../e2e/README.md](../e2e/README.md). **8 tests green.**
 
-| # | Journey | Why |
+| # | Journey | Status |
 |---|---|---|
-| E1 | Login as nurse → dashboard renders role-correct nav | Auth is the gate for everything |
-| E2 | Nurse: create patient → complete consent → book appointment | Core clinical loop |
-| E3 | Nurse: request authorisation → login as doctor → approve → direction PDF generated | Cross-role handoff (highest-risk flow) |
-| E4 | Doctor: review consult call flow (ConsultCall) | Real-time UI |
-| E5 | Nurse: treatment note → aftercare → billing → generate tax invoice PDF | Revenue path; validates PR #101 layout end-to-end |
-| E6 | Admin: accounts console → audit log shows access events | Compliance |
-| E7 | Emergency auth flow | Safety-critical (core-architecture Tier 1) |
-| E8 | Role-based redirects: each role hitting a forbidden route bounces correctly | Security boundary |
-| E9 | Marketing smoke: /, /for-* pages load, CTAs link to /login | Public surface |
-| E10 | Mobile viewport pass over E2 + E5 | Responsive regressions |
+| E1 | Login → role-correct nav (nurse/doctor/admin) | ✅ `e1-login` |
+| E2 | Nurse: create patient → sign consent → verify on file + in list | ✅ `e2-patient-consent` |
+| E3 | Authorisation handoff — E3a doctor approves seeded request, E3b nurse raises request | ✅ (halves) `e3-authorisation-approval` |
+| E5 | Doctor: generate tax invoice → download PDF (validates PR #101) | ✅ `e5-billing-invoice` |
+| E8 | Signed-out visitor → guarded route → login | ✅ (in `e1-login`) |
+| E3 (full round-trip) | nurse submits → doctor approves the *same* request | ⛔ needs live/emulator (demo has no shared cross-account state) |
+| E4 | Consult call flow | ▫ todo |
+| E6 | Admin accounts console → audit log | ▫ todo |
+| E7 | Emergency auth flow | ▫ todo |
+| E9 | Marketing smoke: /, /for-* pages, CTAs → /login | ▫ todo |
+| E10 | Mobile viewport pass over E2 + E5 | ▫ todo |
+| — | a11y (`@axe-core/playwright`) on the above | ▫ todo |
 
 PDF assertions in E2E: assert download triggers + filename; content correctness stays in existing unit tests (`invoice-pdf.test.ts` etc.).
 
@@ -124,6 +129,6 @@ Skip coverage for: marketing pages, `types.ts`, generated/config files.
 
 1. ~~Fix the 3 unhandled test errors; add coverage reporting (baseline numbers).~~ ✅ **Done** — see §6.
 2. ~~Component tests for the HIGH-priority 0%-coverage gaps: Login, Calendar page, Bookings, PatientForm/TreatmentNoteForm/AftercareForm.~~ ✅ **Done** — landed via #105 (auth + booking approval + clinical forms) and #103 (calendar integration smoke). components/app 23.8%→57.9%, overall 46.9%→53.4%.
-3. **← NEXT.** Install Playwright; implement E1–E3, E5 (core loop + revenue path).
-4. Remaining journeys E4, E6–E10 + axe checks.
+3. ~~Install Playwright; implement E1–E3, E5 (core loop + revenue path).~~ ✅ **Done** — 8 E2E tests green (E1, E2, E3 halves, E5, E8). Demo-mode constraints documented in `e2e/README.md`.
+4. **← NEXT.** Remaining journeys E4, E6, E7, E9, E10 + `@axe-core/playwright` checks; the full cross-role E3 round-trip via a live/emulator suite.
 5. MEDIUM/LOW component gaps opportunistically alongside feature work (TDD): `components/admin` (21%), `app/app/patients` pages, and the thin `lib/firebase` live watchers/storage (52.8%).
