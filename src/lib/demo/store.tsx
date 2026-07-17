@@ -201,6 +201,11 @@ export function DemoStoreProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setState(next);
         setStatus("ready");
+        // A successful hydrate is the authoritative recovery point. In particular,
+        // first-login can briefly race a stale ID token and report permission-denied,
+        // then immediately succeed after the refreshed claims arrive. Do not leave that
+        // recovered failure pinned as a permanent access banner.
+        setLastSyncError(null);
         // Keep authRequests current AFTER the one-shot hydrate (owner bug 2, 2026-07-13):
         // without listeners a signed-in doctor never saw a nurse's new request until they
         // re-authenticated. Subscribing after hydrate resolves means the first full listener

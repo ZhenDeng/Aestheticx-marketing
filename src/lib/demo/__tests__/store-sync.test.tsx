@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { FirebaseError } from "firebase/app";
 import type { ReactNode } from "react";
 import { emptyState } from "@/lib/demo/backend";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
@@ -51,7 +52,22 @@ function wrapper({ children }: { children: ReactNode }) {
 
 describe("useDemoStore live-mode mirror failure", () => {
   beforeEach(() => {
-    hydrate.mockClear();
+    hydrate.mockReset();
+    hydrate.mockResolvedValue(emptyState());
+  });
+
+  it("clears a transient permission banner after rehydrate succeeds", async () => {
+    hydrate.mockRejectedValueOnce(
+      new FirebaseError("permission-denied", "Missing or insufficient permissions."),
+    );
+    const { result } = renderHook(() => useDemoStore(), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.lastSyncError).toContain("Permission denied");
+
+    act(() => result.current.rehydrate());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.lastSyncError).toBeNull();
   });
 
   it("reconciles optimistic state with server truth when a mirror write fails", async () => {
@@ -72,6 +88,11 @@ describe("useDemoStore live-mode mirror failure", () => {
     const hydrateCalls = hydrate.mock.calls.length;
     expect(result.current.noteTemplatesForOwner(owner)).toEqual([]);
 
+    // Hold the reconciliation hydrate open long enough to observe the categorised
+    // mirror error before authoritative server truth clears the recovered banner.
+    let finishRehydrate!: (state: ReturnType<typeof emptyState>) => void;
+    hydrate.mockImplementationOnce(() => new Promise((resolve) => { finishRehydrate = resolve; }));
+
     // Optimistic local apply makes the template appear immediately.
     act(() => {
       result.current.saveNoteTemplate(template, identity);
@@ -82,6 +103,8 @@ describe("useDemoStore live-mode mirror failure", () => {
     // optimistic state back to server truth (template never persisted -> gone).
     await waitFor(() => expect(result.current.lastSyncError).not.toBeNull());
     await waitFor(() => expect(hydrate.mock.calls.length).toBeGreaterThan(hydrateCalls));
+    act(() => finishRehydrate(emptyState()));
     await waitFor(() => expect(result.current.noteTemplatesForOwner(owner)).toEqual([]));
+    await waitFor(() => expect(result.current.lastSyncError).toBeNull());
   });
 });
