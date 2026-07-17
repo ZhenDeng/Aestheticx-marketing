@@ -16,4 +16,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Full test suite green (`npm test`) and production build passes (`npm run build`)
+- [x] 4.1 Full test suite green (`npm test`) and production build passes (`npm run build`)
