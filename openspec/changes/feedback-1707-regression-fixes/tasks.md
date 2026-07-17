@@ -22,4 +22,4 @@
 - [x] 4.1 Full web suite green (`npm test`) and build (`npm run build`); backend suite green
 - [x] 4.2 Engineer review (/review) on both diffs; QA pass; all CRITICAL/HIGH addressed
 - [x] 4.3 openspec-sync-specs: fold delta into `openspec/specs/account-provisioning/spec.md`
-- [ ] 4.4 PRs: backend first (deploy-order note in body), then web; both reference this change
+- [x] 4.4 PRs: backend first (deploy-order note in body), then web; both reference this change
