@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FirebaseError } from "firebase/app";
-import { assembleState, notesRowsForPatient, type HydrationRows } from "@/lib/firebase/hydrate";
+import { assembleState, notesRowsForPatient, shouldQueryReviewerPatients, type HydrationRows } from "@/lib/firebase/hydrate";
 
 const rows: HydrationRows = {
   patients: [
@@ -129,6 +129,15 @@ describe("assembleState", () => {
   it("leaves profileByUser empty when the users/{uid} doc is missing", () => {
     const state = assembleState({ ...rows, profile: null });
     expect(state.profileByUser).toEqual({});
+  });
+});
+
+describe("reviewer patient hydration scope", () => {
+  it("queries open-review patients only for accounts with the doctor role", () => {
+    expect(shouldQueryReviewerPatients(["nurse"])).toBe(false);
+    expect(shouldQueryReviewerPatients(["clinicAdmin"])).toBe(false);
+    expect(shouldQueryReviewerPatients(["doctor"])).toBe(true);
+    expect(shouldQueryReviewerPatients(["superAdmin", "doctor"])).toBe(true);
   });
 });
 

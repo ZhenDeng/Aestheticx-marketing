@@ -259,6 +259,13 @@ async function readUserProfile(uid: string): Promise<{
   return { followUpSettings, appointmentReminderLead, bookingToken, doctorStatus, lastCalledDoctorId, profile };
 }
 
+// Firestore's reviewer grant explicitly requires hasRole('doctor'). Running the
+// openReviewerDoctorIds query for a nurse/clinic-only account is therefore not merely
+// empty: rules reject the whole query and abort hydration (rules are not filters).
+export function shouldQueryReviewerPatients(roles: string[]): boolean {
+  return roles.includes("doctor");
+}
+
 // Thin: run the same rules-safe queries as iOS LiveBackend.hydrate(), then assemble.
 export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const uid = claims.uid;
@@ -315,9 +322,11 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     [where("ownerType", "==", "doctor"), where("ownerId", "==", uid)],
     [where("ownerType", "==", "nurse"), where("prescribingDoctorIds", "array-contains", uid)],
     [where("ownerType", "==", "clinic"), where("prescribingDoctorIds", "array-contains", uid)],
-    // Reviewer access: patients with an open request addressed to this doctor (spec
-    // 2026-07-07 reviewer-file-access) — read-only until they approve. Any owner type.
-    [where("openReviewerDoctorIds", "array-contains", uid)],
+    // Reviewer access: the rule requires the caller to hold the doctor role, so never
+    // issue this query for nurse/clinic-only accounts (a denied query aborts hydrate).
+    ...(shouldQueryReviewerPatients(claims.roles)
+      ? [[where("openReviewerDoctorIds", "array-contains", uid)]]
+      : []),
     ...clinicIds.map((cid) => [where("ownerType", "==", "clinic"), where("ownerId", "==", cid)]),
   ];
   const patientsById = new Map<string, Row>();
