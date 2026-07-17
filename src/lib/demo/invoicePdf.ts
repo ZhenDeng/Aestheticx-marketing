@@ -18,7 +18,6 @@ import {
   MARGIN,
   SOFT,
   buildPdfFile,
-  field,
   type Rgb,
 } from "./directionPdf";
 
@@ -137,22 +136,48 @@ function closeTableFrame(writer: DirectionWriter, top: number, bottom: number): 
   for (const x of COL_X.slice(1)) writer.vline(x, top, bottom);
 }
 
+// Header metadata block geometry (17/07 feedback: DATE ISSUED + INVOICE NUMBER sit in the
+// top-right corner whitespace, right-aligned against the margin like a ledger).
+const META_W = 180;
+const META_X = MARGIN + CONTENT_WIDTH - META_W;
+
 export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
   const writer = new DirectionWriter();
 
+  // ——— Header band: title left, metadata top-right, sharing the top edge ———
+  const headerTop = writer.currentY();
   // ATO requirement 1: the document says what it is.
   writer.text("TAX INVOICE", 23, INK);
-  writer.moveDown(0.4);
+  const titleBottom = writer.currentY();
 
-  // Seller identity + ABN (requirements 2-3).
-  writer.text(model.issuer.businessName || "—", 13, INK);
-  writer.text(`ABN ${model.issuer.abn || "—"}`, 10, SOFT);
-  writer.moveDown(0.8);
+  let metaY = headerTop + (23 - 8) * 0.72; // share the title's optical top line
+  const metaLine = (text: string, size: number, color: Rgb, opts: { charSpace?: number } = {}): void => {
+    writer.setY(metaY);
+    writer.textAt(text, size, color, META_X, { width: META_W, align: "right", ...opts });
+    metaY += size * LINE + 2;
+  };
+  metaLine("DATE ISSUED", 8, GOLD, { charSpace: 1 });
+  metaLine(model.issuedText, 11.5, INK);
+  metaY += 6;
+  metaLine("INVOICE NUMBER", 8, GOLD, { charSpace: 1 });
+  metaLine(model.number, 11.5, INK);
+  metaLine(model.periodLabel, 9, SOFT);
 
-  // Buyer identity (the ≥ $1,000 requirement Example 2 adds) + issue date (requirement 4).
-  field(writer, "To", [model.billTo.businessName || "—", model.billTo.address ?? ""].filter(Boolean).join(", "));
-  field(writer, "Date issued", model.issuedText);
-  field(writer, "Invoice number", `${model.number} · ${model.periodLabel}`);
+  // The cursor resumes below whichever column ran deeper — the blocks never collide.
+  writer.setY(Math.max(titleBottom, metaY) + 6);
+
+  // ——— Seller block (requirements 2-3): one line per element, no comma-joins ———
+  writer.text(model.sellerLead, 12.5, INK);
+  if (model.sellerBusiness) writer.text(model.sellerBusiness, 10.5, INK);
+  for (const detail of model.sellerDetails) writer.text(detail, 10, SOFT);
+  writer.moveDown(0.9);
+
+  // ——— TO block: buyer identity (the ≥ $1,000 requirement Example 2 adds) with the
+  // address split across lines (requirement 4's issue date lives in the header now) ———
+  writer.text("TO", 8, GOLD, { charSpace: 1 });
+  writer.moveDown(0.15);
+  writer.text(model.toName, 11.5, INK);
+  for (const line of model.toAddressLines) writer.text(line, 10, SOFT);
 
   // Items (requirement 5): bordered table, one row per authorisation — description
   // wrapped inside its column, qty always 1 (per-script invoicing), numerals

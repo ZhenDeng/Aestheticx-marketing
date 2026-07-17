@@ -139,7 +139,7 @@ describe("renderTaxInvoicePdf", () => {
     for (const needle of [
       "TAX INVOICE",
       "Voss Aesthetics", "ABN 51 824 753 556",
-      "Lumi\xe8re Clinic Pty Ltd, 2 Notts Ave, Bondi Beach NSW 2026", // buyer identity + address
+      "(Lumi\xe8re Clinic Pty Ltd) Tj", // buyer identity — its own line now
       "14 Jul 2026", "INV-INV7",
       "20/6/2026 \x96 Amara Boyd treatment authorisation", // en dash → WinAnsi 0x96
       "($25.00) Tj", "($2.50) Tj", "($27.50) Tj", // unit / GST / GST-inclusive amount cells
@@ -149,6 +149,41 @@ describe("renderTaxInvoicePdf", () => {
     ]) {
       expect(file).toContain(needle);
     }
+  });
+
+  // ——— 17/07 feedback: header metadata top-right, vertical identity blocks ———
+
+  it("positions DATE ISSUED and INVOICE NUMBER in the top-right corner, title at the left margin", () => {
+    const file = render();
+    expect(tmXs(file, "TAX INVOICE")[0]).toBe(56); // title anchored at the left margin
+    // Right-aligned metadata: labels and values all land in the right half of the page.
+    for (const text of ["DATE ISSUED", "INVOICE NUMBER", "14 Jul 2026", "INV-INV7", "June 2026"]) {
+      const xs = tmXs(file, text);
+      expect(xs.length, text).toBeGreaterThan(0);
+      expect(Math.min(...xs), text).toBeGreaterThan(297.64); // page midline
+    }
+  });
+
+  it("renders the seller block one line per element at the left margin", () => {
+    const rich = buildTaxInvoiceModel(
+      invoice(),
+      { ...issuer, name: "Dr Elena Voss", address: "88 Oxford St, Paddington NSW 2021", email: "voss@example.com" },
+      billTo,
+    );
+    const file = new TextDecoder("latin1").decode(renderTaxInvoicePdf(rich));
+    for (const line of ["Dr Elena Voss", "Voss Aesthetics", "ABN 51 824 753 556", "88 Oxford St", "Paddington NSW 2021", "voss@example.com"]) {
+      expect(file).toContain(`(${line}) Tj`); // own glyph run — no comma-joins
+      expect(tmXs(file, line)[0], line).toBe(56); // left margin
+    }
+  });
+
+  it("renders the TO block with the name and address on separate lines, never merged", () => {
+    const file = render();
+    expect(file).toContain("(TO) Tj");
+    for (const line of ["Lumi\xe8re Clinic Pty Ltd", "2 Notts Ave", "Bondi Beach NSW 2026"]) {
+      expect(file).toContain(`(${line}) Tj`);
+    }
+    expect(file).not.toContain("Lumi\xe8re Clinic Pty Ltd, 2 Notts Ave"); // the old single-row clump
   });
 
   it("draws the bordered table: column headers, frame/rule ops, qty 1 per script", () => {

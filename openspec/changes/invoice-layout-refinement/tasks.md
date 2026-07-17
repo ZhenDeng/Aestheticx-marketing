@@ -8,7 +8,7 @@
 ## 2. Tax-invoice PDF layout
 
 - [x] 2.1 `addressLines()` helper + `buildTaxInvoiceModel` producing `sellerLines` and `toLines` arrays (name, trading name, ABN, address, email; missing lines omitted, ABN em-dash fallback); unit tests incl. legacy snapshot
-- [ ] 2.2 Rework `renderTaxInvoicePdf` header: TAX INVOICE title left, DATE ISSUED + INVOICE NUMBER right-aligned top-right on the title band; seller block lines under the title; TO block with name + split address lines; items table + totals unchanged; assert via PDF text-stream tests (top-right x-position, one line per element, ATO elements preserved)
+- [x] 2.2 Rework `renderTaxInvoicePdf` header: TAX INVOICE title left, DATE ISSUED + INVOICE NUMBER right-aligned top-right on the title band; seller block lines under the title; TO block with name + split address lines; items table + totals unchanged; assert via PDF text-stream tests (top-right x-position, one line per element, ATO elements preserved)
 
 ## 3. On-screen preview grid
 
