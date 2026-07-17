@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyState } from "@/lib/demo/backend";
 import type { Identity } from "@/lib/demo/types";
@@ -117,6 +117,32 @@ describe("Billing — selective invoicing (16/07 enhancement 2)", () => {
     const generateButtons = screen.getAllByRole("button", { name: /^generate invoice$/i });
     expect(generateButtons[generateButtons.length - 1]).toBeDisabled();
     expect(generateInvoice).not.toHaveBeenCalled();
+  });
+
+  // 17/07 feedback: the preview must be a formal bordered grid — outer frame + column
+  // dividers matching the PDF — not loose lines. Checkbox selection stays untouched.
+  it("frames the preview table with an outer border and column dividers", async () => {
+    await openPanel();
+    const table = screen.getByRole("table") as HTMLTableElement;
+    // The frame lives on the scroll wrapper (border-radius can't render on a
+    // border-collapse table) — rounded to match the panel, in the theme line token.
+    const wrapper = table.parentElement!;
+    expect(wrapper.className).toMatch(/border-line/);
+    expect(wrapper.className).toMatch(/(^|\s)border(\s|$)/);
+    expect(wrapper.className).toMatch(/rounded-inner/);
+    const headerCells = within(table).getAllByRole("columnheader");
+    expect(headerCells.length).toBe(5); // Description / Qty / Unit / GST / Total
+    for (const cell of headerCells.slice(1)) expect(cell.className).toMatch(/border-l/);
+    // Grid rows (tbody): every cell after the description carries a left divider.
+    for (const row of Array.from(table.tBodies[0].rows)) {
+      for (const cell of Array.from(row.cells).slice(1)) expect(cell.className).toMatch(/border-l/);
+    }
+    // The TOTAL row (tfoot): right-aligned, bold accent, on a heavier rule than row rules.
+    const footCells = Array.from(table.tFoot!.rows).flatMap((r) => Array.from(r.cells));
+    for (const cell of footCells.filter((c) => c.textContent)) expect(cell.className).toMatch(/text-right/);
+    const totalLabel = footCells.find((c) => c.textContent === "Total");
+    expect(totalLabel?.className).toMatch(/font-medium/);
+    expect(totalLabel?.closest("tr")?.className).toMatch(/border-t-2/);
   });
 
   it("deleting an invoice asks first, then routes through the store", async () => {

@@ -1,36 +1,6 @@
-# invoicing Specification
+# invoicing Delta — invoice-layout-refinement
 
-## Purpose
-
-Doctor invoice generation with per-authorisation selection, invoice deletion/regeneration for corrections, the structured tax-invoice layout (PDF + on-screen preview), and invoice party identity resolution.
-
-## Requirements
-
-### Requirement: Selective invoicing with per-authorisation checkboxes
-When a doctor generates an invoice, the generate panel SHALL list every un-invoiced authorisation (script) for the counterparty-month with a checkbox per row (all selected by default). The generated invoice SHALL include exactly the selected scripts; deselected scripts SHALL remain un-invoiced and selectable later. The preview totals SHALL track the current selection. A multi-item request SHALL remain one script — selection operates at the script grain, never splitting a request across invoices.
-
-#### Scenario: Doctor excludes a free script
-- **WHEN** the doctor unticks one patient's authorisation and generates
-- **THEN** the invoice bills only the ticked scripts and the unticked one stays in the un-invoiced pool
-
-#### Scenario: Empty selection cannot generate
-- **WHEN** every checkbox is unticked
-- **THEN** the Generate button is disabled
-
-#### Scenario: Selection survives a live re-hydrate
-- **WHEN** the billable set is re-read from the server (reordered or replaced) after the doctor has unticked a script
-- **THEN** that untick persists and the excluded script is not silently re-included
-
-### Requirement: Delete and regenerate invoices
-A doctor SHALL be able to delete an invoice they issued (confirmation required). Deleting an invoice SHALL return every member authorisation to the un-invoiced pool so a corrected invoice can be generated again. Deletion SHALL be recorded in the audit log. In live mode deletion SHALL be server-authoritative (Function-only invoice documents).
-
-#### Scenario: Delete then regenerate
-- **WHEN** the doctor deletes an invoice and reopens the generate panel
-- **THEN** the deleted invoice's authorisations are selectable again and a replacement invoice can be generated
-
-#### Scenario: Delete requires confirmation
-- **WHEN** the doctor clicks Delete and declines the confirmation
-- **THEN** the invoice is unchanged
+## MODIFIED Requirements
 
 ### Requirement: Structured tax-invoice layout
 The tax-invoice document SHALL follow a professional financial-document layout:

@@ -63,12 +63,40 @@ function textWidth(encoded: string, size: number, charSpace: number): number {
   return (units / 1000) * size + charSpace * encoded.length;
 }
 
-/** Greedy word wrap on the encoded string (mirrors pdfkit's default line breaking). */
+/** Character-level split for a single token wider than the line — the space-only wrap
+ *  below can't break it, and an unbroken overflow is silently cut at the page edge
+ *  (engineer review 17/07: user-editable emails/addresses now flow through here). */
+function breakWord(word: string, size: number, maxWidth: number, charSpace: number): string[] {
+  const parts: string[] = [];
+  let current = "";
+  for (const ch of word) {
+    if (current !== "" && textWidth(current + ch, size, charSpace) > maxWidth) {
+      parts.push(current);
+      current = ch;
+    } else {
+      current += ch;
+    }
+  }
+  if (current !== "") parts.push(current);
+  return parts;
+}
+
+/** Greedy word wrap on the encoded string (mirrors pdfkit's default line breaking),
+ *  with a character-level fallback for tokens wider than the line. */
 function wrapText(encoded: string, size: number, maxWidth: number, charSpace: number): string[] {
   const words = encoded.split(" ");
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
+    if (textWidth(word, size, charSpace) > maxWidth) {
+      // Oversized token: flush the pending line, hard-break the token, and keep
+      // its tail as the new pending line so following words continue after it.
+      if (line !== "") lines.push(line);
+      const parts = breakWord(word, size, maxWidth, charSpace);
+      line = parts.pop() ?? "";
+      lines.push(...parts);
+      continue;
+    }
     const candidate = line === "" ? word : `${line} ${word}`;
     if (line !== "" && textWidth(candidate, size, charSpace) > maxWidth) {
       lines.push(line);

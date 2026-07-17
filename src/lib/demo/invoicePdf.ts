@@ -18,7 +18,6 @@ import {
   MARGIN,
   SOFT,
   buildPdfFile,
-  field,
   type Rgb,
 } from "./directionPdf";
 
@@ -40,12 +39,26 @@ export function invoiceLineDescription(line: InvoiceLine): string {
   return `${invoiceLineDate(line.dateISO)} – ${line.patientName || "Patient"} treatment authorisation`;
 }
 
+/** One line per comma group — "a, b, c" → ["a","b","c"] (17/07 feedback: addresses stack
+ *  vertically, never merge into one row). Only a comma FOLLOWED BY whitespace separates,
+ *  so numeric commas ("Suite 1,200") stay intact. No commas → one line; empty → none. */
+export function addressLines(address: string | undefined): string[] {
+  return (address ?? "").split(/,\s+/).map((s) => s.trim()).filter(Boolean);
+}
+
 export interface TaxInvoiceModel {
   number: string;
   issuedText: string; // "14 Jul 2026"
   periodLabel: string;
   issuer: InvoiceParty;
   billTo: InvoiceParty;
+  // 17/07 feedback: the vertical identity blocks, pre-assembled so the renderer is a
+  // dumb line printer and the splitting stays unit-testable.
+  sellerLead: string; // practitioner name, else trading name — the block always leads with an identity
+  sellerBusiness: string | null; // trading name when distinct from the lead, else null
+  sellerDetails: string[]; // "ABN …" (em-dash fallback — ATO-required), address lines, email; absent lines omitted
+  toName: string; // bill-to person name, else business name
+  toAddressLines: string[]; // bill-to address, one line per comma group
   lines: { description: string; unit: string; gst: string; total: string }[];
   subtotalText: string;
   gstText: string;
@@ -55,12 +68,22 @@ export interface TaxInvoiceModel {
 /** Pure assembly — resolved parties come from the invoice snapshot (the caller falls
  *  back to live business-entity/account data for legacy invoices without one). */
 export function buildTaxInvoiceModel(invoice: Invoice, issuer: InvoiceParty, billTo: InvoiceParty): TaxInvoiceModel {
+  const sellerLead = issuer.name || issuer.businessName || "—";
   return {
     number: invoiceNumber(invoice.id),
     issuedText: formatDocDate(invoice.createdAt),
     periodLabel: invoice.periodLabel,
     issuer,
     billTo,
+    sellerLead,
+    sellerBusiness: issuer.businessName && issuer.businessName !== sellerLead ? issuer.businessName : null,
+    sellerDetails: [
+      `ABN ${issuer.abn || "—"}`,
+      ...addressLines(issuer.address),
+      ...(issuer.email ? [issuer.email] : []),
+    ],
+    toName: billTo.name || billTo.businessName || "—",
+    toAddressLines: addressLines(billTo.address),
     lines: invoice.lines.map((l) => ({
       description: invoiceLineDescription(l),
       unit: formatAUD(l.feeCents),
@@ -114,27 +137,58 @@ function closeTableFrame(writer: DirectionWriter, top: number, bottom: number): 
   for (const x of COL_X.slice(1)) writer.vline(x, top, bottom);
 }
 
+// Header metadata block geometry (17/07 feedback: DATE ISSUED + INVOICE NUMBER sit in the
+// top-right corner whitespace, right-aligned against the margin like a ledger).
+const META_W = 180;
+const META_X = MARGIN + CONTENT_WIDTH - META_W;
+
 export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
   const writer = new DirectionWriter();
 
+  // ——— Header band: title left, metadata top-right, sharing the top edge ———
+  const headerTop = writer.currentY();
   // ATO requirement 1: the document says what it is.
   writer.text("TAX INVOICE", 23, INK);
-  writer.moveDown(0.4);
+  const titleBottom = writer.currentY();
 
-  // Seller identity + ABN (requirements 2-3).
-  writer.text(model.issuer.businessName || "—", 13, INK);
-  writer.text(`ABN ${model.issuer.abn || "—"}`, 10, SOFT);
-  writer.moveDown(0.8);
+  let metaY = headerTop; // top-aligned with the title — the block fills the corner whitespace
+  const metaLine = (text: string, size: number, color: Rgb, opts: { charSpace?: number } = {}): void => {
+    writer.setY(metaY);
+    writer.textAt(text, size, color, META_X, { width: META_W, align: "right", ...opts });
+    metaY += size * LINE + 2;
+  };
+  metaLine("DATE ISSUED", 8, GOLD, { charSpace: 1 });
+  metaLine(model.issuedText, 11.5, INK);
+  metaY += 6;
+  metaLine("INVOICE NUMBER", 8, GOLD, { charSpace: 1 });
+  metaLine(model.number, 11.5, INK);
+  metaLine(model.periodLabel, 9, SOFT);
 
-  // Buyer identity (the ≥ $1,000 requirement Example 2 adds) + issue date (requirement 4).
-  field(writer, "To", [model.billTo.businessName || "—", model.billTo.address ?? ""].filter(Boolean).join(", "));
-  field(writer, "Date issued", model.issuedText);
-  field(writer, "Invoice number", `${model.number} · ${model.periodLabel}`);
+  // The cursor resumes below whichever column ran deeper — the blocks never collide.
+  writer.setY(Math.max(titleBottom, metaY) + 6);
+
+  // ——— Seller block (requirements 2-3): one line per element, no comma-joins ———
+  writer.text(model.sellerLead, 12.5, INK);
+  if (model.sellerBusiness) writer.text(model.sellerBusiness, 10.5, INK);
+  for (const detail of model.sellerDetails) writer.text(detail, 10, SOFT);
+  writer.moveDown(0.9);
+
+  // ——— TO block: buyer identity (the ≥ $1,000 requirement Example 2 adds) with the
+  // address split across lines (requirement 4's issue date lives in the header now) ———
+  writer.text("TO", 8, GOLD, { charSpace: 1 });
+  writer.moveDown(0.15);
+  writer.text(model.toName, 11.5, INK);
+  for (const line of model.toAddressLines) writer.text(line, 10, SOFT);
 
   // Items (requirement 5): bordered table, one row per authorisation — description
   // wrapped inside its column, qty always 1 (per-script invoicing), numerals
   // right-aligned, GST and the GST-inclusive amount shown per line (Example 2).
   writer.moveDown(0.6);
+  // Never orphan a header band at the page bottom: if the band plus one minimal row
+  // can't fit (a long TO/seller block parked the cursor low), start the table on a
+  // fresh page instead of framing an empty band.
+  const minRowH = NUM_SIZE * LINE + CELL_PAD_Y * 2;
+  if (writer.currentY() + HEADER_BAND_H + minRowH > BOTTOM_LIMIT) writer.newPage();
   let segTop = writer.currentY(); // top of the frame segment on the current page
   drawTableHeader(writer);
   for (const line of model.lines) {

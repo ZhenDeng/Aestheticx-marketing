@@ -49,7 +49,7 @@ import type {
   BusinessEntity,
   BusinessEntityType,
 } from "./types";
-import { ownerLabel } from "./accounts";
+import { LUMIERE, ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
@@ -2207,15 +2207,34 @@ export function billableAuthorisations(state: DemoState, doctorID: string): Bill
 
 // An invoice party resolved from hydrated state (14/07 tax-invoice PDF): business name +
 // ABN from the party's Business Entity when active (backend entityParty parity), name
-// falling back through ownerDisplayLabel. Email/address aren't client-knowable outside a
-// snapshot — they stay empty here; the backend's generation-time snapshot wins when present.
+// falling back through ownerDisplayLabel. 17/07 feedback: also the person name, address,
+// and email where the client can know them — doctor address = profile address falling back
+// to the principal place, nurse address = the active premise (name-first so the TO block
+// splits into location lines), clinic address = the clinic ref. Absent data stays empty;
+// the backend's generation-time snapshot wins over all of this when present.
 export function invoicePartyFor(state: DemoState, kind: "doctor" | "nurse" | "clinic", id: string): InvoiceParty {
   const entity = state.businessEntitiesByID[id];
   const entityName = entity?.isActive ? (entity.tradingName || entity.legalName) : "";
+  const personName = kind === "clinic" ? null : accountNameByID(state, id);
+  const profile = state.profileByUser[id];
+  let address = "";
+  // Doctor: the BUSINESS address leads — principal place of practice outranks the
+  // (possibly personal) profile address on a distributed financial document.
+  if (kind === "doctor") address = profile?.principalPlace || profile?.address || "";
+  else if (kind === "nurse") {
+    const premise = profile ? activePremise(profile) : null;
+    address = premise ? [premise.name, premise.address].filter(Boolean).join(", ") : profile?.address || "";
+  } else if (id === LUMIERE.id) {
+    // The demo cast has exactly one clinic; live invoices carry server snapshots, so
+    // this branch only ever resolves demo/legacy display.
+    address = LUMIERE.address ?? "";
+  }
   return {
     businessName: entityName || ownerDisplayLabel(state, { kind, id } as PatientOwner),
     abn: entity?.isActive ? entity.abn : "",
-    email: "",
+    email: state.accountsByID[id]?.email ?? "",
+    ...(address ? { address } : {}),
+    ...(personName ? { name: personName } : {}),
   };
 }
 
