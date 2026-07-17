@@ -436,28 +436,29 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
         </label>
         <button type="button" onClick={savePrice} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Save price</button>
       </div>
-      {/* 16/07 enhancement 3: an on-screen preview that mirrors the PDF's bordered table
-          (Description / Qty / Unit / GST / Total) so what the doctor sees matches paper. */}
+      {/* 16/07 enhancement 3 + 17/07 feedback: an on-screen preview that mirrors the PDF's
+          bordered grid — outer frame, column dividers, right-aligned totals with a bold
+          Total row — so what the doctor sees matches paper. */}
       {preview ? (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full border-collapse text-xs">
+          <table className="w-full border-collapse border border-line text-xs">
             <thead>
-              <tr className="border-y border-line text-left">
-                <th className="py-1.5 pr-2 font-medium text-ink-soft">Description</th>
-                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">Qty</th>
-                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">Unit</th>
-                <th className="py-1.5 px-2 text-right font-medium text-ink-soft">GST</th>
-                <th className="py-1.5 pl-2 text-right font-medium text-ink-soft">Total</th>
+              <tr className="border-b border-line text-left">
+                <th className="py-1.5 px-2 font-medium text-ink-soft">Description</th>
+                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">Qty</th>
+                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">Unit</th>
+                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">GST</th>
+                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">Total</th>
               </tr>
             </thead>
             <tbody>
               {preview.lines.map((l) => (
                 <tr key={l.authorisationID} className="border-b border-line">
-                  <td className="py-1.5 pr-2 text-ink">{invoiceLineDay(l.dateISO)} — {l.patientName}</td>
-                  <td className="py-1.5 px-2 text-right text-ink-soft">1</td>
-                  <td className="py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.feeCents)}</td>
-                  <td className="py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.gstCents)}</td>
-                  <td className="py-1.5 pl-2 text-right text-ink">{formatAUD(l.feeCents + l.gstCents)}</td>
+                  <td className="py-1.5 px-2 text-ink">{invoiceLineDay(l.dateISO)} — {l.patientName}</td>
+                  <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">1</td>
+                  <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.feeCents)}</td>
+                  <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.gstCents)}</td>
+                  <td className="border-l border-line py-1.5 px-2 text-right text-ink">{formatAUD(l.feeCents + l.gstCents)}</td>
                 </tr>
               ))}
             </tbody>
@@ -465,17 +466,17 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
               <tr>
                 <td colSpan={3} />
                 <td className="py-1.5 px-2 text-right text-ink-soft">Subtotal</td>
-                <td className="py-1.5 pl-2 text-right text-ink-soft">{formatAUD(preview.subtotalCents)}</td>
+                <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">{formatAUD(preview.subtotalCents)}</td>
               </tr>
               <tr>
                 <td colSpan={3} />
                 <td className="py-0.5 px-2 text-right text-ink-soft">GST (10%)</td>
-                <td className="py-0.5 pl-2 text-right text-ink-soft">{formatAUD(preview.gstCents)}</td>
+                <td className="border-l border-line py-0.5 px-2 text-right text-ink-soft">{formatAUD(preview.gstCents)}</td>
               </tr>
               <tr className="border-t border-line">
                 <td colSpan={3} />
                 <td className="py-1.5 px-2 text-right font-medium text-ink">Total</td>
-                <td className="py-1.5 pl-2 text-right font-medium text-ink">{formatAUD(preview.totalCents)}</td>
+                <td className="border-l border-line py-1.5 px-2 text-right font-medium text-ink">{formatAUD(preview.totalCents)}</td>
               </tr>
             </tfoot>
           </table>

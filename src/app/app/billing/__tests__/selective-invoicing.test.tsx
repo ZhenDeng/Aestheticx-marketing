@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyState } from "@/lib/demo/backend";
 import type { Identity } from "@/lib/demo/types";
@@ -117,6 +117,26 @@ describe("Billing — selective invoicing (16/07 enhancement 2)", () => {
     const generateButtons = screen.getAllByRole("button", { name: /^generate invoice$/i });
     expect(generateButtons[generateButtons.length - 1]).toBeDisabled();
     expect(generateInvoice).not.toHaveBeenCalled();
+  });
+
+  // 17/07 feedback: the preview must be a formal bordered grid — outer frame + column
+  // dividers matching the PDF — not loose lines. Checkbox selection stays untouched.
+  it("frames the preview table with an outer border and column dividers", async () => {
+    await openPanel();
+    const table = screen.getByRole("table");
+    expect(table.className).toMatch(/border-line/); // outer frame in the theme line token
+    expect(table.className).toMatch(/(^|\s)border(\s|$)/);
+    const headerCells = within(table).getAllByRole("columnheader");
+    expect(headerCells.length).toBe(5); // Description / Qty / Unit / GST / Total
+    for (const cell of headerCells.slice(1)) expect(cell.className).toMatch(/border-l/);
+    // Grid rows (tbody): every cell after the description carries a left divider.
+    for (const row of Array.from((table as HTMLTableElement).tBodies[0].rows)) {
+      for (const cell of Array.from(row.cells).slice(1)) expect(cell.className).toMatch(/border-l/);
+    }
+    // The TOTAL row (tfoot) carries the bold accent.
+    const footCells = Array.from((table as HTMLTableElement).tFoot!.rows).flatMap((r) => Array.from(r.cells));
+    const totalLabel = footCells.find((c) => c.textContent === "Total");
+    expect(totalLabel?.className).toMatch(/font-medium/);
   });
 
   it("deleting an invoice asks first, then routes through the store", async () => {

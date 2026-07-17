@@ -12,7 +12,7 @@
 
 ## 3. On-screen preview grid
 
-- [ ] 3.1 Generate-panel preview table (`src/app/app/billing/page.tsx`): visible outer border + column dividers via theme line token; totals right-aligned with bold total row; checkbox selection markup and behaviour untouched; component test asserts frame/divider classes and existing selection tests stay green
+- [x] 3.1 Generate-panel preview table (`src/app/app/billing/page.tsx`): visible outer border + column dividers via theme line token; totals right-aligned with bold total row; checkbox selection markup and behaviour untouched; component test asserts frame/divider classes and existing selection tests stay green
 
 ## 4. Verification
 
