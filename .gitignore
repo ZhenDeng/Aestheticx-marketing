@@ -48,3 +48,6 @@ next-env.d.ts
 
 # generated agent tooling (mirrors tracked .claude/skills/)
 .agents/
+
+# test coverage
+/coverage
