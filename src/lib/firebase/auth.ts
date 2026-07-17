@@ -25,6 +25,11 @@ export async function signOutUser(): Promise<void> {
   await fbSignOut(firebaseAuth());
 }
 
+// One heal attempt per uid per page session: a successful repair whose refreshed token
+// lags claim propagation re-fires the token watcher, and without this latch each cycle
+// would call the repair callable again.
+const healAttempted = new Set<string>();
+
 // Resolve the signed-in user's identities from custom claims + their users/{uid} doc.
 // Self-heals the 16/07 wiped-claims signature along the way (empty token roles while the
 // users doc records roles): asks syncUserClaims to re-derive its own claims from server
@@ -45,8 +50,14 @@ export async function identitiesForUser(user: User): Promise<Identity[]> {
     repairOwnClaims: async () => {
       await httpsCallable(functions(), "syncUserClaims")({ userId: user.uid });
     },
-  });
+  }, healAttempted);
   return identitiesFromClaims(claims, userDoc);
+}
+
+// The signed-in user's uid right now, or null. Lets the auth watcher discard a stale
+// async identity resolution that settles after sign-out / a different sign-in.
+export function currentUserUid(): string | null {
+  return firebaseAuth().currentUser?.uid ?? null;
 }
 
 // Subscribe to auth state; calls back with the User (or null when signed out).

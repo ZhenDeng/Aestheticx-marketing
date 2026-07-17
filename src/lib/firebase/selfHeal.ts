@@ -36,10 +36,14 @@ export interface SelfHealDeps {
 
 /** Resolve token claims + users doc, self-healing wiped claims once along the way.
  *  Single attempt, best-effort: any repair/refresh failure falls through to the
- *  original claims so sign-in is never worse than without the heal. */
+ *  original claims so sign-in is never worse than without the heal. The optional
+ *  `attempted` latch bounds the claims-propagation-lag edge (a refreshed token not
+ *  yet carrying the repaired claims re-fires the token watcher) to one repair call
+ *  per uid per latch lifetime. */
 export async function resolveClaimsWithSelfHeal(
   uid: string,
   deps: SelfHealDeps,
+  attempted?: Set<string>,
 ): Promise<{ claims: DemoClaims; userDoc: ({ name?: string } & Record<string, unknown>) | null }> {
   const parse = (raw: Record<string, unknown>): DemoClaims => ({
     uid,
@@ -48,13 +52,17 @@ export async function resolveClaimsWithSelfHeal(
   });
   let claims = parse(await deps.readTokenClaims(false));
   const userDoc = await deps.readUserDoc();
-  if (needsClaimsSelfHeal(claims.roles, userDoc)) {
+  if (needsClaimsSelfHeal(claims.roles, userDoc) && !attempted?.has(uid)) {
+    attempted?.add(uid);
     try {
       await deps.repairOwnClaims();
       claims = parse(await deps.readTokenClaims(true));
-    } catch {
+    } catch (error) {
       // Best-effort: the account stays as it was and the existing categorised
       // permission banner covers the failure — never block sign-in on the heal.
+      // Logged so a fleet-wide heal failure (e.g. backend not yet deployed) is
+      // visible in the console/monitoring rather than fully silent.
+      console.error("Claims self-heal failed — account left as-is:", error);
     }
   }
   return { claims, userDoc };

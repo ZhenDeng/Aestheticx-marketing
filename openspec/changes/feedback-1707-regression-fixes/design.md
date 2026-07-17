@@ -31,6 +31,14 @@ Authorization becomes: superAdmin may repair anyone; any authenticated caller ma
 
 **D4 — Web degrades safely against an un-deployed backend.** If the relaxed callable isn't deployed yet, a wiped non-admin self-repair gets `permission-denied` — exactly today's behaviour — and the catch falls through to the current banner. So web-first deploy is safe, though backend-first is still the documented order.
 
+## Review hardening (17/07 engineer review)
+
+- **Self-wipe guard (backend):** a non-admin self-repair that derives NO roles from the doc is refused (`failed-precondition`) — `setCustomUserClaims` replaces the full set, so syncing an empty doc would wipe a healthy account. Super admins stay unblocked: clearing doc roles then syncing IS the revocation path (the users doc is the claims authority — deliberate; claims-only revocation is not a supported state).
+- **Payload semantics (backend):** `userId: null` ≡ missing ≡ self; non-string `userId` → `invalid-argument`, never a misleading `permission-denied`.
+- **Heal latch (web):** one repair attempt per uid per page session — bounds the claims-propagation-lag edge where a refreshed token re-fires the token watcher. Heal failures are console-logged, not silent.
+- **Watcher races (web, pre-existing but widened):** a stale identity resolution settling after sign-out no longer resurrects a ghost session (`currentUserUid` guard); a resolution failure lands on signed-out instead of an infinite loading screen.
+- **Noted, unchanged:** no rate-limit/App Check on the callable (matches every other callable's posture; self-arm writes are bounded to the caller's own account).
+
 ## Risks / Trade-offs
 
 - [Self-repair loop on a genuinely role-less account (doc has no roles)] → detection requires the *doc* to carry roles; a doc without roles never triggers the call.

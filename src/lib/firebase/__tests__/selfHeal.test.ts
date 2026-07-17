@@ -105,4 +105,52 @@ describe("resolveClaimsWithSelfHeal", () => {
     });
     expect(result.claims).toEqual({ uid: "u-x", roles: [], clinics: {} });
   });
+
+  it("treats a malformed token roles shape as wiped and repairs when the doc grants roles", async () => {
+    const readTokenClaims = vi
+      .fn()
+      .mockResolvedValueOnce({ roles: [42], clinics: {} })
+      .mockResolvedValueOnce(tokenClaims(["nurse"]));
+    const repairOwnClaims = vi.fn().mockResolvedValue(undefined);
+    const result = await resolveClaimsWithSelfHeal("u-x", {
+      readTokenClaims,
+      readUserDoc: async () => ({ roles: ["nurse"] }),
+      repairOwnClaims,
+    });
+    expect(repairOwnClaims).toHaveBeenCalledTimes(1);
+    expect(result.claims.roles).toEqual(["nurse"]);
+  });
+
+  it("attempts the heal at most once per uid when given an attempt latch", async () => {
+    // Bounds the claims-propagation-lag edge: a refreshed token that does not yet
+    // carry the repaired claims re-fires the token watcher; without the latch each
+    // cycle would call the repair callable again.
+    const attempted = new Set<string>();
+    const repairOwnClaims = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      readTokenClaims: vi.fn().mockResolvedValue(tokenClaims([])), // stays wiped
+      readUserDoc: async () => ({ roles: ["nurse"] }),
+      repairOwnClaims,
+    };
+    await resolveClaimsWithSelfHeal("u-yinghua", deps, attempted);
+    await resolveClaimsWithSelfHeal("u-yinghua", deps, attempted);
+    expect(repairOwnClaims).toHaveBeenCalledTimes(1);
+    // A different account is unaffected by the first account's latch entry.
+    await resolveClaimsWithSelfHeal("u-other", deps, attempted);
+    expect(repairOwnClaims).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs a heal failure instead of failing fully silently", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await resolveClaimsWithSelfHeal("u-yinghua", {
+        readTokenClaims: vi.fn().mockResolvedValue(tokenClaims([])),
+        readUserDoc: async () => ({ roles: ["nurse"] }),
+        repairOwnClaims: vi.fn().mockRejectedValue(new Error("permission-denied")),
+      });
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
