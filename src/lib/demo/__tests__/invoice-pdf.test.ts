@@ -3,6 +3,7 @@
 // payable, and "The total price includes GST".
 import { describe, expect, it } from "vitest";
 import {
+  addressLines,
   buildTaxInvoiceModel,
   invoiceLineDate,
   invoiceLineDescription,
@@ -44,6 +45,61 @@ describe("line formatting", () => {
   it("numbers and names the file from the invoice id", () => {
     expect(invoiceNumber("inv-7")).toBe("INV-INV7");
     expect(taxInvoicePdfFilename("inv-7")).toBe("AestheticX-TaxInvoice-INV-INV7.pdf");
+  });
+});
+
+describe("addressLines", () => {
+  it("splits an address into one line per comma group", () => {
+    expect(addressLines("Internal Clinic, Chatswood Westfield, Chatswood NSW 2067"))
+      .toEqual(["Internal Clinic", "Chatswood Westfield", "Chatswood NSW 2067"]);
+    expect(addressLines("12 Hall St")).toEqual(["12 Hall St"]); // no commas → single line
+    expect(addressLines(" a ,  , b ")).toEqual(["a", "b"]); // trims, drops empties
+    expect(addressLines(undefined)).toEqual([]);
+    expect(addressLines("")).toEqual([]);
+  });
+});
+
+// 17/07 feedback: the model pre-assembles the vertical blocks so the renderer is a
+// dumb line printer — seller lead / trading name / detail lines, TO name + address lines.
+describe("buildTaxInvoiceModel blocks", () => {
+  it("assembles the seller block: name, trading name, ABN, address, email — one line each", () => {
+    const m = buildTaxInvoiceModel(
+      invoice(),
+      { ...issuer, name: "Dr Elena Voss", address: "88 Oxford St, Paddington NSW 2021", email: "voss@example.com" },
+      billTo,
+    );
+    expect(m.sellerLead).toBe("Dr Elena Voss");
+    expect(m.sellerBusiness).toBe("Voss Aesthetics");
+    expect(m.sellerDetails).toEqual([
+      "ABN 51 824 753 556",
+      "88 Oxford St",
+      "Paddington NSW 2021",
+      "voss@example.com",
+    ]);
+  });
+
+  it("promotes the trading name to the lead and omits absent lines on a legacy snapshot", () => {
+    const m = buildTaxInvoiceModel(invoice(), issuer, billTo); // no name/address/email
+    expect(m.sellerLead).toBe("Voss Aesthetics");
+    expect(m.sellerBusiness).toBeNull();
+    expect(m.sellerDetails).toEqual(["ABN 51 824 753 556"]);
+  });
+
+  it("keeps the ABN line visible as an em dash when blank (ATO-required element)", () => {
+    const m = buildTaxInvoiceModel(invoice(), { businessName: "X", abn: "", email: "" }, billTo);
+    expect(m.sellerDetails).toEqual(["ABN —"]);
+  });
+
+  it("assembles the TO block: recipient name, then the address split across lines", () => {
+    const m = buildTaxInvoiceModel(invoice(), issuer, billTo);
+    expect(m.toName).toBe("Lumière Clinic Pty Ltd");
+    expect(m.toAddressLines).toEqual(["2 Notts Ave", "Bondi Beach NSW 2026"]);
+  });
+
+  it("prefers the bill-to person name and tolerates a missing address", () => {
+    const m = buildTaxInvoiceModel(invoice(), issuer, { businessName: "Sarah Chen Aesthetics", abn: "", email: "", name: "Sarah Chen" });
+    expect(m.toName).toBe("Sarah Chen");
+    expect(m.toAddressLines).toEqual([]);
   });
 });
 

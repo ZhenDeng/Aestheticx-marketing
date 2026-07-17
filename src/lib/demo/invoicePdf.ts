@@ -40,12 +40,25 @@ export function invoiceLineDescription(line: InvoiceLine): string {
   return `${invoiceLineDate(line.dateISO)} – ${line.patientName || "Patient"} treatment authorisation`;
 }
 
+/** One line per comma group — "a, b, c" → ["a","b","c"] (17/07 feedback: addresses stack
+ *  vertically, never merge into one row). No commas → one line; empty/undefined → none. */
+export function addressLines(address: string | undefined): string[] {
+  return (address ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 export interface TaxInvoiceModel {
   number: string;
   issuedText: string; // "14 Jul 2026"
   periodLabel: string;
   issuer: InvoiceParty;
   billTo: InvoiceParty;
+  // 17/07 feedback: the vertical identity blocks, pre-assembled so the renderer is a
+  // dumb line printer and the splitting stays unit-testable.
+  sellerLead: string; // practitioner name, else trading name — the block always leads with an identity
+  sellerBusiness: string | null; // trading name when distinct from the lead, else null
+  sellerDetails: string[]; // "ABN …" (em-dash fallback — ATO-required), address lines, email; absent lines omitted
+  toName: string; // bill-to person name, else business name
+  toAddressLines: string[]; // bill-to address, one line per comma group
   lines: { description: string; unit: string; gst: string; total: string }[];
   subtotalText: string;
   gstText: string;
@@ -55,12 +68,22 @@ export interface TaxInvoiceModel {
 /** Pure assembly — resolved parties come from the invoice snapshot (the caller falls
  *  back to live business-entity/account data for legacy invoices without one). */
 export function buildTaxInvoiceModel(invoice: Invoice, issuer: InvoiceParty, billTo: InvoiceParty): TaxInvoiceModel {
+  const sellerLead = issuer.name || issuer.businessName || "—";
   return {
     number: invoiceNumber(invoice.id),
     issuedText: formatDocDate(invoice.createdAt),
     periodLabel: invoice.periodLabel,
     issuer,
     billTo,
+    sellerLead,
+    sellerBusiness: issuer.businessName && issuer.businessName !== sellerLead ? issuer.businessName : null,
+    sellerDetails: [
+      `ABN ${issuer.abn || "—"}`,
+      ...addressLines(issuer.address),
+      ...(issuer.email ? [issuer.email] : []),
+    ],
+    toName: billTo.name || billTo.businessName || "—",
+    toAddressLines: addressLines(billTo.address),
     lines: invoice.lines.map((l) => ({
       description: invoiceLineDescription(l),
       unit: formatAUD(l.feeCents),
