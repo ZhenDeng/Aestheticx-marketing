@@ -448,10 +448,3 @@ export async function mirrorResetUserPassword(email: string): Promise<void> {
 export async function mirrorDeleteUserAccount(uid: string): Promise<void> {
   await httpsCallable(functions(), "deleteUserAccount")({ uid });
 }
-
-// Repairs an account whose custom claims were wiped (16/07 feedback bug 1): the superAdmin
-// syncUserClaims Function re-derives roles/clinics from the users/{userId} doc and re-sets
-// the claims. The repaired user must re-authenticate for the restored claims to take effect.
-export async function mirrorSyncUserClaims(userId: string): Promise<void> {
-  await httpsCallable(functions(), "syncUserClaims")({ userId });
-}

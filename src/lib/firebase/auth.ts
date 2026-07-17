@@ -8,7 +8,8 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firebaseAuth, firestore, functions } from "./client";
-import { identitiesFromClaims, type DemoClaims } from "./identity";
+import { identitiesFromClaims } from "./identity";
+import { resolveClaimsWithSelfHeal } from "./selfHeal";
 import type { Identity } from "@/lib/demo/types";
 
 // remember=true (the historical default) keeps the session across browser restarts;
@@ -24,27 +25,39 @@ export async function signOutUser(): Promise<void> {
   await fbSignOut(firebaseAuth());
 }
 
+// One heal attempt per uid per page session: a successful repair whose refreshed token
+// lags claim propagation re-fires the token watcher, and without this latch each cycle
+// would call the repair callable again.
+const healAttempted = new Set<string>();
+
 // Resolve the signed-in user's identities from custom claims + their users/{uid} doc.
+// Self-heals the 16/07 wiped-claims signature along the way (empty token roles while the
+// users doc records roles): asks syncUserClaims to re-derive its own claims from server
+// truth, force-refreshes the token, and resolves from the repaired claims — no manual
+// admin repair step. Best-effort: a heal failure leaves sign-in exactly as it was.
 export async function identitiesForUser(user: User): Promise<Identity[]> {
-  const tokenResult = await user.getIdTokenResult();
-  const raw = tokenResult.claims as Record<string, unknown>;
-  const rawClinics = raw.clinics;
-  const claims: DemoClaims = {
-    uid: user.uid,
-    roles: Array.isArray(raw.roles) ? (raw.roles as string[]).filter((r) => typeof r === "string") : [],
-    clinics:
-      rawClinics && typeof rawClinics === "object" && !Array.isArray(rawClinics)
-        ? (rawClinics as Record<string, string>)
-        : {},
-  };
-  let userDoc: { name?: string } | null = null;
-  try {
-    const snap = await getDoc(doc(firestore(), "users", user.uid));
-    userDoc = snap.exists() ? (snap.data() as { name?: string }) : null;
-  } catch {
-    userDoc = null; // name falls back to claim/email; not fatal for sign-in
-  }
+  const { claims, userDoc } = await resolveClaimsWithSelfHeal(user.uid, {
+    readTokenClaims: async (forceRefresh) =>
+      (await user.getIdTokenResult(forceRefresh)).claims as Record<string, unknown>,
+    readUserDoc: async () => {
+      try {
+        const snap = await getDoc(doc(firestore(), "users", user.uid));
+        return snap.exists() ? (snap.data() as { name?: string }) : null;
+      } catch {
+        return null; // name falls back to claim/email; not fatal for sign-in
+      }
+    },
+    repairOwnClaims: async () => {
+      await httpsCallable(functions(), "syncUserClaims")({ userId: user.uid });
+    },
+  }, healAttempted);
   return identitiesFromClaims(claims, userDoc);
+}
+
+// The signed-in user's uid right now, or null. Lets the auth watcher discard a stale
+// async identity resolution that settles after sign-out / a different sign-in.
+export function currentUserUid(): string | null {
+  return firebaseAuth().currentUser?.uid ?? null;
 }
 
 // Subscribe to auth state; calls back with the User (or null when signed out).

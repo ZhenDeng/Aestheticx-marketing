@@ -14,6 +14,7 @@ vi.mock("@/lib/firebase/auth", () => ({
   watchUser: (cb: (u: unknown) => void) => { cb({ uid: SUPER.user.id }); return () => {}; },
   identitiesForUser: async () => [SUPER],
   mustChangePasswordForUser: async () => false,
+  currentUserUid: () => SUPER.user.id,
 }));
 // Server truth: one active entity exists.
 vi.mock("@/lib/firebase/hydrate", () => ({ hydrate: vi.fn(async () => ({ ...emptyState(), businessEntitiesByID: { [ENTITY.id]: ENTITY } })) }));

@@ -50,24 +50,38 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     if (mode !== "live") return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
-    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser }) => {
+    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser, currentUserUid }) => {
       if (cancelled) return; // cleanup ran before the import resolved — don't subscribe
       unsub = watchUser(async (user) => {
         if (!user) {
           if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setResolved(true); }
           return;
         }
-        const [ids, mustChange] = await Promise.all([
-          identitiesForUser(user),
-          mustChangePasswordForUser(user),
-        ]);
-        if (cancelled) return;
-        setAvailableIdentities(ids);
-        // Restore the user's last-practised identity across reloads (device-local), else
-        // the default (first). window is present — this runs only in the browser callback.
-        setIdentity((cur) => cur ?? pickInitialIdentity(window.localStorage, user.uid, ids));
-        setMustChangePassword(mustChange);
-        setResolved(true);
+        try {
+          const [ids, mustChange] = await Promise.all([
+            identitiesForUser(user),
+            mustChangePasswordForUser(user),
+          ]);
+          // Stale-resolution guard: identity resolution can take seconds (it may run the
+          // claims self-heal). If the user signed out — or a different user signed in —
+          // while it was in flight, this result must not resurrect a ghost session.
+          if (cancelled || currentUserUid() !== user.uid) return;
+          setAvailableIdentities(ids);
+          // Restore the user's last-practised identity across reloads (device-local), else
+          // the default (first). window is present — this runs only in the browser callback.
+          setIdentity((cur) => cur ?? pickInitialIdentity(window.localStorage, user.uid, ids));
+          setMustChangePassword(mustChange);
+          setResolved(true);
+        } catch (error) {
+          // A resolution failure must not strand the app on the loading screen — land on
+          // the signed-out state (AuthGuard sends the user to /login to retry). Same stale
+          // guard as the success path: a late rejection from a PREVIOUS user's resolution
+          // must not stomp the current user's live session.
+          console.error("Identity resolution failed:", error);
+          if (!cancelled && currentUserUid() === user.uid) {
+            setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setResolved(true);
+          }
+        }
       });
     });
     return () => { cancelled = true; unsub?.(); };
