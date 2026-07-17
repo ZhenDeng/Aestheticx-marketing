@@ -18,6 +18,9 @@ export interface InvoiceParty {
   abn: string;
   email: string;
   address?: string;
+  /** The practitioner's personal name (17/07 feedback: seller block leads "Dr Jenn Lee"
+   *  above the trading name). Absent on clinics and on legacy snapshots. */
+  name?: string;
 }
 
 export interface Invoice {

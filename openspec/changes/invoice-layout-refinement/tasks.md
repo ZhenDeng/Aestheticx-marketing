@@ -2,8 +2,8 @@
 
 ## 1. Party data plumbing
 
-- [ ] 1.1 Add optional `name?: string` to `InvoiceParty` (`src/lib/demo/invoicing.ts`); tests for backward compatibility with snapshots lacking it
-- [ ] 1.2 Enrich `invoicePartyFor` (`src/lib/demo/backend.ts`): fill `name` (owner account/user), `address` (profile address → doctor principalPlace / clinic address / nurse active premise), `email` (account record); tests per party kind and for absent data staying empty
+- [x] 1.1 Add optional `name?: string` to `InvoiceParty` (`src/lib/demo/invoicing.ts`); tests for backward compatibility with snapshots lacking it
+- [x] 1.2 Enrich `invoicePartyFor` (`src/lib/demo/backend.ts`): fill `name` (owner account/user), `address` (profile address → doctor principalPlace / clinic address / nurse active premise), `email` (account record); tests per party kind and for absent data staying empty
 
 ## 2. Tax-invoice PDF layout
 

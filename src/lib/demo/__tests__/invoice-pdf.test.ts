@@ -150,10 +150,35 @@ describe("invoice party resolution + demo snapshot", () => {
 
   it("resolves parties from active business entities, name-falling-back to accounts", () => {
     const seeded = buildSeedState();
-    expect(invoicePartyFor(seeded, "doctor", "u-voss")).toEqual({ businessName: "Voss Aesthetics", abn: "51824753556", email: "" });
+    expect(invoicePartyFor(seeded, "doctor", "u-voss").businessName).toBe("Voss Aesthetics");
+    expect(invoicePartyFor(seeded, "doctor", "u-voss").abn).toBe("51824753556");
     // The seeded clinic entity deliberately has a blank ABN (the admin-editor demo gap).
     expect(invoicePartyFor(seeded, "clinic", LUMIERE.id).businessName).toBe("Lumière");
     expect(invoicePartyFor(emptyState(), "nurse", "u-sarah").businessName).toBe("Sarah Chen");
+  });
+
+  // 17/07 feedback: the seller/TO blocks need person name, address, and email lines —
+  // fill them from hydrated state where knowable (snapshots still win for live invoices).
+  it("enriches parties with person name, address, and email where knowable", () => {
+    const seeded = buildSeedState();
+    const doctor = invoicePartyFor(seeded, "doctor", "u-voss");
+    expect(doctor.name).toBe("Dr Elena Voss");
+    expect(doctor.businessName).toBe("Voss Aesthetics");
+    // Profile address is blank for Voss — the principal place of practice stands in.
+    expect(doctor.address).toBe("A. Voss Medical, 88 Oxford St, Paddington NSW 2021");
+    const clinic = invoicePartyFor(seeded, "clinic", LUMIERE.id);
+    expect(clinic.name).toBeUndefined(); // a clinic has no person line
+    expect(clinic.address).toBe("2 Notts Ave, Bondi Beach NSW 2026");
+    const nurse = invoicePartyFor(seeded, "nurse", "u-sarah");
+    expect(nurse.name).toBe("Sarah Chen");
+    // Nurse address = active premise, name-first so the TO block splits into location lines.
+    expect(nurse.address).toBe("Sarah Chen Aesthetics, 12 Hall St, Bondi Beach NSW 2026");
+  });
+
+  it("keeps absent data empty rather than fabricated", () => {
+    const p = invoicePartyFor(emptyState(), "nurse", "u-sarah");
+    expect(p.address).toBeUndefined();
+    expect(p.email).toBe("");
   });
 
   it("demo generateInvoice freezes issuer/billTo snapshots (backend Tier 3 #4 parity)", () => {
