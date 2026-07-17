@@ -440,43 +440,45 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
           bordered grid — outer frame, column dividers, right-aligned totals with a bold
           Total row — so what the doctor sees matches paper. */}
       {preview ? (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full border-collapse border border-line text-xs">
+        // The frame lives on the scroll wrapper: border-radius can't render on a
+        // border-collapse table, and the rounded-inner corner matches the panel.
+        <div className="mt-3 overflow-x-auto rounded-inner border border-line">
+          <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-line text-left">
-                <th className="py-1.5 px-2 font-medium text-ink-soft">Description</th>
-                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">Qty</th>
-                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">Unit</th>
-                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">GST</th>
-                <th className="border-l border-line py-1.5 px-2 text-right font-medium text-ink-soft">Total</th>
+                <th className={`${CELL} font-medium text-ink-soft`}>Description</th>
+                <th className={`${NUM_CELL} font-medium text-ink-soft`}>Qty</th>
+                <th className={`${NUM_CELL} font-medium text-ink-soft`}>Unit</th>
+                <th className={`${NUM_CELL} font-medium text-ink-soft`}>GST</th>
+                <th className={`${NUM_CELL} font-medium text-ink-soft`}>Total</th>
               </tr>
             </thead>
             <tbody>
               {preview.lines.map((l) => (
                 <tr key={l.authorisationID} className="border-b border-line">
-                  <td className="py-1.5 px-2 text-ink">{invoiceLineDay(l.dateISO)} — {l.patientName}</td>
-                  <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">1</td>
-                  <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.feeCents)}</td>
-                  <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">{formatAUD(l.gstCents)}</td>
-                  <td className="border-l border-line py-1.5 px-2 text-right text-ink">{formatAUD(l.feeCents + l.gstCents)}</td>
+                  <td className={`${CELL} text-ink`}>{invoiceLineDay(l.dateISO)} — {l.patientName}</td>
+                  <td className={`${NUM_CELL} text-ink-soft`}>1</td>
+                  <td className={`${NUM_CELL} text-ink-soft`}>{formatAUD(l.feeCents)}</td>
+                  <td className={`${NUM_CELL} text-ink-soft`}>{formatAUD(l.gstCents)}</td>
+                  <td className={`${NUM_CELL} text-ink`}>{formatAUD(l.feeCents + l.gstCents)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
                 <td colSpan={3} />
-                <td className="py-1.5 px-2 text-right text-ink-soft">Subtotal</td>
-                <td className="border-l border-line py-1.5 px-2 text-right text-ink-soft">{formatAUD(preview.subtotalCents)}</td>
+                <td className={`${CELL} text-right text-ink-soft`}>Subtotal</td>
+                <td className={`${NUM_CELL} text-ink-soft`}>{formatAUD(preview.subtotalCents)}</td>
               </tr>
               <tr>
                 <td colSpan={3} />
                 <td className="py-0.5 px-2 text-right text-ink-soft">GST (10%)</td>
                 <td className="border-l border-line py-0.5 px-2 text-right text-ink-soft">{formatAUD(preview.gstCents)}</td>
               </tr>
-              <tr className="border-t border-line">
+              <tr className="border-t-2 border-line">
                 <td colSpan={3} />
-                <td className="py-1.5 px-2 text-right font-medium text-ink">Total</td>
-                <td className="border-l border-line py-1.5 px-2 text-right font-medium text-ink">{formatAUD(preview.totalCents)}</td>
+                <td className={`${CELL} text-right font-medium text-ink`}>Total</td>
+                <td className={`${NUM_CELL} font-medium text-ink`}>{formatAUD(preview.totalCents)}</td>
               </tr>
             </tfoot>
           </table>
@@ -493,6 +495,11 @@ function GeneratePanel({ monthKey, counterpartyID, counterpartyType, priceInput,
     </div>
   );
 }
+
+// Shared preview-grid cell classes: every non-first column carries a left divider (the
+// PDF's column frames), numerals right-aligned.
+const CELL = "py-1.5 px-2";
+const NUM_CELL = "border-l border-line py-1.5 px-2 text-right";
 
 // "10/7/2026" from an ISO day for the selection row (mirrors invoiceLineDate in invoicePdf).
 function invoiceLineDay(dateISO: string): string {

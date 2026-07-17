@@ -2218,11 +2218,17 @@ export function invoicePartyFor(state: DemoState, kind: "doctor" | "nurse" | "cl
   const personName = kind === "clinic" ? null : accountNameByID(state, id);
   const profile = state.profileByUser[id];
   let address = "";
-  if (kind === "doctor") address = profile?.address || profile?.principalPlace || "";
+  // Doctor: the BUSINESS address leads — principal place of practice outranks the
+  // (possibly personal) profile address on a distributed financial document.
+  if (kind === "doctor") address = profile?.principalPlace || profile?.address || "";
   else if (kind === "nurse") {
     const premise = profile ? activePremise(profile) : null;
     address = premise ? [premise.name, premise.address].filter(Boolean).join(", ") : profile?.address || "";
-  } else if (id === LUMIERE.id) address = LUMIERE.address ?? "";
+  } else if (id === LUMIERE.id) {
+    // The demo cast has exactly one clinic; live invoices carry server snapshots, so
+    // this branch only ever resolves demo/legacy display.
+    address = LUMIERE.address ?? "";
+  }
   return {
     businessName: entityName || ownerDisplayLabel(state, { kind, id } as PatientOwner),
     abn: entity?.isActive ? entity.abn : "",

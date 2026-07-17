@@ -40,9 +40,10 @@ export function invoiceLineDescription(line: InvoiceLine): string {
 }
 
 /** One line per comma group — "a, b, c" → ["a","b","c"] (17/07 feedback: addresses stack
- *  vertically, never merge into one row). No commas → one line; empty/undefined → none. */
+ *  vertically, never merge into one row). Only a comma FOLLOWED BY whitespace separates,
+ *  so numeric commas ("Suite 1,200") stay intact. No commas → one line; empty → none. */
 export function addressLines(address: string | undefined): string[] {
-  return (address ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return (address ?? "").split(/,\s+/).map((s) => s.trim()).filter(Boolean);
 }
 
 export interface TaxInvoiceModel {
@@ -150,7 +151,7 @@ export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
   writer.text("TAX INVOICE", 23, INK);
   const titleBottom = writer.currentY();
 
-  let metaY = headerTop + (23 - 8) * 0.72; // share the title's optical top line
+  let metaY = headerTop; // top-aligned with the title — the block fills the corner whitespace
   const metaLine = (text: string, size: number, color: Rgb, opts: { charSpace?: number } = {}): void => {
     writer.setY(metaY);
     writer.textAt(text, size, color, META_X, { width: META_W, align: "right", ...opts });
@@ -183,6 +184,11 @@ export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
   // wrapped inside its column, qty always 1 (per-script invoicing), numerals
   // right-aligned, GST and the GST-inclusive amount shown per line (Example 2).
   writer.moveDown(0.6);
+  // Never orphan a header band at the page bottom: if the band plus one minimal row
+  // can't fit (a long TO/seller block parked the cursor low), start the table on a
+  // fresh page instead of framing an empty band.
+  const minRowH = NUM_SIZE * LINE + CELL_PAD_Y * 2;
+  if (writer.currentY() + HEADER_BAND_H + minRowH > BOTTOM_LIMIT) writer.newPage();
   let segTop = writer.currentY(); // top of the frame segment on the current page
   drawTableHeader(writer);
   for (const line of model.lines) {

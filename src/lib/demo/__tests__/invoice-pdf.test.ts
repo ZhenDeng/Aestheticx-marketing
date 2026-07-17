@@ -57,6 +57,11 @@ describe("addressLines", () => {
     expect(addressLines(undefined)).toEqual([]);
     expect(addressLines("")).toEqual([]);
   });
+
+  it("keeps numeric commas intact — only a comma followed by whitespace separates", () => {
+    expect(addressLines("Suite 1,200 George St, Sydney NSW 2000"))
+      .toEqual(["Suite 1,200 George St", "Sydney NSW 2000"]);
+  });
 });
 
 // 17/07 feedback: the model pre-assembles the vertical blocks so the renderer is a
@@ -100,6 +105,20 @@ describe("buildTaxInvoiceModel blocks", () => {
     const m = buildTaxInvoiceModel(invoice(), issuer, { businessName: "Sarah Chen Aesthetics", abn: "", email: "", name: "Sarah Chen" });
     expect(m.toName).toBe("Sarah Chen");
     expect(m.toAddressLines).toEqual([]);
+  });
+
+  it("never prints the identity twice when name equals business name", () => {
+    const m = buildTaxInvoiceModel(invoice(), { businessName: "Sarah Chen", abn: "", email: "", name: "Sarah Chen" }, billTo);
+    expect(m.sellerLead).toBe("Sarah Chen");
+    expect(m.sellerBusiness).toBeNull();
+  });
+
+  it("leads with an em dash when a party is entirely empty", () => {
+    const empty = { businessName: "", abn: "", email: "" };
+    const m = buildTaxInvoiceModel(invoice(), empty, empty);
+    expect(m.sellerLead).toBe("—");
+    expect(m.toName).toBe("—");
+    expect(() => renderTaxInvoicePdf(m)).not.toThrow();
   });
 });
 
@@ -153,6 +172,13 @@ describe("renderTaxInvoicePdf", () => {
 
   // ——— 17/07 feedback: header metadata top-right, vertical identity blocks ———
 
+  /** Tm y-coordinates (PDF bottom-up: larger = higher on the page) for glyph runs of `text`. */
+  const tmYs = (file: string, text: string): number[] =>
+    Array.from(
+      file.matchAll(new RegExp(`1 0 0 1 [\\d.]+ ([\\d.]+) Tm \\(${text.replace(/[$().]/g, "\\$&")}\\) Tj`, "g")),
+      (m) => Number(m[1]),
+    );
+
   it("positions DATE ISSUED and INVOICE NUMBER in the top-right corner, title at the left margin", () => {
     const file = render();
     expect(tmXs(file, "TAX INVOICE")[0]).toBe(56); // title anchored at the left margin
@@ -161,6 +187,37 @@ describe("renderTaxInvoicePdf", () => {
       const xs = tmXs(file, text);
       expect(xs.length, text).toBeGreaterThan(0);
       expect(Math.min(...xs), text).toBeGreaterThan(297.64); // page midline
+    }
+    // Top-aligned with the title band: the first kicker's baseline sits ABOVE the 23pt
+    // title's baseline — the metadata block fills the corner whitespace, not the line below.
+    expect(tmYs(file, "DATE ISSUED")[0]).toBeGreaterThan(tmYs(file, "TAX INVOICE")[0]);
+  });
+
+  it("wraps an unbroken long token (email) instead of overflowing the page edge", () => {
+    const longEmail = `${"billing-and-accounts-receivable".repeat(4)}@example.com`; // ≈ 700pt at 10pt — wider than the 483pt content width
+    const m = buildTaxInvoiceModel(invoice(), { ...issuer, email: longEmail }, billTo);
+    const file = new TextDecoder("latin1").decode(renderTaxInvoicePdf(m));
+    // The token is split across runs: no single glyph run carries the full string…
+    expect(file).not.toContain(`(${longEmail}) Tj`);
+    // …and nothing was dropped (the tail of the address survives).
+    expect(file).toContain("@example.com");
+  });
+
+  it("never draws an orphan table-header band without at least one row under it", () => {
+    // Sweep seller-block heights across the page boundary so some N parks the cursor
+    // in the orphan window (band fits, no row does) — the guard must hold for all.
+    for (let n = 45; n <= 68; n += 1) {
+      const m = buildTaxInvoiceModel(
+        invoice(),
+        { ...issuer, address: Array.from({ length: n }, (_, i) => `Line ${i + 1}`).join(", ") },
+        billTo,
+      );
+      const file = new TextDecoder("latin1").decode(renderTaxInvoicePdf(m));
+      for (const s of streams(file)) {
+        if (s.includes("(DESCRIPTION) Tj")) {
+          expect(s, `seller block of ${n} lines`).toContain("treatment authorisation");
+        }
+      }
     }
   });
 
@@ -270,6 +327,37 @@ describe("invoice party resolution + demo snapshot", () => {
     const p = invoicePartyFor(emptyState(), "nurse", "u-sarah");
     expect(p.address).toBeUndefined();
     expect(p.email).toBe("");
+  });
+
+  // Engineer review 17/07: the seller address on a distributed financial document is the
+  // BUSINESS address — the principal place of practice outranks the personal profile address.
+  it("prefers the doctor's principal place of practice over the profile address", () => {
+    const seeded = buildSeedState();
+    const state = {
+      ...seeded,
+      profileByUser: {
+        ...seeded.profileByUser,
+        "u-voss": { ...seeded.profileByUser["u-voss"], address: "7 Home St, St Kilda VIC 3182" },
+      },
+    };
+    expect(invoicePartyFor(state, "doctor", "u-voss").address)
+      .toBe("A. Voss Medical, 88 Oxford St, Paddington NSW 2021");
+  });
+
+  it("falls back to the nurse's profile address when no premise exists", () => {
+    const seeded = buildSeedState();
+    const state = {
+      ...seeded,
+      profileByUser: {
+        ...seeded.profileByUser,
+        "u-sarah": { ...seeded.profileByUser["u-sarah"], premises: [], address: "3/21 Crown St, Surry Hills NSW 2010" },
+      },
+    };
+    expect(invoicePartyFor(state, "nurse", "u-sarah").address).toBe("3/21 Crown St, Surry Hills NSW 2010");
+  });
+
+  it("resolves no address for a clinic that is not the demo cast's", () => {
+    expect(invoicePartyFor(buildSeedState(), "clinic", "clinic-other").address).toBeUndefined();
   });
 
   it("demo generateInvoice freezes issuer/billTo snapshots (backend Tier 3 #4 parity)", () => {
