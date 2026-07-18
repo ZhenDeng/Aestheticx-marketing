@@ -447,6 +447,13 @@ export function approveRequest(
   }
   const expiry = addMonthsUTC(now, VALIDITY_MONTHS);
   const clinicID = request.context.kind === "clinic" ? request.context.clinic.id : null;
+  // Mirrors the Cloud Function's clinicPremiseStamp: the clinic's premises ride onto every
+  // authorisation so the client-rendered Clause 68C direction can print them. Omitted (not
+  // blanked) when there is no usable address, so the capture dialog still prompts.
+  const clinicAddress = request.context.kind === "clinic" ? (request.context.clinic.address ?? "").trim() : "";
+  const clinicPremise = request.context.kind === "clinic" && clinicAddress !== ""
+    ? { id: request.context.clinic.id, name: request.context.clinic.name, address: clinicAddress }
+    : null;
   const granted: Authorisation[] = request.items.map((item, index) => ({
     id: `${request.id}-${index}`,
     requestID: request.id,
@@ -468,6 +475,7 @@ export function approveRequest(
     // at render time would print a raw uid in live mode.
     doctorName: identity.user.name,
     nurseName: request.nurse.name,
+    ...(clinicPremise ? { clinicPremise } : {}),
   }));
 
   const authorisations = { ...state.authorisations };

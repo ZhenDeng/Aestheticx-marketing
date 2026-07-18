@@ -166,6 +166,40 @@ describe("approval stamps (round 6)", () => {
       expect(a.medication.route).toBe("intramuscular");
     }
   });
+
+  it("stamps the clinic's premises onto a clinic authorisation, mirroring the Cloud Function", () => {
+    // A clinic request stamps premise: null deliberately ("use the clinic's address"). The
+    // clinic's address must therefore ride onto the authorisation itself, or the client-rendered
+    // Clause 68C direction has nowhere to read it from.
+    const state = buildSeedState();
+    const clinicPatient = Object.values(state.patients).find((p) => p.owner.kind === "clinic");
+    if (!clinicPatient) throw new Error("seed has no clinic patient");
+    const submitted = submitRequest(
+      state,
+      { patientID: clinicPatient.id, doctorID: voss.user.id, items: [botox], identity: sarahClinic },
+      SEED_NOW,
+    );
+    const { granted } = approveRequest(submitted.state, submitted.request.id, voss, SEED_NOW + 86_400_000);
+    expect(granted[0].premise).toBeNull();
+    expect(granted[0].clinicPremise).toEqual({
+      id: LUMIERE.id, name: LUMIERE.name, address: LUMIERE.address,
+    });
+  });
+
+  it("stamps no clinic premises on an independent authorisation", () => {
+    const state = buildSeedState();
+    const own = Object.values(state.patients).find(
+      (p) => p.owner.kind === "nurse" && p.owner.id === sarahIndependent.user.id,
+    );
+    if (!own) throw new Error("no independent patient in seed");
+    const submitted = submitRequest(
+      state,
+      { patientID: own.id, doctorID: voss.user.id, items: [botox], identity: sarahIndependent },
+      SEED_NOW,
+    );
+    const { granted } = approveRequest(submitted.state, submitted.request.id, voss, SEED_NOW + 86_400_000);
+    expect(granted[0].clinicPremise).toBeUndefined();
+  });
 });
 
 describe("profile premises round-trip through updateProfile", () => {
