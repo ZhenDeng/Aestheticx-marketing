@@ -7,7 +7,7 @@ import { loginUrlFor, redirectForRole } from "@/lib/demo/authRedirect";
 import { FirstLoginPassword } from "./FirstLoginPassword";
 
 export function AuthGuard({ children }: { children: ReactNode }) {
-  const { identity, resolved, mustChangePassword } = useDemoAuth();
+  const { identity, resolved, mustChangePassword, mode } = useDemoAuth();
   const router = useRouter();
   // usePathname is safe here: AuthGuard wraps only the /app area (all client-rendered), not the
   // statically-prerendered /login page, and pathname alone needs no Suspense boundary.
@@ -19,11 +19,12 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     // lose the requested page. Once resolved-and-signed-out, carry the target through
     // ?next= so the login round-trip lands back here. window.location is read at effect
     // time (client-only) instead of usePathname/useSearchParams — the login page stays
-    // statically prerendered and no Suspense boundary is needed.
+    // statically prerendered and no Suspense boundary is needed. The mode picks the entry
+    // point: a sandbox visitor goes back to /demo, a live one to /login.
     if (resolved && !identity) {
-      router.replace(loginUrlFor(window.location.pathname, window.location.search));
+      router.replace(loginUrlFor(window.location.pathname, window.location.search, mode));
     }
-  }, [resolved, identity, router]);
+  }, [resolved, identity, router, mode]);
 
   // Role-based route separation (constitution §16/Rule 7): keep Platform Admin in the admin
   // shell and clinical roles out of it. Only once signed in and past the first-login gate.
