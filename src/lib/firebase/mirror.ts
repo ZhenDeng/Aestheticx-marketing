@@ -175,6 +175,13 @@ export async function mirrorSendAftercare(input: {
   });
 }
 
+// Re-attempt a failed aftercare email. mailOutbox is Function-only, so the deployed
+// callable takes the patient note we DO hold and resolves the linked outbox doc itself,
+// re-delivering and mirroring the fresh status (+ cleared failureReason) back onto the note.
+export async function mirrorRetryAftercare(patientID: string, noteID: string): Promise<void> {
+  await httpsCallable(functions(), "retryAftercare")({ patientId: patientID, noteId: noteID });
+}
+
 export async function mirrorCreatePatient(p: Patient): Promise<void> {
   await setDoc(doc(firestore(), "patients", p.id), encodePatientForCreate(p));
 }

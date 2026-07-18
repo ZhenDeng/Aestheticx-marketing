@@ -41,6 +41,27 @@ describe("note delivery-status mapper", () => {
   });
 });
 
+// The mailDelivery trigger records WHY a send failed (`failureReason`, e.g. the verbatim
+// Resend rejection) and mirrors it onto the note. Dropping it on the floor here is what made
+// the 18/07 "always queued then failed" report undiagnosable, so it must survive the mapper.
+describe("note failureReason mapper", () => {
+  it("round-trips failureReason on a failed note", () => {
+    const reason = "provider 403: You can only send testing emails to your own address.";
+    const doc = encodeNote({ ...base, failureReason: reason });
+    expect(doc).toMatchObject({ failureReason: reason });
+    expect(mapNote("n1", "p1", doc).failureReason).toBe(reason);
+  });
+  it("leaves failureReason undefined when absent", () => {
+    expect(mapNote("n2", "p1", { kind: "aftercareRecord", deliveryStatus: "failed" }).failureReason).toBeUndefined();
+  });
+  it("omits failureReason from the encoded doc when unset", () => {
+    expect(encodeNote(base)).not.toHaveProperty("failureReason");
+  });
+  it("ignores a non-string failureReason rather than coercing it to empty", () => {
+    expect(mapNote("n3", "p1", { kind: "aftercareRecord", failureReason: 42 }).failureReason).toBeUndefined();
+  });
+});
+
 describe("recordAftercareSend delivery fields", () => {
   it("records a queued send with the chosen categories", () => {
     const { state, note } = recordAftercareSend(
@@ -57,6 +78,17 @@ describe("setNoteDeliveryStatus", () => {
     const { state, note } = recordAftercareSend(patientState(), { patientID: "p1", content: "c", medications: [], categories: [], identity: voss }, 1);
     const next = setNoteDeliveryStatus(state, "p1", note.id, "delivered", voss);
     expect(notesForPatient(next, "p1")[0].deliveryStatus).toBe("delivered");
+  });
+  // Backend parity: mail.ts mirrorToNote deletes failureReason when a retry succeeds, so a
+  // delivered note must never keep the reason its earlier failure recorded.
+  it("clears failureReason when a retry flips the note to delivered", () => {
+    const state: DemoState = {
+      ...patientState(),
+      notesByPatient: { p1: [{ ...base, failureReason: "provider 422: recipient mailbox is full" }] },
+    };
+    const next = setNoteDeliveryStatus(state, "p1", "n1", "delivered", voss);
+    expect(notesForPatient(next, "p1")[0].deliveryStatus).toBe("delivered");
+    expect(notesForPatient(next, "p1")[0].failureReason).toBeUndefined();
   });
   it("throws on a missing note", () => {
     expect(() => setNoteDeliveryStatus(patientState(), "p1", "nope", "delivered", voss)).toThrow(BackendError);

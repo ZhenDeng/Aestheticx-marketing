@@ -38,7 +38,10 @@ interface StoreValue {
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
-  retryAftercare: (patientID: string, noteID: string, identity: Identity) => void;
+  /** Resolves once the re-send has been attempted, so callers can disable their control
+   *  while it is in flight — a live retry sends a REAL email, so a double-click would
+   *  deliver the patient two copies. */
+  retryAftercare: (patientID: string, noteID: string, identity: Identity) => Promise<void>;
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
   saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
   deleteNoteTemplate: (id: string, identity: Identity) => void;
@@ -459,11 +462,20 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           }
         })();
       },
-      retryAftercare: (patientID, noteID, identity) => {
-        // Demo: a successful re-attempt flips the record to delivered. Live retry is a
-        // deferred backend task (the Retry button is demo-gated), so this is demo-only.
+      retryAftercare: async (patientID, noteID, identity) => {
+        // Demo: a successful re-attempt flips the record to delivered. Live calls the deployed
+        // retryAftercare callable, which re-delivers and mirrors the fresh status onto the note
+        // server-side — so, as with sendAftercare, we must NOT write locally; rehydrate instead.
         if (!live) {
           setState((s) => backend.setNoteDeliveryStatus(s, patientID, noteID, "delivered", identity));
+          return;
+        }
+        try {
+          const m = await import("@/lib/firebase/mirror");
+          await m.mirrorRetryAftercare(patientID, noteID);
+          setRefreshTick((t) => t + 1);
+        } catch (e) {
+          setLastSyncError(syncErrorMessage(e));
         }
       },
       noteTemplatesForOwner: (ownerID) => backend.noteTemplatesForOwner(state, ownerID),

@@ -1602,7 +1602,10 @@ export function setNoteDeliveryStatus(
   const idx = list.findIndex((n) => n.id === noteID);
   if (idx < 0) throw new BackendError("notFound");
   const next = [...list];
-  next[idx] = { ...next[idx], deliveryStatus: status };
+  // Parity with the backend's mirrorToNote, which deletes failureReason on a successful
+  // re-delivery: only a still-failed note carries a reason.
+  const { failureReason, ...note } = next[idx];
+  next[idx] = status === "failed" ? { ...note, deliveryStatus: status, failureReason } : { ...note, deliveryStatus: status };
   return { ...state, notesByPatient: { ...state.notesByPatient, [patientID]: next } };
 }
 

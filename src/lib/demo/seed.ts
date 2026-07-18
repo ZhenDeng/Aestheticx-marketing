@@ -248,6 +248,9 @@ export function buildSeedState(): DemoState {
     body: "— ANTIWRINKLE —\nAvoid touching or massaging the treated area for 4 hours. Stay upright for 4 hours.",
     createdAt: SEED_NOW, authorID: "u-voss", authorBadge: "Dr Elena Voss",
     consumedAuthorisationIDs: [], medications: [], deliveryStatus: "failed", aftercareCategories: ["antiwrinkle"],
+    // Shaped like a real mailDelivery failureReason ("provider {status}: {body}") so the demo
+    // shows the reason line, not just the badge.
+    failureReason: "provider 422: recipient mailbox is full",
   };
   state = {
     ...state,
