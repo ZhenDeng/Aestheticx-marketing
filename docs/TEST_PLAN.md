@@ -82,18 +82,22 @@ in [../e2e/README.md](../e2e/README.md). Runs in CI on every PR (`.github/workfl
 | a11y | axe-core over login / marketing / dashboard (serious+critical) | ✅ `a11y` (see note) |
 | E4 | Doctor runs a simulated consult call (ring → in-call → end) | ✅ `e4-consult-call` |
 | E7 | Approved filler → standing Hyaluronidase emergency authorisation on file | ✅ `e7-emergency-auth` |
-| E3 (full round-trip) | nurse submits → the addressed doctor approves the *same* request → authorisations + emergency auths + prescriber recorded | ✅ **domain-level** integration test (`cross-role-authorisation-roundtrip.test.ts`) — see note |
+| E3 (full round-trip) | nurse submits → the addressed doctor approves the *same* request → authorisations + emergency auths + prescriber recorded | ✅ **two ways** — domain-level (`cross-role-authorisation-roundtrip.test.ts`) **and** a real-browser cross-repo emulator E2E (`e2e-emulator/`) |
 
-**E3 round-trip note:** a *browser* round-trip is not achievable from this repo. Two blockers: (1)
-demo mode has no shared state across accounts (store resets on the sign-out reload), and (2) in
-live mode the approve step is a backend Cloud Function (`mirrorApproveRequest` →
-`httpsCallable("approveRequest")`) whose logic lives in the separate functions repo, so even an
-auth+firestore emulator launched here can't execute it. The handoff is instead covered as a
-**shared-state integration test** over the real `backend.ts` functions (the same ones the app and
-seed use): nurse `submitRequest` → the addressed doctor `approveRequest` → authorisations issued,
-adrenaline + hyaluronidase emergency auths granted, prescriber recorded, request cleared; plus the
-permission boundary (nurse/other-doctor rejected). A true *browser* round-trip would need a
-combined frontend+functions emulator harness (a cross-repo effort).
+**E3 round-trip — now covered end-to-end.** Two complementary tests:
+
+1. **Domain-level** (`src/lib/demo/__tests__/cross-role-authorisation-roundtrip.test.ts`) — the
+   handoff over the real `backend.ts` functions with shared state: nurse `submitRequest` → the
+   addressed doctor `approveRequest` → authorisations issued, adrenaline + hyaluronidase emergency
+   auths granted, prescriber recorded, request cleared; plus the permission boundary. Fast, in CI.
+2. **Real-browser cross-repo** (`e2e-emulator/`, `npm run test:e2e:emulator`) — the app in **live
+   mode wired to the Firebase Emulator Suite**, so Firestore persists across the sign-out and the
+   **real `approveRequest` Cloud Function** (from the backend repo) runs. A nurse logs in, creates a
+   patient, submits a request; signs out; the doctor logs in, sees the same request hydrated from
+   Firestore, and approves it for real. Requires the backend repo + emulators (see
+   `e2e-emulator/README.md`); a local/manual harness, not in the standard CI. The frontend
+   emulator wiring in `client.ts` is env-gated (`NEXT_PUBLIC_FIREBASE_EMULATORS`), off everywhere
+   else.
 
 **a11y note:** the `color-contrast` rule is excluded as a known baseline exception — axe reports
 `serious` AA-contrast violations on a few nodes (login 1, home 2, dashboard 2) from the tinted/
@@ -147,5 +151,6 @@ Skip coverage for: marketing pages, `types.ts`, generated/config files.
 1. ~~Fix the 3 unhandled test errors; add coverage reporting (baseline numbers).~~ ✅ **Done** — see §6.
 2. ~~Component tests for the HIGH-priority 0%-coverage gaps: Login, Calendar page, Bookings, PatientForm/TreatmentNoteForm/AftercareForm.~~ ✅ **Done** — landed via #105 (auth + booking approval + clinical forms) and #103 (calendar integration smoke). components/app 23.8%→57.9%, overall 46.9%→53.4%.
 3. ~~Install Playwright; implement E1–E3, E5 (core loop + revenue path).~~ ✅ **Done** — demo-mode constraints documented in `e2e/README.md`.
-4. ~~Remaining journeys + `@axe-core/playwright` checks + CI.~~ ✅ **Done** — E4, E6, E7, E9, E10, a11y (**22 E2E tests total**) and a GitHub Actions workflow running unit + E2E on every PR. **Still open:** the full cross-role E3 round-trip (needs live/emulator), and fixing the `color-contrast` a11y baseline (in progress).
-5. **← NEXT.** MEDIUM/LOW component gaps opportunistically alongside feature work (TDD): `components/admin` (21%), `app/app/patients` pages, and the thin `lib/firebase` live watchers/storage (52.8%).
+4. ~~Remaining journeys + `@axe-core/playwright` checks + CI.~~ ✅ **Done** — E4, E6, E7, E9, E10, a11y (**22 E2E tests total**) and a GitHub Actions workflow running unit + E2E on every PR. `color-contrast` a11y baseline fixed + enforced (#110).
+5. ~~Full cross-role E3 round-trip.~~ ✅ **Done** — covered two ways: a fast domain-level integration test (in CI) and a real-browser cross-repo emulator E2E (`e2e-emulator/`, local/manual). See §3.
+6. **← NEXT.** MEDIUM/LOW component gaps opportunistically alongside feature work (TDD): `components/admin` (21%), `app/app/patients` pages, and the thin `lib/firebase` live watchers/storage (52.8%).
