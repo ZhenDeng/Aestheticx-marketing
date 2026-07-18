@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:emulator": "playwright test --config=playwright.emulator.config.ts"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
@@ -38,6 +39,7 @@
     "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "firebase-admin": "^14.2.0",
     "jsdom": "^25.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
