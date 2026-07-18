@@ -604,10 +604,13 @@ export function hasAlert(p: Patient): boolean {
   return (p.alert ?? "").trim().length > 0;
 }
 
+// "Sarah Chen @ Lumière Clinic". A clinic whose name could not be resolved yields a BLANK name
+// (never the clinic id — see identitiesFromClaims), so drop the "@" clause rather than render a
+// dangling separator.
 export function identityBadge(identity: Identity): string {
-  return identity.context.kind === "clinic"
-    ? `${identity.user.name} @ ${identity.context.clinic.name}`
-    : identity.user.name;
+  if (identity.context.kind !== "clinic") return identity.user.name;
+  const clinic = identity.context.clinic.name.trim();
+  return clinic ? `${identity.user.name} @ ${clinic}` : identity.user.name;
 }
 
 export type PatientField =

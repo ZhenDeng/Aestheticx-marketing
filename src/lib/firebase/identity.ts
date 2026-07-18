@@ -12,7 +12,21 @@ function isRole(r: string): r is Role {
   return r === "doctor" || r === "nurse" || r === "clinicAdmin" || r === "superAdmin";
 }
 
-export function identitiesFromClaims(claims: DemoClaims, userDoc: { name?: string } | null): Identity[] {
+/**
+ * Claims carry only clinic IDs, so the human-readable name is resolved separately from the
+ * caller's own `clinics/{id}` docs (see `identitiesForUser`) and passed in here, keeping this
+ * module pure.
+ *
+ * An unresolved clinic yields a BLANK name, never the clinic id. The id reached the dashboard as
+ * "Acting as nurse · xY3kf9…" — the same defect class as the raw-uid prescriber name on the
+ * Clause 68C direction. Blank is detectable by the caller, which omits the clause; an id is a
+ * non-empty string that every consumer renders as though it were a real name.
+ */
+export function identitiesFromClaims(
+  claims: DemoClaims,
+  userDoc: { name?: string } | null,
+  clinicNames: Record<string, string> = {},
+): Identity[] {
   const user = { id: claims.uid, name: userDoc?.name ?? "" };
   const identities: Identity[] = [];
 
@@ -25,7 +39,8 @@ export function identitiesFromClaims(claims: DemoClaims, userDoc: { name?: strin
 
   // One identity per clinic membership; "admin" => clinicAdmin, else the user's clinical role.
   for (const [clinicId, kind] of Object.entries(claims.clinics)) {
-    const clinic = { id: clinicId, name: clinicId };
+    const resolved = clinicNames[clinicId];
+    const clinic = { id: clinicId, name: typeof resolved === "string" ? resolved.trim() : "" };
     if (kind === "admin") {
       identities.push({ user, role: "clinicAdmin", context: { kind: "clinic", clinic } });
     } else {
