@@ -22,12 +22,11 @@ describe("navItemsFor", () => {
     }
   });
 
-  it("shows the Invoice tab to doctors only (15/07 — nurses/clinics receive invoices by email)", () => {
+  it("shows the Invoice tab to every clinical role (billing matrix: nurses and clinics have their own streams)", () => {
     expect(labels("doctor")).toContain("Invoice");
-    expect(labels("nurse")).not.toContain("Invoice");
-    expect(labels("clinicAdmin")).not.toContain("Invoice");
-    // …but the rest of the clinical nav is untouched for them
-    expect(labels("nurse")).toContain("Calendar");
+    expect(labels("nurse")).toContain("Invoice");
+    expect(labels("clinicAdmin")).toContain("Invoice");
+    expect(labels("superAdmin")).not.toContain("Invoice");
   });
 
   it("keeps Profile reachable for both admin and clinical roles", () => {

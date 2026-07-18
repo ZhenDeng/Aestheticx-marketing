@@ -7,9 +7,11 @@ export interface NavItem {
   label: string;
 }
 
-// 14/07 feedback: Invoice is a first-class tab. 15/07 feedback: the Invoice section is
-// DOCTOR-ONLY — nurses/clinics no longer see it (they receive generated invoices by email).
-// navItemsFor drops /app/billing for non-doctors below.
+// 14/07 feedback: Invoice is a first-class tab. Billing matrix (change:
+// multi-tenant-billing-matrix): the tab opens to EVERY clinical role — nurses and clinic
+// admins now issue/receive their own invoice streams (client sales, top-ups, service
+// fees); the doctor-only restriction (15/07) applied only while authorisation invoicing
+// was the sole stream.
 const CLINICAL_NAV: NavItem[] = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/patients", label: "Patients" },
@@ -32,9 +34,7 @@ const ADMIN_NAV: NavItem[] = [
 ];
 
 export function navItemsFor(role: Role): NavItem[] {
-  if (role === "superAdmin") return ADMIN_NAV;
-  // 15/07 feedback: the Invoice section is doctor-only.
-  return role === "doctor" ? CLINICAL_NAV : CLINICAL_NAV.filter((i) => i.href !== "/app/billing");
+  return role === "superAdmin" ? ADMIN_NAV : CLINICAL_NAV;
 }
 
 // The nav href that should render active for a pathname: the longest item href that is the
