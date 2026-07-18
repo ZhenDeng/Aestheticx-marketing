@@ -194,6 +194,10 @@ export interface Authorisation {
    *  exporting this direction could not resolve it. Absent for independent authorisations and on
    *  authorisations approved before the stamp existed. */
   clinicPremise?: Premise;
+  /** Prescriber contact stamped at approval by approveRequest (Clause 68C direction). Absent on
+   *  authorisations approved before the stamp shipped, and when the profile field was blank. */
+  prescriberPhone?: string;
+  prescriberPrincipalPlace?: string;
 }
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";

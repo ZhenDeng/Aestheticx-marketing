@@ -199,6 +199,30 @@ describe("mapAuthorisation", () => {
     expect("clinicPremise" in mapAuthorisation("a3", { ...base, clinicPremise: { id: "c", name: "n", address: "  " } }))
       .toBe(false);
   });
+
+  // Stamped by approveRequest so a nurse — who cannot read the prescriber's users doc — can
+  // still render the Clause 68C contact lines. Absent stamps must stay absent, not become "".
+  it("carries the stamped prescriber contact", () => {
+    const a = mapAuthorisation("a1", {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah",
+      clinicId: null, repeatsRemaining: 5, expiresAtMillis: 1800000000000,
+      medication: { name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] },
+      prescriberPhone: "02 9555 0100",
+      prescriberPrincipalPlace: "88 Oxford St, Paddington NSW 2021",
+    });
+    expect(a.prescriberPhone).toBe("02 9555 0100");
+    expect(a.prescriberPrincipalPlace).toBe("88 Oxford St, Paddington NSW 2021");
+  });
+
+  it("leaves prescriber contact absent on an unstamped authorisation", () => {
+    const a = mapAuthorisation("a1", {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah",
+      clinicId: null, repeatsRemaining: 5, expiresAtMillis: 1800000000000,
+      medication: { name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] },
+    });
+    expect(a).not.toHaveProperty("prescriberPhone");
+    expect(a).not.toHaveProperty("prescriberPrincipalPlace");
+  });
 });
 
 describe("mapAuthRequest", () => {

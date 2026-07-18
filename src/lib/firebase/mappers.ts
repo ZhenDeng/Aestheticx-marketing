@@ -140,6 +140,8 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
   const expiresAt = data.expiresAtMillis != null ? intValue(data.expiresAtMillis) : toMillis(data.expiresAt);
   const premise = mapPremise(data.premise);
   const clinicPremise = mapPremise(data.clinicPremise);
+  const prescriberPhone = str(data.prescriberPhone);
+  const prescriberPrincipalPlace = str(data.prescriberPrincipalPlace);
   return {
     id,
     requestID: str(data.requestId),
@@ -160,6 +162,9 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     ...(str(data.doctorName) ? { doctorName: str(data.doctorName) } : {}),
     ...(str(data.nurseName) ? { nurseName: str(data.nurseName) } : {}),
     ...(clinicPremise ? { clinicPremise } : {}),
+    // Prescriber contact, stamped by the same Function under that same absent-not-blank rule.
+    ...(prescriberPhone ? { prescriberPhone } : {}),
+    ...(prescriberPrincipalPlace ? { prescriberPrincipalPlace } : {}),
   };
 }
 
