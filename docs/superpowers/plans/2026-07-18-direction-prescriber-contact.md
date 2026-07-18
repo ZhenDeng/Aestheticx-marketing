@@ -4,97 +4,96 @@
 
 **Goal:** Stamp the prescriber's phone and principal place of practice onto every authorisation at approval, so a **nurse** exporting an NSW Clause 68C direction gets both fields prefilled instead of blank.
 
-**Architecture:** `approveRequest` already reads the approving doctor's `users/{uid}` doc inside its approval transaction, and a sibling change already spreads a pure helper's output onto each authorisation it writes. This change extends that helper with two more fields — no new read, no new write site. The web maps the new fields and prefers them over its existing profile lookup, falling back when unstamped.
+**Architecture:** `approveRequest` already reads the approving doctor's `users/{uid}` doc inside its approval transaction, and already spreads two sibling stamp helpers onto each authorisation it writes. This change adds a third peer helper and a third spread — no new read, no new write site. The web maps the new fields and prefers them over its existing profile lookup, falling back when unstamped.
 
 **Tech Stack:** TypeScript, Firebase Cloud Functions (Admin SDK, Firestore transactions), vitest, Next.js/React, Testing Library.
 
 ## Global Constraints
 
-- **Hard precondition:** branch `fix/direction-party-names` in `~/Documents/AestheticX` must be **committed and landed** before Task 1 starts. It is uncommitted WIP as of 2026-07-18. Do not edit its working tree.
-- **Two repos.** Backend: `~/Documents/AestheticX` (git root; sources under `backend/functions/`). Web: this repo.
-- **Web branches off `fix/direction-form-autofill`**, never `main` — that branch rewrites the `useState` initialiser Task 6 edits.
+- **Two repos.** Backend: `~/Documents/AestheticX` (git root is the iOS monorepo; sources under `backend/functions/`). Web: `/Users/zhendeng/Documents/Aestheticx-marketing`.
+- **Backend branches off `fix/direction-clinic-premise`** (`e72ea1c`), which already carries `fix/direction-party-names` (`6605280`). Both siblings are committed. Branching off `main` or off party-names alone conflicts at the shared `tx.set`.
+- **Web branches off `fix/direction-form-autofill`**, never `main` — that branch rewrites the `useState` initialiser Task 5 edits.
+- **Follow the sibling shape:** one narrowly-named helper per Clause 68C concern, spread separately at the write site. Do not merge into, rename, or otherwise edit `directionPartyNames` or `clinicPremiseStamp`.
 - **A stamp OMITS an unresolvable value, never defaults it.** The web reader treats any non-empty stamp as authoritative, so a placeholder would print onto the direction *and* pass the `missingDirectionFields` gate that exists to block exactly that.
 - **No backfill.** Future approvals only. Existing authorisations keep today's behaviour.
-- **Contact only.** Do not touch `directionPrescriberName` or `directionResponsibleProvider` — the prescriber *name* belongs to the party-names story.
+- **Contact only.** Do not touch `directionPrescriberName` or `directionResponsibleProvider` — the prescriber *name* belongs to the party-names story. Do not touch `premiseForCapture` — premises belong to the clinic-premise story.
 - **No `firestore.rules` change.** `authorisations` is already `allow write: if false`.
 - Design doc: `docs/superpowers/specs/2026-07-18-direction-prescriber-contact-design.md`.
 
 ---
 
-### Task 1: Backend — extend the stamp helper with prescriber contact
-
-The existing `...partyNames` spread in `approveRequest` spreads the **whole** returned object, so extending the helper needs no `index.ts` change at all.
+### Task 1: Backend — stamp prescriber contact at approval
 
 **Files:**
-- Modify: `backend/functions/src/domain.ts`
+- Modify: `backend/functions/src/domain.ts`, `backend/functions/src/index.ts`
 - Test: `backend/functions/src/domain.test.ts`
 
 **Interfaces:**
-- Consumes: `directionPartyNames(doctor, request)` from `fix/direction-party-names`, and its private `usable()` coercion.
-- Produces: `directionPartyNames` additionally returns `prescriberPhone?: string` and `prescriberPrincipalPlace?: string`. `AuthorisationDoc` gains both as optional fields.
+- Consumes: nothing from earlier tasks. Sits beside `directionPartyNames(doctor, request)` and `clinicPremiseStamp(clinicId, clinic)`, already on the base branch.
+- Produces: `prescriberContactStamp(doctor: Record<string, unknown>): { prescriberPhone?: string; prescriberPrincipalPlace?: string }`, and `AuthorisationDoc.prescriberPhone?` / `.prescriberPrincipalPlace?`. Tasks 3-5 consume the two Firestore field names.
 
-- [ ] **Step 1: Verify the precondition**
-
-```bash
-cd ~/Documents/AestheticX
-git log --oneline -5 | grep -i "party names" || echo "NOT LANDED — STOP"
-git status --short backend/functions
-```
-
-Expected: the party-names work is committed (a matching log line, clean status). If it is still uncommitted, **stop and report** — do not proceed.
-
-- [ ] **Step 2: Create the branch**
+- [ ] **Step 1: Create the branch off the sibling stack**
 
 ```bash
 cd ~/Documents/AestheticX
+git checkout fix/direction-clinic-premise && git status --short
 git checkout -b fix/direction-prescriber-contact
+git log --oneline -3
 ```
 
-- [ ] **Step 3: Write the failing tests**
+Expected: clean status; the three sibling commits `e72ea1c`, `41b54f2`, `6605280` at the tip. If `6605280` is missing you are on the wrong base — **stop**.
 
-Add these two cases inside the existing `describe('directionPartyNames (Clause 68C stamps)', ...)` block in `backend/functions/src/domain.test.ts`, after the last existing case:
+- [ ] **Step 2: Write the failing tests**
+
+Add to `backend/functions/src/domain.test.ts`, after the existing `describe('directionPartyNames (Clause 68C stamps)', ...)` block. Add `prescriberContactStamp` to the import list from `./domain` at the top of the file.
 
 ```typescript
-  // Prescriber contact rides on the same stamp: a nurse exporting the direction cannot read the
-  // doctor's users doc, so phone and principal place must be snapshotted at approval too.
-  it('stamps the prescriber phone and principal place, trimmed', () => {
-    expect(directionPartyNames(
-      {
-        name: 'Dr Mia Chen',
-        phone: '  02 9555 0100  ',
-        principalPlace: '  88 Oxford St, Paddington NSW 2021  ',
-      },
-      {},
-    )).toMatchObject({
+// Clause 68C prescriber contact (2026-07-18). Phone and principal place are stamped for the same
+// reason as the party names: a nurse exporting the direction cannot read the doctor's users doc,
+// so there is no render-time lookup available to them. Blank is OMITTED, never stamped empty —
+// the web reader treats any non-empty stamp as authoritative and would stop there.
+describe('prescriberContactStamp (Clause 68C)', () => {
+  it('stamps the phone and principal place, trimmed', () => {
+    expect(prescriberContactStamp({
+      name: 'Dr Mia Chen',
+      phone: '  02 9555 0100  ',
+      principalPlace: '  88 Oxford St, Paddington NSW 2021  ',
+    })).toEqual({
       prescriberPhone: '02 9555 0100',
       prescriberPrincipalPlace: '88 Oxford St, Paddington NSW 2021',
     })
   })
 
-  // The two resolve INDEPENDENTLY: a clinic-account doctor has no principalPlace to stamp
-  // (userAdmin requires it only of non-clinic doctors), and that must not suppress the phone.
-  it('omits each contact field independently when unusable', () => {
-    const clinicDoctor = directionPartyNames({ name: 'Dr Mia Chen', phone: '02 9555 0100' }, {})
+  // The two resolve INDEPENDENTLY: userAdmin requires principalPlace only of doctors NOT on a
+  // clinic account, so a clinic-account doctor legitimately has none — and that must not
+  // suppress a perfectly usable phone.
+  it('omits each field independently when unusable', () => {
+    const clinicDoctor = prescriberContactStamp({ name: 'Dr Mia Chen', phone: '02 9555 0100' })
     expect(clinicDoctor.prescriberPhone).toBe('02 9555 0100')
     expect(clinicDoctor).not.toHaveProperty('prescriberPrincipalPlace')
 
-    const unusable = directionPartyNames({ phone: '   ', principalPlace: 42 }, {})
+    const unusable = prescriberContactStamp({ phone: '   ', principalPlace: 42 })
     expect(unusable).not.toHaveProperty('prescriberPhone')
     expect(unusable).not.toHaveProperty('prescriberPrincipalPlace')
   })
+
+  it('returns an empty object for a doctor doc with neither field', () => {
+    expect(prescriberContactStamp({})).toEqual({})
+  })
+})
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [ ] **Step 3: Run the tests to verify they fail**
 
 ```bash
 cd ~/Documents/AestheticX/backend/functions && npx vitest run src/domain.test.ts
 ```
 
-Expected: FAIL — the two new cases report `prescriberPhone: undefined` / missing properties present. The existing party-name cases still pass.
+Expected: FAIL — `prescriberContactStamp is not a function`. Existing cases still pass.
 
-- [ ] **Step 5: Add the two fields to `AuthorisationDoc`**
+- [ ] **Step 4: Add the two fields to `AuthorisationDoc`**
 
-In `backend/functions/src/domain.ts`, immediately after the `nurseName?: string` line inside `AuthorisationDoc`:
+In `backend/functions/src/domain.ts`, inside `AuthorisationDoc`, after the sibling stamp fields:
 
 ```typescript
   /** Prescriber contact stamped at approval (2026-07-18) for the Clause 68C direction — a nurse
@@ -104,48 +103,66 @@ In `backend/functions/src/domain.ts`, immediately after the `nurseName?: string`
   prescriberPrincipalPlace?: string
 ```
 
-- [ ] **Step 6: Extend the helper**
+- [ ] **Step 5: Add the helper**
 
-In the same file, widen `directionPartyNames`'s return type and body. Replace the signature and `return` statement with:
+In the same file, immediately after `clinicPremiseStamp`:
 
 ```typescript
-export function directionPartyNames(
+/**
+ * The prescriber's contact details to stamp onto each authorisation at approval (2026-07-18) —
+ * the Clause 68C "prescriber phone" and "principal place of practice".
+ *
+ * Stamped rather than resolved at render time because hydrate loads only the caller's own
+ * users doc: a nurse exporting the direction has never loaded the prescriber's profile, and
+ * neither listDoctors nor the request carries the contact. A legal document should also record
+ * the prescriber as they were when the direction was authorised, not as they are today.
+ *
+ * Each field is OMITTED independently when unusable, never stamped empty. The web reader treats
+ * any non-empty stamp as authoritative and stops there, so an empty stamp would both blank the
+ * field on the document and satisfy the missingDirectionFields gate that exists to catch it.
+ * Omitting instead lets the reader fall back to the prescriber's profile. Independence matters:
+ * userAdmin requires principalPlace only of doctors NOT on a clinic account, so a clinic-account
+ * doctor legitimately has none and must still stamp a usable phone.
+ */
+export function prescriberContactStamp(
   doctor: Record<string, unknown>,
-  request: { nurseName?: unknown },
-): {
-  doctorName?: string; nurseName?: string
-  prescriberPhone?: string; prescriberPrincipalPlace?: string
-} {
+): { prescriberPhone?: string; prescriberPrincipalPlace?: string } {
   // Firestore data is untrusted here: a legacy doc may hold a missing, blank or non-string value.
   const usable = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
-  const doctorName = usable(doctor.businessName) || usable(doctor.name)
-  const nurseName = usable(request.nurseName)
   const prescriberPhone = usable(doctor.phone)
   const prescriberPrincipalPlace = usable(doctor.principalPlace)
   return {
-    ...(doctorName ? { doctorName } : {}),
-    ...(nurseName ? { nurseName } : {}),
     ...(prescriberPhone ? { prescriberPhone } : {}),
     ...(prescriberPrincipalPlace ? { prescriberPrincipalPlace } : {}),
   }
 }
 ```
 
-Then extend its doc comment — append this paragraph before the closing `*/`:
-
-```
- * Prescriber phone and principal place ride along for the same reason: they are Clause 68C
- * fields the nurse cannot look up at export time. Each is omitted independently, so a
- * clinic-account doctor with no principal place still stamps a usable phone.
-```
-
-- [ ] **Step 7: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
 ```bash
 cd ~/Documents/AestheticX/backend/functions && npx vitest run src/domain.test.ts
 ```
 
-Expected: PASS, all cases including the pre-existing party-name ones.
+Expected: PASS, all cases including the siblings'.
+
+- [ ] **Step 7: Wire it into `approveRequest`**
+
+In `backend/functions/src/index.ts`, add `prescriberContactStamp` to the existing import from `./domain`. That block is alphabetical, so it goes between `monthKey` and `sanitizeNoteAttachments`:
+
+```typescript
+  monthKey,
+  prescriberContactStamp,
+  sanitizeNoteAttachments,
+```
+
+Then add one spread in the `tx.set` inside `authorisations.forEach`, directly after the `clinicPremiseStamp` line:
+
+```typescript
+        ...prescriberContactStamp(doctorSnap.data() ?? {}),
+```
+
+`doctorSnap` is already read above for `directionPartyNames`, so this adds no read and does not disturb the transaction's read-before-write ordering.
 
 - [ ] **Step 8: Verify the whole suite and the build**
 
@@ -159,7 +176,7 @@ Expected: all tests pass; `tsc` exits 0 with no output.
 
 ```bash
 cd ~/Documents/AestheticX
-git add backend/functions/src/domain.ts backend/functions/src/domain.test.ts
+git add backend/functions/src/domain.ts backend/functions/src/domain.test.ts backend/functions/src/index.ts
 git commit -m "feat(direction): stamp prescriber phone and principal place at approval
 
 A nurse exporting a Clause 68C direction cannot read the prescriber's
@@ -167,96 +184,18 @@ users doc — hydrate loads only the caller's own — so Prescriber phone and
 Principal place of practice were blank in live and the export gate blocked
 on them.
 
-Both now ride on the approval stamp beside the party names, snapshotting
-the prescriber as they were when the direction was authorised. Each is
-omitted independently when unusable, so a clinic-account doctor with no
-principal place still stamps a usable phone.
+approveRequest now stamps both onto every authorisation it writes, beside
+the party-name and clinic-premise stamps, snapshotting the prescriber as
+they were when the direction was authorised. The doctor snapshot is
+already read for the party names, so this adds no read.
 
-approveRequest already spreads the helper's whole return, so the write
-site is unchanged."
+Each field is omitted independently when unusable, so a clinic-account
+doctor with no principal place still stamps a usable phone."
 ```
 
 ---
 
-### Task 2: Backend — rename `directionPartyNames` to `clause68CStamps`
-
-Now that the helper returns contact details, its name is inaccurate. Mechanical rename, tests stay green.
-
-**Files:**
-- Modify: `backend/functions/src/domain.ts`, `backend/functions/src/index.ts`
-- Test: `backend/functions/src/domain.test.ts`
-
-**Interfaces:**
-- Consumes: `directionPartyNames` from Task 1.
-- Produces: `clause68CStamps(doctor, request)` — same signature and return type. No other module may reference the old name after this task.
-
-- [ ] **Step 1: Rename every occurrence**
-
-```bash
-cd ~/Documents/AestheticX/backend/functions
-grep -rl 'directionPartyNames' src | xargs sed -i '' 's/directionPartyNames/clause68CStamps/g'
-grep -rn 'directionPartyNames' src || echo "clean"
-```
-
-Expected: `clean`.
-
-- [ ] **Step 2: Rename the local variable in `approveRequest`**
-
-`sed` renamed the function but not the local. In `backend/functions/src/index.ts`, replace the three `partyNames` references:
-
-```typescript
-    const stamps = clause68CStamps(doctorSnap.data() ?? {}, request)
-    // The emergency-authorisation card and the audit actor badge are display surfaces, not
-    // Clause 68C party lines, so they keep the generic placeholder rather than showing nothing.
-    const doctorName = stamps.doctorName ?? 'Doctor'
-```
-
-and in the `tx.set` call:
-
-```typescript
-        ...stamps,
-```
-
-- [ ] **Step 3: Update the helper's doc comment heading**
-
-In `backend/functions/src/domain.ts`, the comment opens by describing party names only. Replace its first sentence with:
-
-```
- * Everything approveRequest stamps onto an authorisation for the Clause 68C direction: the
- * approving doctor (the PRESCRIBER) and requesting nurse (the RESPONSIBLE PROVIDER) by name,
- * plus the prescriber's phone and principal place of practice.
-```
-
-- [ ] **Step 4: Run the tests and the build**
-
-```bash
-cd ~/Documents/AestheticX/backend/functions && npm test && npm run build
-```
-
-Expected: all tests pass; `tsc` exits 0. No behaviour changed.
-
-- [ ] **Step 5: Commit**
-
-```bash
-cd ~/Documents/AestheticX
-git add backend/functions/src/domain.ts backend/functions/src/domain.test.ts backend/functions/src/index.ts
-git commit -m "refactor(direction): rename directionPartyNames to clause68CStamps
-
-The helper now returns prescriber phone and principal place as well as
-the party names, so its name no longer describes it. clause68CStamps
-names the responsibility: the fields approveRequest stamps onto an
-authorisation for the Clause 68C direction.
-
-Pure rename — no behaviour change."
-```
-
-- [ ] **Step 6: Update the memory file**
-
-`~/.claude/projects/-Users-zhendeng-Documents-Aestheticx-marketing/memory/clause-68c-party-names.md` names `directionPartyNames(doctorDoc, request)` as the backend helper. Update that sentence to `clause68CStamps(doctorDoc, request)` and note it now also carries `prescriberPhone` / `prescriberPrincipalPlace`. Leave the rest of the file unchanged.
-
----
-
-### Task 3: Web — openspec change proposal
+### Task 2: Web — openspec change proposal
 
 **Files:**
 - Create: `openspec/changes/direction-prescriber-contact/.openspec.yaml`
@@ -315,7 +254,8 @@ they were when the direction was authorised. This change consumes the stamp.
 ## Non-Goals
 
 The prescriber **name** and its raw-uid defect are the party-names story, which owns its own
-precedence chain (stamp → cooperation directory → demo accounts → `""`). Untouched here.
+precedence chain (stamp → cooperation directory → demo accounts → `""`). The stamped clinic
+premise is the clinic-premise story. Neither is touched here.
 
 No backfill: authorisations approved before the stamp shipped keep today's behaviour.
 ```
@@ -389,14 +329,15 @@ prescriber contact onto each authorisation at approval."
 
 ---
 
-### Task 4: Web — map the stamped fields
+### Task 3: Web — map the stamped fields
 
 **Files:**
 - Modify: `src/lib/demo/types.ts:166`, `src/lib/firebase/mappers.ts:139`
 - Test: `src/lib/firebase/__tests__/mappers.test.ts`
 
 **Interfaces:**
-- Produces: `Authorisation.prescriberPhone?: string`, `Authorisation.prescriberPrincipalPlace?: string`, populated by `mapAuthorisation`. Tasks 5 and 6 depend on both.
+- Consumes: the Firestore field names `prescriberPhone` / `prescriberPrincipalPlace` written by Task 1.
+- Produces: `Authorisation.prescriberPhone?: string`, `Authorisation.prescriberPrincipalPlace?: string`, populated by `mapAuthorisation`. Tasks 4 and 5 depend on both.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -484,19 +425,19 @@ never-stamped from stamped-blank and fall back accordingly."
 
 ---
 
-### Task 5: Web — the capture resolver
+### Task 4: Web — the capture resolver
 
 **Files:**
 - Modify: `src/lib/demo/direction.ts`
 - Test: `src/lib/demo/__tests__/direction.test.ts`
 
 **Interfaces:**
-- Consumes: `Authorisation.prescriberPhone` / `.prescriberPrincipalPlace` from Task 4.
-- Produces: `prescriberContactForCapture(authorisation, prescriberProfile): { prescriberPhone: string; prescriberPrincipalPlace: string }`. Task 6 spreads this return directly into the captured-fields state.
+- Consumes: `Authorisation.prescriberPhone` / `.prescriberPrincipalPlace` from Task 3.
+- Produces: `prescriberContactForCapture(authorisation, prescriberProfile): { prescriberPhone: string; prescriberPrincipalPlace: string }`. Task 5 spreads this return directly into the captured-fields state.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/lib/demo/__tests__/direction.test.ts`:
+Add to `src/lib/demo/__tests__/direction.test.ts`, and add `prescriberContactForCapture` to the existing import from `@/lib/demo/direction` at the top of that file:
 
 ```typescript
 describe("prescriberContactForCapture", () => {
@@ -543,8 +484,6 @@ describe("prescriberContactForCapture", () => {
   });
 });
 ```
-
-Add `prescriberContactForCapture` to the existing import from `@/lib/demo/direction` at the top of that file.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -602,14 +541,14 @@ phone survives having no stamped principal place."
 
 ---
 
-### Task 6: Web — prefill the capture dialog from the resolver
+### Task 5: Web — prefill the capture dialog from the resolver
 
 **Files:**
 - Modify: `src/components/app/DirectionDialog.tsx:33-53`
 - Test: `src/components/app/__tests__/DirectionDialog-prefill.test.tsx`
 
 **Interfaces:**
-- Consumes: `prescriberContactForCapture` from Task 5.
+- Consumes: `prescriberContactForCapture` from Task 4.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -707,10 +646,10 @@ direction-capture-autofill."
 
 ## Done when
 
-- Backend: `clause68CStamps` returns four fields, unit-tested; `approveRequest` stamps them; `npm test` and `npm run build` clean.
+- Backend: `prescriberContactStamp` is unit-tested and spread at the authorisation write site beside its two siblings; `npm test` and `npm run build` clean.
 - Web: a nurse opening the capture dialog on a stamped authorisation sees both Clause 68C contact fields prefilled; unstamped authorisations fall back to the profile; `npm test` and `npm run lint` clean.
-- The `clause-68c-party-names` memory names `clause68CStamps`.
 
-## Open item
+## Open items
 
-The sibling `fix/direction-party-names` change created **no** openspec entry in the AestheticX monorepo, though that repo does use openspec (`~/Documents/AestheticX/openspec/changes`). This plan follows that precedent and adds none for the backend either. If the party-names story adds one before landing, extend it rather than leaving this undocumented.
+- **Landing order.** The three backend stamp branches are a stack — party names, clinic premise, then this. They must land in that order; each adds a spread to the same `tx.set`.
+- **No backend openspec entry.** Neither sibling created one, though `~/Documents/AestheticX/openspec/changes` exists and is used elsewhere. This plan follows that precedent. If either sibling adds one before landing, extend it rather than leaving this undocumented.

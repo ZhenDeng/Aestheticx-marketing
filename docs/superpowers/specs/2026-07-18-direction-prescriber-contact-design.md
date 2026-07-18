@@ -8,16 +8,23 @@ Fixed by having `approveRequest` **stamp** the prescriber's contact onto every a
 writes, read from the approving doctor's `users/{uid}` doc. The web then prefers the stamp over
 its existing profile lookup.
 
-## Depends on `fix/direction-party-names` (hard precondition)
+## One of three sibling stamps (branch base)
 
-A sibling change on branch `fix/direction-party-names` (`~/Documents/AestheticX`, uncommitted as
-of 2026-07-18) already stamps the Clause 68C **party names** — `doctorName` / `nurseName` — at the
-same write site, from the same `doctorSnap`, via a pure helper `directionPartyNames` in
-`domain.ts`. See [[clause-68c-party-names]].
+Two sibling changes already stamp Clause 68C fields onto the authorisation at the same write
+site, each as its own narrowly-named pure helper in `domain.ts`, each spread separately:
 
-**This change extends that helper rather than adding a parallel one**, and therefore lands
-*after* it. Branch off `fix/direction-party-names`, not `main`. Two helpers taking the same
-`doctor: Record<string, unknown>` and spreading into the same `tx.set` would be duplication.
+| Branch | Helper | Stamps |
+|---|---|---|
+| `fix/direction-party-names` (`6605280`) | `directionPartyNames(doctor, request)` | `doctorName`, `nurseName` |
+| `fix/direction-clinic-premise` (`e72ea1c`) | `clinicPremiseStamp(clinicId, clinic)` | `clinicPremise` |
+
+`fix/direction-clinic-premise` stacks on `fix/direction-party-names`. **Branch off
+`fix/direction-clinic-premise`** — it is the tip carrying both, and branching off party-names
+alone would conflict at the shared `tx.set`.
+
+This change adds a **third peer**, `prescriberContactStamp(doctor)`, following that established
+shape. It touches neither sibling. See [[clause-68c-party-names]] and
+[[clinic-address-client-gap]].
 
 ## Root cause (verified both repos)
 
@@ -48,46 +55,50 @@ every user at creation (`userAdmin.ts:56`), but `principalPlace` is required onl
 on a clinic account** (`userAdmin.ts:68`) — a clinic-account doctor legitimately has none. Add
 doctors created before those validations existed, and both fields can be blank in practice.
 
-## Backend (`~/Documents/AestheticX/backend`, branch `fix/direction-prescriber-contact`)
+## Backend (`~/Documents/AestheticX`, branch `fix/direction-prescriber-contact`)
 
-Branched off `fix/direction-party-names`. No openspec in that repo — plain conventional-commit PR.
+Branched off `fix/direction-clinic-premise`. Sources live under `backend/functions/`; the git
+root is the iOS monorepo.
 
-- **`functions/src/domain.ts`** — `AuthorisationDoc` gains `prescriberPhone?: string` and
-  `prescriberPrincipalPlace?: string`, alongside the `doctorName?` / `nurseName?` stamps.
-
-  `directionPartyNames` is **extended and renamed** to `clause68CStamps`, returning everything
-  `approveRequest` stamps onto an authorisation for the direction:
+- **`backend/functions/src/domain.ts`** — `AuthorisationDoc` gains `prescriberPhone?: string` and
+  `prescriberPrincipalPlace?: string`, alongside the sibling stamps. New peer helper:
 
   ```ts
-  export function clause68CStamps(
+  export function prescriberContactStamp(
     doctor: Record<string, unknown>,
-    request: { nurseName?: unknown },
-  ): {
-    doctorName?: string; nurseName?: string
-    prescriberPhone?: string; prescriberPrincipalPlace?: string
-  }
+  ): { prescriberPhone?: string; prescriberPrincipalPlace?: string }
   ```
 
-  It already carries a `usable()` coercion that trims strings and rejects non-strings; the two
-  new fields reuse it unchanged.
+  It repeats the siblings' `usable()` coercion — trim strings, reject non-strings — which each
+  helper declares locally rather than sharing.
 
-- **`functions/src/index.ts`** — the existing `...partyNames` spread at the authorisation write
-  site becomes `...stamps`, from the renamed call. No other change.
+- **`backend/functions/src/index.ts`** — one spread added to the authorisation write site, after
+  the two existing ones:
+
+  ```ts
+  ...prescriberContactStamp(doctorSnap.data() ?? {}),
+  ```
+
+  `doctorSnap` is already read for `directionPartyNames`, so this adds **no read**.
 
 **No `firestore.rules` change.** `authorisations` is already `allow write: if false`
 (`firestore.rules:317`) — Function-only, so the Admin SDK writes new fields freely — and a nurse
 already reads the doc via `resource.data.nurseId == uid()`.
 
-### Why rename rather than extend in place
+### Why a third peer rather than extending a sibling
 
-Once the helper returns phone and principal place, `directionPartyNames` is inaccurate — those
-are contact details, not party names. `clause68CStamps` names the responsibility precisely: *the
-fields approveRequest stamps for the Clause 68C direction*. It also matches the web's existing
-`CLAUSE_68C_FIELDS` naming.
+Folding contact into `directionPartyNames` would misname it — phone and principal place are not
+party names — and would force a rename that churns a just-landed export. More decisively, the
+codebase has now demonstrated the alternative twice: `clinicPremiseStamp` was added as a separate
+helper with its own spread rather than absorbed into its predecessor.
 
-The rename costs three mechanical edits (the export, the `index.ts` import and call, the
-`domain.test.ts` import) and lands after `fix/direction-party-names`, so it never conflicts with
-it. The `clause-68c-party-names` memory must be updated to the new name.
+Each helper stays independently readable, independently testable, and carries its own rationale
+comment explaining why *that* field must be stamped rather than resolved at render time — which
+differs per field (the nurse cannot read the doctor's users doc; an independent doctor cannot
+read `clinics/{id}`). A merged helper would blur three distinct arguments into one.
+
+The small cost is a repeated three-line `usable()` coercion, which both siblings already
+duplicate. Following the established shape beats de-duplicating four lines.
 
 ### Why the stamp omits blanks rather than writing `""`
 
@@ -161,9 +172,8 @@ more honest than a silently wrong one.
 
 TDD both sides — tests RED before implementation.
 
-- **`domain.test.ts`** — `clause68CStamps` stamps trimmed phone and principal place; omits each
-  independently when blank, whitespace-only, non-string, or absent. The existing party-name cases
-  are preserved through the rename.
+- **`domain.test.ts`** — `prescriberContactStamp` stamps trimmed phone and principal place; omits
+  each independently when blank, whitespace-only, non-string, or absent.
 - **`mappers.test.ts`** — `mapAuthorisation` carries both stamps; absent stamps stay absent.
 - **`direction.test.ts`** — `prescriberContactForCapture`: stamp wins over profile; falls back to
   profile when unstamped; resolves the two fields independently; both absent yields `""` so
@@ -173,9 +183,12 @@ TDD both sides — tests RED before implementation.
 
 ## Sequencing
 
-1. `fix/direction-party-names` commits and lands. **Hard gate** — nothing here starts first.
-2. Backend `fix/direction-prescriber-contact`, branched off it.
-3. Web, branched off `fix/direction-form-autofill`.
+1. Backend `fix/direction-prescriber-contact`, branched off `fix/direction-clinic-premise`
+   (which already carries `fix/direction-party-names`). Both siblings are committed.
+2. Web, branched off `fix/direction-form-autofill`.
+
+The three backend stamp branches are a stack and should land in order — party names, clinic
+premise, then prescriber contact — since each adds a spread to the same `tx.set`.
 
 Backend and web are independently deployable in either order: web-first simply falls back to the
 profile lookup until the backend ships, because an unstamped authorisation is indistinguishable
