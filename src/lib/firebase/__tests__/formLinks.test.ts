@@ -4,7 +4,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock the callable to assert the wire args + the response handling.
 
 const callable = vi.fn();
-const httpsCallable = vi.fn(() => callable);
+// Declares a rest parameter so the spread below type-checks: spreading `unknown[]` into a
+// zero-arg vi.fn() is a tsc error (TS2556), which is why this file failed `tsc --noEmit`
+// while passing under vitest (esbuild strips types rather than checking them).
+const httpsCallable = vi.fn((...args: unknown[]) => { void args; return callable; });
 vi.mock("firebase/functions", () => ({ httpsCallable: (...a: unknown[]) => httpsCallable(...a) }));
 vi.mock("@/lib/firebase/client", () => ({ functions: () => ({}) }));
 

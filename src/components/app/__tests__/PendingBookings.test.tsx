@@ -13,12 +13,15 @@ const nurse: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nu
 
 const pendingAppt: Appointment = {
   id: "appt-1",
-  type: "consult",
+  // A patient self-booking lands as a `treatment` appointment awaiting confirmation — these were
+  // "consult"/"pending", neither of which exists in AppointmentType/AppointmentStatus. vitest
+  // strips types, so the invalid fixture ran anyway and only `tsc --noEmit` ever complained.
+  type: "treatment",
   ownerID: "u-sarah",
   dateISO: "2026-07-20",
   startMinute: 9 * 60,
   endMinute: 9 * 60 + 30,
-  status: "pending",
+  status: "awaitingConfirmation",
   lead: { givenName: "Amara", lastName: "Boyd", dob: "1990-05-02", phone: "0400 111 222", email: "amara@x.test" },
   appointmentNote: "Prefer morning if possible",
 };
