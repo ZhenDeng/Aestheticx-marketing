@@ -62,6 +62,7 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
       route: routeForCapture(authorisation.medication, request),
     };
   });
+  const relationships = store.cooperationRelationships();
   const [previewing, setPreviewing] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   // Round 6: items carry their route; the capture field only appears for legacy
@@ -74,8 +75,11 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
     patientAddress: patient.address,
     patientDob: patient.dateOfBirth,
     allergies: patient.allergies,
-    prescriberName: directionPrescriberName(authorisation.doctorID),
-    responsibleProvider: directionResponsibleProvider(authorisation.nurseID, authorisation.clinicID),
+    // Names stamped on the authorisation at approval win; the cooperation directory only
+    // covers authorisations approved before the stamp existed. Neither resolving ⇒ blank,
+    // which missingDirectionFields gates on (never a raw uid on a legal document).
+    prescriberName: directionPrescriberName(authorisation, relationships),
+    responsibleProvider: directionResponsibleProvider(authorisation, relationships),
     medications: [authorisation.medication],
     expiresAt: authorisation.expiresAt,
     // Round 6: reviewedAt is the server-stamped approval instant; createdAt covers

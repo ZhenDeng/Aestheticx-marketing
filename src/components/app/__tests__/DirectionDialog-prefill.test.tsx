@@ -18,6 +18,9 @@ vi.mock("@/lib/demo/store", () => ({
     profileForUser: (id: string) =>
       profiles[id] ?? { ahpra: "", abn: "", phone: "", address: "", principalPlace: "", premises: [] },
     state: { requests },
+    // Party-name resolution consults the cooperation directory; these fixtures use demo ids
+    // that resolve from DEMO_ACCOUNTS, so an empty directory is the right neutral here.
+    cooperationRelationships: () => [],
   }),
 }));
 

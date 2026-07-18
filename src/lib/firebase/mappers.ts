@@ -154,6 +154,10 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     // Round 6 stamps; legacy docs stay undefined/absent.
     ...(typeof data.reviewedAtMillis === "number" ? { reviewedAt: data.reviewedAtMillis } : {}),
     ...(premise ? { premise } : {}),
+    // Clause 68C party names stamped by the approveRequest Cloud Function. Left absent (not "")
+    // on legacy docs so the direction's resolver can tell "unstamped" from "stamped blank".
+    ...(str(data.doctorName) ? { doctorName: str(data.doctorName) } : {}),
+    ...(str(data.nurseName) ? { nurseName: str(data.nurseName) } : {}),
   };
 }
 

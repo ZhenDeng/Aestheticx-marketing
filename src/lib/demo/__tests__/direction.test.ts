@@ -14,7 +14,7 @@ import {
   type DirectionContent,
 } from "@/lib/demo/direction";
 import { LUMIERE } from "@/lib/demo/accounts";
-import type { EmergencyAuthorisation, MedicationItem } from "@/lib/demo/types";
+import type { CooperationRelationship, EmergencyAuthorisation, MedicationItem } from "@/lib/demo/types";
 
 const complete: DirectionContent = {
   directionId: "AUTH-7G2K-09",
@@ -218,6 +218,12 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
     expect(missingDirectionFields(direction)).toContain("Prescriber phone");
   });
 
+  // Guards the fail-closed path: an unresolved prescriber must not leave a dangling
+  // "Electronically authorised by " on the preview.
+  it("omits the attestation entirely when the prescriber is unresolved", () => {
+    expect(draft({ prescriberName: "" }).prescriberAttestation).toBe("");
+  });
+
   it("captures the prefilled defaults (period, intervals) — route never defaults (round 6)", () => {
     expect(DEFAULT_CAPTURED_FIELDS.directionPeriod).toBe("6 months");
     // PRN, not an invented count-and-interval schedule. The old default asserted "Up to 5,
@@ -229,23 +235,90 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
 });
 
 describe("direction party resolution (port of AuthorisationCard doctorName/requesterBadge)", () => {
-  it("resolves the prescriber display name from the demo accounts", () => {
-    expect(directionPrescriberName("u-voss")).toBe("Dr Elena Voss");
+  // A real Firebase uid — the shape live authorisations actually carry. Never in DEMO_ACCOUNTS.
+  const LIVE_UID = "xY3kf9QpZ2bNr7WmT1sVdH8cJ4e2";
+  const LIVE_NURSE_UID = "Kq7pR2mZ9xL4vB6tN1wY3hF5sG8a";
+
+  const rel = (over: Partial<CooperationRelationship>): CooperationRelationship => ({
+    id: "r1",
+    doctorID: LIVE_UID,
+    doctorName: "Dr Elena Voss",
+    counterpartyType: "nurse",
+    counterpartyID: LIVE_NURSE_UID,
+    counterpartyName: "Sarah Chen",
+    status: "active",
+    authRequestsAllowed: true,
+    invoiceApplies: true,
+    priceCentsOverride: null,
+    createdAt: 0,
+    updatedAt: 0,
+    ...over,
   });
 
-  it("falls back to the raw doctor id when unknown", () => {
-    expect(directionPrescriberName("u-nobody")).toBe("u-nobody");
+  it("resolves the prescriber display name from the demo accounts", () => {
+    expect(directionPrescriberName({ doctorID: "u-voss" })).toBe("Dr Elena Voss");
   });
 
   it("badges a clinic nurse with the clinic name", () => {
-    expect(directionResponsibleProvider("u-sarah", LUMIERE.id)).toBe(`Sarah Chen @ ${LUMIERE.name}`);
+    expect(directionResponsibleProvider({ nurseID: "u-sarah", clinicID: LUMIERE.id })).toBe(`Sarah Chen @ ${LUMIERE.name}`);
   });
 
   it("uses the bare nurse name outside the clinic", () => {
-    expect(directionResponsibleProvider("u-sarah", null)).toBe("Sarah Chen");
+    expect(directionResponsibleProvider({ nurseID: "u-sarah", clinicID: null })).toBe("Sarah Chen");
   });
 
-  it("falls back to the raw nurse id when unknown", () => {
-    expect(directionResponsibleProvider("u-ghost", null)).toBe("u-ghost");
+  // The defect: a live uid is not in DEMO_ACCOUNTS, so the raw uid was printed onto a
+  // legal document — and missingDirectionFields could not catch it (a uid is non-empty).
+  it("never renders a raw prescriber uid onto the document", () => {
+    expect(directionPrescriberName({ doctorID: LIVE_UID })).not.toBe(LIVE_UID);
+    expect(directionPrescriberName({ doctorID: LIVE_UID })).toBe("");
+  });
+
+  it("never renders a raw nurse uid onto the document", () => {
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, clinicID: null })).not.toBe(LIVE_NURSE_UID);
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, clinicID: null })).toBe("");
+  });
+
+  it("gates export when a party cannot be resolved, instead of printing a uid", () => {
+    const unresolved = {
+      ...complete,
+      prescriberName: directionPrescriberName({ doctorID: LIVE_UID }),
+      responsibleProvider: directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, clinicID: null }),
+    };
+    expect(missingDirectionFields(unresolved)).toContain("Prescriber name");
+    expect(missingDirectionFields(unresolved)).toContain("Responsible provider");
+  });
+
+  it("prefers the name stamped on the authorisation at approval", () => {
+    expect(directionPrescriberName({ doctorID: LIVE_UID, doctorName: "Dr Elena Voss" })).toBe("Dr Elena Voss");
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, nurseName: "Sarah Chen", clinicID: null })).toBe("Sarah Chen");
+  });
+
+  // Provenance: the document must name who actually authorised it, so a name stamped at
+  // approval outranks a directory entry that may have been renamed since.
+  it("keeps the stamped name when the cooperation directory has since been renamed", () => {
+    const renamed = [rel({ doctorName: "Dr E. Voss-Whitfield", counterpartyName: "S. Chen-Okafor" })];
+    expect(directionPrescriberName({ doctorID: LIVE_UID, doctorName: "Dr Elena Voss" }, renamed)).toBe("Dr Elena Voss");
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, nurseName: "Sarah Chen", clinicID: null }, renamed))
+      .toBe("Sarah Chen");
+  });
+
+  it("falls back to the cooperation directory for authorisations approved before the stamp existed", () => {
+    expect(directionPrescriberName({ doctorID: LIVE_UID }, [rel({})])).toBe("Dr Elena Voss");
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, clinicID: null }, [rel({})])).toBe("Sarah Chen");
+  });
+
+  it("does not resolve a nurse from a clinic-counterparty relationship", () => {
+    const clinicRel = [rel({ counterpartyType: "clinic", counterpartyID: LIVE_NURSE_UID, counterpartyName: "Lumière" })];
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, clinicID: null }, clinicRel)).toBe("");
+  });
+
+  it("badges a directory-resolved nurse with the clinic name too", () => {
+    expect(directionResponsibleProvider({ nurseID: LIVE_NURSE_UID, clinicID: LUMIERE.id }, [rel({})]))
+      .toBe(`Sarah Chen @ ${LUMIERE.name}`);
+  });
+
+  it("treats a blank stamped name as unstamped rather than emitting whitespace", () => {
+    expect(directionPrescriberName({ doctorID: LIVE_UID, doctorName: "   " }, [rel({})])).toBe("Dr Elena Voss");
   });
 });
