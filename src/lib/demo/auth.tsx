@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Identity } from "./types";
 import { DEMO_ACCOUNTS } from "./accounts";
 import { pickInitialIdentity, saveSelectedIdentity } from "./identityPrefs";
-import { isDemoModeRequested, setDemoMode } from "./demoMode";
+import { isDemoModeRequested, setDemoMode, subscribeDemoMode } from "./demoMode";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 
 type Mode = "demo" | "live";
@@ -41,16 +41,24 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+/** Read once, at module scope: nothing subscribes to hydration, it just happens. */
+const noopSubscribe = () => () => {};
+
 export function DemoAuthProvider({ children }: { children: ReactNode }) {
   const envLive = isFirebaseConfigured();
-  // Tri-state: null means the sessionStorage read has not happened yet.
-  //
-  // Reading storage in a lazy useState initializer would make the server-rendered HTML
-  // (always live) disagree with the first client render. Starting at null keeps them
-  // identical; the mount effect below commits the real value one render later. The null
-  // window is also what the watcher effect guards on — see the comment there.
-  const [demoOverride, setDemoOverride] = useState<boolean | null>(null);
-  const mode: Mode = !envLive || demoOverride === true ? "demo" : "live";
+  // The sandbox flag lives in sessionStorage, which the server cannot see. Reading it in a
+  // lazy useState initializer would make the prerendered HTML (always live) disagree with the
+  // first client render; useSyncExternalStore is the API for exactly this — React renders the
+  // server snapshot during hydration, then re-renders with the client snapshot.
+  const demoOverride = useSyncExternalStore(
+    subscribeDemoMode,
+    () => isDemoModeRequested(window.sessionStorage),
+    () => false, // server: never sandboxed
+  );
+  // True only once the client has taken over. The live watcher below gates on it so it cannot
+  // subscribe during the hydration render, when `mode` is still the server's guess.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  const mode: Mode = !envLive || demoOverride ? "demo" : "live";
 
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [availableIdentities, setAvailableIdentities] = useState<Identity[]>([]);
@@ -63,19 +71,13 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   // Demo mode never gates: mustChangePassword is a live-account claim (createUser sets it).
   const [mustChangePassword, setMustChangePassword] = useState(false);
 
-  // Read this tab's sandbox flag once, on mount (client-only).
-  useEffect(() => {
-    setDemoOverride(isDemoModeRequested(window.sessionStorage));
-  }, []);
-
   // The login forms call these from a mount effect keyed on the callback identity, so they
   // MUST be referentially stable. Built with useCallback rather than inline in the context
   // useMemo (whose deps include `identity`): enterDemoMode's own setIdentity(null) would
-  // otherwise mint a new callback and re-fire that effect forever. Only setters are captured,
-  // and React guarantees those are stable, so the empty dep array is correct.
+  // otherwise mint a new callback and re-fire that effect forever. Only setters and the
+  // module-level store are captured, so the empty dep array is correct.
   const switchMode = useCallback((toDemo: boolean) => {
-    setDemoMode(window.sessionStorage, toDemo);
-    setDemoOverride(toDemo);
+    setDemoMode(window.sessionStorage, toDemo); // notifies the store; mode re-derives
     setIdentity(null);
     setAvailableIdentities([]);
     setMustChangePassword(false);
@@ -89,11 +91,11 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
 
   // Live mode: react to Firebase auth state and resolve identities + the first-login gate.
   useEffect(() => {
-    // Wait for the sandbox flag to be read before subscribing. Without this guard, a tab
-    // that is about to become a sandbox would briefly run the live watcher, which could
-    // restore a persisted Firebase session and set a REAL clinician's identity moments
-    // before the mode flipped — leaking that identity into the demo.
-    if (mode !== "live" || demoOverride === null) return;
+    // Wait for hydration before subscribing. Without this guard, a tab that is about to
+    // resolve as a sandbox would briefly run the live watcher during the hydration render,
+    // which could restore a persisted Firebase session and set a REAL clinician's identity
+    // moments before the mode flipped — leaking that identity into the demo.
+    if (mode !== "live" || !hydrated) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
     import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser, currentUserUid }) => {
@@ -131,7 +133,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
       });
     });
     return () => { cancelled = true; unsub?.(); };
-  }, [mode, demoOverride]);
+  }, [mode, hydrated]);
 
   const value = useMemo<AuthValue>(
     () => ({

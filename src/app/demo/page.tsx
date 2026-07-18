@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DemoLoginForm } from "@/components/app/LoginForm";
+import { CLAIM_SANDBOX_SCRIPT } from "@/lib/demo/demoMode";
 
 export const metadata: Metadata = {
   title: "Try the demo",
@@ -11,6 +12,14 @@ export const metadata: Metadata = {
 export default function DemoPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-card px-5 py-16">
+      {/*
+        Claim the sandbox before React hydrates. DemoLoginForm also calls enterDemoMode from a
+        mount effect — that covers client-side navigation here — but on a full page load the
+        effect runs one commit too late: a visitor with a live Firebase session would have the
+        auth watcher subscribe, restore their real session and fire Firestore reads as them
+        before the mode flipped. Mirrors the standard pre-hydration theme-script pattern.
+      */}
+      <script dangerouslySetInnerHTML={{ __html: CLAIM_SANDBOX_SCRIPT }} />
       <Link href="/" className="font-display text-lg text-ink-soft hover:text-ink">
         ← AestheticX
       </Link>

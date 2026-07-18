@@ -76,10 +76,11 @@ in [../e2e/README.md](../e2e/README.md). Runs in CI on every PR (`.github/workfl
 | E3 | Authorisation handoff — E3a doctor approves seeded request, E3b nurse raises request | ✅ (halves) `e3-authorisation-approval` |
 | E5 | Doctor: generate tax invoice → download PDF (validates PR #101) | ✅ `e5-billing-invoice` |
 | E6 | Admin patient lookup → file access → audit trail records it | ✅ `e6-admin-audit` |
-| E8 | Signed-out visitor → guarded route → login | ✅ (in `e1-login`) |
+| E8 | Signed-out visitor → guarded route → mode-correct entry point | ✅ (in `e1-login`) |
 | E9 | Marketing smoke: /, /for-* + legal pages, CTAs → /login | ✅ `e9-marketing` |
+| E11 | /demo (sandbox) and /login (real) serve only their own form | ✅ `e11-route-separation` |
 | E10 | Mobile viewport (Pixel 5): intake + billing, no horizontal overflow | ✅ `e10-mobile` |
-| a11y | axe-core over login / marketing / dashboard (serious+critical) | ✅ `a11y` (see note) |
+| a11y | axe-core over demo / login / marketing / dashboard (serious+critical) | ✅ `a11y` (see note) |
 | E4 | Doctor runs a simulated consult call (ring → in-call → end) | ✅ `e4-consult-call` |
 | E7 | Approved filler → standing Hyaluronidase emergency authorisation on file | ✅ `e7-emergency-auth` |
 | E3 (full round-trip) | nurse submits → the addressed doctor approves the *same* request → authorisations + emergency auths + prescriber recorded | ✅ **two ways** — domain-level (`cross-role-authorisation-roundtrip.test.ts`) **and** a real-browser cross-repo emulator E2E (`e2e-emulator/`) |

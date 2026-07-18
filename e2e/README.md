@@ -24,13 +24,18 @@ boots in **demo mode**: it hydrates from the deterministic seed (`buildSeedState
 `SEED_NOW`) with a role-picker login and no backend. Journeys therefore run fully offline against
 identical data every time, with no Firebase project or emulator.
 
+The demo role-picker is served from **`/demo`**, which also switches the tab into sandbox mode
+(a per-tab `ax.demoMode` sessionStorage flag). `/login` is the real Firebase login and never
+serves the picker — with no Firebase env, as in this run, it renders a "sign-in unavailable"
+state linking to `/demo`.
+
 `e2e/helpers.ts` provides `loginAsDemo(page, DEMO.<role>)`, `fillNewPatient(...)`, and
 `drawSignature(page)` (mouse-drag on the consent canvas).
 
 ## Two demo-mode constraints that shape these tests
 
 1. **The store resets on any full page load.** `DemoStoreProvider` lives in the `/app` layout, so
-   `page.goto()` to another route (or a sign-out → `/login`) unmounts it and re-seeds. Journeys
+   `page.goto()` to another route (or a sign-out → `/demo`) unmounts it and re-seeds. Journeys
    navigate by **clicking in-app links**, never `page.goto`, once signed in.
 2. **No shared state across accounts.** Switching from one demo account to another requires a
    sign-out (→ reload → re-seed). So a true cross-role round-trip with shared state (nurse submits
@@ -48,8 +53,9 @@ identical data every time, with no Firebase project or emulator.
 | `e6-admin-audit` | Admin patient lookup → open file → audit trail records the access (E6) | ✅ |
 | `e7-emergency-auth` | Approved filler → standing Hyaluronidase emergency auth on the file (E7) | ✅ |
 | `e9-marketing` | Public pages load + link to /login; legal pages render (E9) | ✅ |
+| `e11-route-separation` | /demo and /login each serve only their own form (E11) | ✅ |
 | `e10-mobile` | Pixel 5 viewport: intake + billing render with no horizontal overflow (E10) | ✅ |
-| `a11y` | axe-core over login / marketing / dashboard, serious+critical gate | ✅ |
+| `a11y` | axe-core over demo / login / marketing / dashboard, serious+critical gate | ✅ |
 
 PDF assertions check the download triggers + filename only; **PDF content correctness stays in
 the unit tests** (`src/lib/demo/__tests__/invoice-pdf.test.ts` etc.).

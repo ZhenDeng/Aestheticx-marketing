@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { DEMO_MODE_KEY, isDemoModeRequested, setDemoMode } from "@/lib/demo/demoMode";
+import { describe, expect, it, vi } from "vitest";
+import { CLAIM_SANDBOX_SCRIPT, DEMO_MODE_KEY, isDemoModeRequested, setDemoMode, subscribeDemoMode } from "@/lib/demo/demoMode";
 
 /** Minimal in-memory Storage stand-in (the loginPrefs.test pattern). */
 function memoryStorage(): Storage {
@@ -46,6 +46,53 @@ describe("isDemoModeRequested", () => {
     const s = memoryStorage();
     s.setItem(DEMO_MODE_KEY, "maybe");
     expect(isDemoModeRequested(s)).toBe(false);
+  });
+});
+
+describe("CLAIM_SANDBOX_SCRIPT", () => {
+  // /demo inlines this to claim the sandbox before hydration. Executing it must leave storage
+  // in a state isDemoModeRequested accepts — this is what catches the key or on-marker drifting
+  // apart from the reader, which would fail silently in the browser.
+  it("puts storage into a state the reader accepts", () => {
+    window.sessionStorage.clear();
+    new Function(CLAIM_SANDBOX_SCRIPT)();
+    expect(isDemoModeRequested(window.sessionStorage)).toBe(true);
+    window.sessionStorage.clear();
+  });
+
+  it("swallows a storage failure rather than breaking the page", () => {
+    // Inline scripts run before React; an uncaught throw here would blank the demo for anyone
+    // with storage disabled.
+    expect(CLAIM_SANDBOX_SCRIPT).toContain("catch");
+  });
+});
+
+// The provider reads this through useSyncExternalStore, so writes must notify subscribers —
+// otherwise entering /demo would set the flag without re-rendering the app into the sandbox.
+describe("subscribeDemoMode", () => {
+  it("notifies subscribers on every write", () => {
+    const s = memoryStorage();
+    const cb = vi.fn();
+    const unsubscribe = subscribeDemoMode(cb);
+
+    setDemoMode(s, true);
+    expect(cb).toHaveBeenCalledTimes(1);
+    setDemoMode(s, false);
+    expect(cb).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    setDemoMode(s, true);
+    expect(cb).toHaveBeenCalledTimes(2);
+  });
+
+  it("still notifies when the write itself failed", () => {
+    // The snapshot must be re-read either way; swallowing the notify would leave the UI
+    // showing a mode the storage never accepted.
+    const cb = vi.fn();
+    const unsubscribe = subscribeDemoMode(cb);
+    setDemoMode(throwingStorage(), true);
+    expect(cb).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 });
 
