@@ -7,6 +7,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions, notePreview, canSendAftercare, imageAttachments } from "@/lib/demo/backend";
 import { patientAccessLevel } from "@/lib/demo/isolation";
+import { PatientAccountSection } from "@/components/app/PatientAccount";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
@@ -298,6 +299,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           ))}
           {forms.length === 0 && <li className="text-sm text-ink-soft">No signed forms yet.</li>}
         </ul>
+
+        {/* Billing matrix: wallet balance + top-up + checkout, gated inside the component
+            by the isolation guard (renders nothing without commercial access). */}
+        <PatientAccountSection patient={patient} />
       </div>
 
       <aside>
