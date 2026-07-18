@@ -188,6 +188,12 @@ export interface Authorisation {
   nurseName?: string;
   /** Copy of the request's stamped premise (round 6); absent on legacy documents. */
   premise?: Premise | null;
+  /** The clinic's premises, stamped at approval (2026-07-18) — the Clause 68C "premises of
+   *  administration" for a clinic authorisation. Stamped rather than looked up because
+   *  clinics/{id} is readable only to clinic members, so an independent cooperating doctor
+   *  exporting this direction could not resolve it. Absent for independent authorisations and on
+   *  authorisations approved before the stamp existed. */
+  clinicPremise?: Premise;
 }
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";

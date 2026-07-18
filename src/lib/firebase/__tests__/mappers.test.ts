@@ -176,6 +176,29 @@ describe("mapAuthorisation", () => {
     expect(a.doctorName).toBeUndefined();
     expect(a.nurseName).toBeUndefined();
   });
+
+  it("carries the clinic premises stamp, and omits it when absent or address-less", () => {
+    const base = {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah",
+      clinicId: "clinic-lumiere", repeatsRemaining: 5, expiresAtMillis: 1800000000000,
+      medication: { name: "Letybo", dosage: "16", category: "neurotoxin", unit: "units", areas: ["Forehead"] },
+    };
+    const stamped = mapAuthorisation("a1", {
+      ...base,
+      clinicPremise: { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" },
+    });
+    expect(stamped.clinicPremise).toEqual({
+      id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026",
+    });
+
+    // No backfill: an authorisation approved before the stamp existed carries none, and must
+    // stay distinguishable from one stamped empty so the capture dialog still prompts.
+    // `toBeUndefined()` would also pass with the key present-and-undefined, so assert absence
+    // directly instead.
+    expect("clinicPremise" in mapAuthorisation("a2", base)).toBe(false);
+    expect("clinicPremise" in mapAuthorisation("a3", { ...base, clinicPremise: { id: "c", name: "n", address: "  " } }))
+      .toBe(false);
+  });
 });
 
 describe("mapAuthRequest", () => {
@@ -191,6 +214,18 @@ describe("mapAuthRequest", () => {
     expect(r.items[0].name).toBe("Profhilo");
     expect(r.patientSummary?.fullName).toBe("Claire Donovan");
     expect(r.context).toEqual({ kind: "independent" });
+  });
+
+  it("fails closed on the clinic name rather than passing off the raw clinic id", () => {
+    // An id is a non-empty string, so a raw id sitting in `name` would print onto the Clause 68C
+    // direction AND satisfy the missingDirectionFields gate that exists to block exactly that —
+    // the same defect class as the raw-uid prescriber name. The direction takes the clinic's
+    // premises from the authorisation's clinicPremise stamp instead.
+    const r = mapAuthRequest("r1", {
+      patientId: "p1", nurseId: "u-sarah", nurseName: "Sarah Chen", doctorId: "u-voss",
+      clinicId: "clinic-lumiere", status: "pending", createdAt: 1750000000000, items: [],
+    });
+    expect(r.context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "" } });
   });
 });
 

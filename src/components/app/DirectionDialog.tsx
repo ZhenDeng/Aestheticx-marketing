@@ -42,20 +42,21 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   const [captured, setCaptured] = useState<CapturedDirectionFields>(() => {
     const doctorProfile = store.profileForUser(authorisation.doctorID);
     const actingProfile = store.profileForUser(identity?.user.id ?? "");
-    // The originating request carries both the practice context (which names the clinic) and
-    // the line-item routes chosen at submission. Frozen once approved — neither
-    // editPendingRequest nor resubmitRequest can touch an approved request's items.
+    // The originating request carries the line-item routes chosen at submission. Frozen once
+    // approved — neither editPendingRequest nor resubmitRequest can touch an approved request's
+    // items.
     const request = store.state.requests[authorisation.requestID];
-    const clinicContext = request?.context.kind === "clinic" ? request.context.clinic : null;
     return {
       ...DEFAULT_CAPTURED_FIELDS,
       prescriberPhone: doctorProfile.phone,
       prescriberPrincipalPlace: doctorProfile.principalPlace,
       premisesOfAdministration: premiseForCapture({
         stamped: authorisation.premise,
-        // A clinic authorisation must print the CLINIC's address, never the acting nurse's own.
+        // A clinic authorisation must print the CLINIC's premises, never the acting nurse's own.
+        // They are stamped at approval because clinics/{id} is readable only to clinic members —
+        // an independent cooperating doctor exporting this direction could not read them.
         clinicID: authorisation.clinicID,
-        clinic: clinicContext,
+        clinicPremise: authorisation.clinicPremise,
         actingPremise: activePremise(actingProfile),
       }),
       // The route was chosen per line item at request time — recover it rather than ask again.

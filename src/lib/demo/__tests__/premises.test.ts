@@ -166,6 +166,71 @@ describe("approval stamps (round 6)", () => {
       expect(a.medication.route).toBe("intramuscular");
     }
   });
+
+  it("stamps the clinic's premises onto a clinic authorisation, mirroring the Cloud Function", () => {
+    // A clinic request stamps premise: null deliberately ("use the clinic's address"). The
+    // clinic's address must therefore ride onto the authorisation itself, or the client-rendered
+    // Clause 68C direction has nowhere to read it from.
+    const state = buildSeedState();
+    const clinicPatient = Object.values(state.patients).find((p) => p.owner.kind === "clinic");
+    if (!clinicPatient) throw new Error("seed has no clinic patient");
+    const submitted = submitRequest(
+      state,
+      { patientID: clinicPatient.id, doctorID: voss.user.id, items: [botox], identity: sarahClinic },
+      SEED_NOW,
+    );
+    const { granted } = approveRequest(submitted.state, submitted.request.id, voss, SEED_NOW + 86_400_000);
+    expect(granted[0].premise).toBeNull();
+    expect(granted[0].clinicPremise).toEqual({
+      id: LUMIERE.id, name: LUMIERE.name, address: LUMIERE.address,
+    });
+  });
+
+  it("stamps no clinic premises on an independent authorisation", () => {
+    const state = buildSeedState();
+    const own = Object.values(state.patients).find(
+      (p) => p.owner.kind === "nurse" && p.owner.id === sarahIndependent.user.id,
+    );
+    if (!own) throw new Error("no independent patient in seed");
+    const submitted = submitRequest(
+      state,
+      { patientID: own.id, doctorID: voss.user.id, items: [botox], identity: sarahIndependent },
+      SEED_NOW,
+    );
+    const { granted } = approveRequest(submitted.state, submitted.request.id, voss, SEED_NOW + 86_400_000);
+    // `toBeUndefined()` would pass whether the key is absent OR present with value
+    // `undefined` — it cannot detect a regression to "stamped empty". Assert absence directly.
+    expect("clinicPremise" in granted[0]).toBe(false);
+  });
+
+  it("omits clinicPremise (never blanks it) when the clinic's address is missing or whitespace-only", () => {
+    // The demo's only clinic fixture (LUMIERE) always carries a clean non-empty address, so a
+    // clinic request whose clinic has a blank/whitespace address is otherwise never exercised —
+    // this is the "omit, never blank" branch that lets a reader tell "never stamped" apart from
+    // "stamped empty". Submit normally, then substitute a blank-address clinic into the stored
+    // request before approving, since no seeded identity carries such a clinic.
+    const state = buildSeedState();
+    const clinicPatient = Object.values(state.patients).find((p) => p.owner.kind === "clinic");
+    if (!clinicPatient) throw new Error("seed has no clinic patient");
+    const submitted = submitRequest(
+      state,
+      { patientID: clinicPatient.id, doctorID: voss.user.id, items: [botox], identity: sarahClinic },
+      SEED_NOW,
+    );
+    const blankAddressClinic = { ...LUMIERE, address: "   " };
+    const stateWithBlankClinic: DemoState = {
+      ...submitted.state,
+      requests: {
+        ...submitted.state.requests,
+        [submitted.request.id]: {
+          ...submitted.request,
+          context: { kind: "clinic", clinic: blankAddressClinic },
+        },
+      },
+    };
+    const { granted } = approveRequest(stateWithBlankClinic, submitted.request.id, voss, SEED_NOW + 86_400_000);
+    expect("clinicPremise" in granted[0]).toBe(false);
+  });
 });
 
 describe("profile premises round-trip through updateProfile", () => {

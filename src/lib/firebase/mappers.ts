@@ -139,6 +139,7 @@ export function mapPremise(raw: unknown): Premise | null {
 export function mapAuthorisation(id: string, data: Doc): Authorisation {
   const expiresAt = data.expiresAtMillis != null ? intValue(data.expiresAtMillis) : toMillis(data.expiresAt);
   const premise = mapPremise(data.premise);
+  const clinicPremise = mapPremise(data.clinicPremise);
   return {
     id,
     requestID: str(data.requestId),
@@ -158,6 +159,7 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
     // on legacy docs so the direction's resolver can tell "unstamped" from "stamped blank".
     ...(str(data.doctorName) ? { doctorName: str(data.doctorName) } : {}),
     ...(str(data.nurseName) ? { nurseName: str(data.nurseName) } : {}),
+    ...(clinicPremise ? { clinicPremise } : {}),
   };
 }
 
@@ -281,7 +283,11 @@ export function mapAuthRequest(id: string, data: Doc): AuthorisationRequest {
     patientID: str(data.patientId),
     nurse: { id: str(data.nurseId), name: str(data.nurseName) },
     doctorID: str(data.doctorId),
-    context: clinicId ? { kind: "clinic", clinic: { id: clinicId, name: clinicId } } : { kind: "independent" },
+    // The clinic's NAME is not on the request doc, and an id is a non-empty string — passing one
+    // off as a name would print onto the Clause 68C direction AND satisfy missingDirectionFields.
+    // Fail closed. The direction reads the clinic's premises from the authorisation's
+    // clinicPremise stamp (approveRequest), not from here.
+    context: clinicId ? { kind: "clinic", clinic: { id: clinicId, name: "" } } : { kind: "independent" },
     items,
     status: (str(data.status) || "pending") as RequestStatus,
     createdAt: toMillis(data.createdAt),
