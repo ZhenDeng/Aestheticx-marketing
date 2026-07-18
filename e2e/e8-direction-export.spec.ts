@@ -17,7 +17,12 @@ test("E8 — a clinic authorisation prefills Premises of administration from the
   await page.locator('a[href^="/app/patients/"]').filter({ hasText: /Boyd/i }).first().click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
 
-  await page.getByRole("button", { name: /direction/i }).first().click();
+  // Labelled for the document, not the clause: "68C" alone read as jargon (18/07 feedback).
+  // The citation stays in the accessible name and on hover.
+  const open = page.getByRole("button", { name: "Clause 68C direction" }).first();
+  await expect(open).toHaveText("Direction");
+  await expect(open).toHaveAttribute("title", "Clause 68C direction");
+  await open.click();
 
   // The clinic's premises, not the acting nurse's own — and not a raw clinic id as the name.
   const premises = page.getByLabel(/premises of administration/i);

@@ -54,7 +54,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showTreatment, setShowTreatment] = useState(false);
   const [showAftercare, setShowAftercare] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
+  // iOS AuthorisationCard's Direction button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
   // open; the ref dedupes React's StrictMode double-effect + repeat renders so it stays a single
@@ -305,10 +305,15 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               <li key={a.id}>
                 <p className="flex items-baseline justify-between gap-2">
                   <span className="font-medium text-ink">{a.medication.name}</span>
-                  {/* iOS AuthorisationCard: quiet "68C" affordance opens the Clause 68C direction capture. */}
+                  {/* iOS AuthorisationCard's direction affordance. Labelled for the document it
+                      produces, not the regulation clause — "68C" alone read as jargon (18/07
+                      feedback). The citation stays on hover, in the accessible name, and in the
+                      dialog heading. Resting colour is ink-soft rather than tint: the word is
+                      wider than "68C" was, and must not out-shout the medication name beside it. */}
                   <button type="button" onClick={() => setDirectionFor(a.id)} aria-label="Clause 68C direction"
-                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-tint)" }}>
-                    68C
+                          title="Clause 68C direction"
+                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-ink-soft)" }}>
+                    Direction
                   </button>
                 </p>
                 <p className="text-sm text-ink-soft">{a.medication.areas.join(", ")}</p>

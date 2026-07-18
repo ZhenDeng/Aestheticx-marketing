@@ -11,7 +11,9 @@ import { fullName } from "@/lib/demo/types";
 import { useDemoStore } from "@/lib/demo/store";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { activePremise } from "@/lib/demo/backend";
+import { RouteSelect, NeededMark } from "@/components/app/RouteSelect";
 import {
+  CLAUSE_68C_FIELDS,
   DEFAULT_CAPTURED_FIELDS,
   buildDirectionDraft,
   directionPrescriberName,
@@ -89,6 +91,10 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
     captured,
   });
   const missing = missingDirectionFields(direction);
+  // Inline field marking is derived from the SAME list that gates the export, keyed by the
+  // canonical CLAUSE_68C_FIELDS label each field reports under. Re-deriving emptiness per field
+  // would let the marks and the gate drift apart — the one divergence this dialog cannot afford.
+  const isMissing = (field: (typeof CLAUSE_68C_FIELDS)[number]) => missing.includes(field);
 
   function set<K extends keyof CapturedDirectionFields>(key: K, value: string) {
     setCaptured((prev) => ({ ...prev, [key]: value }));
@@ -128,21 +134,37 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
 
         {!previewing ? (
           <div className="mt-4 flex flex-col gap-3">
+            {/* A blank field here is a PROMPT, not a defect: the values below could not be
+                resolved from the record (a nurse cannot read the prescriber's profile, and
+                authorisations approved before the stamps shipped carry neither the contact nor a
+                per-item route). Saying so once, up front, frames every mark beneath it. */}
+            {missing.length > 0 && (
+              <p id={MISSING_EXPLANATION_ID} data-testid="direction-missing-explanation"
+                className="rounded-inner px-3 py-2 text-xs text-ink-soft" style={{ background: "var(--color-danger-soft)" }}>
+                Some fields couldn&apos;t be filled in from this authorisation&apos;s record. Complete the
+                ones marked <span style={{ color: "var(--color-danger)" }}>Needed</span> to preview and export.
+              </p>
+            )}
+
             <p className="micro">Prescriber</p>
-            <Field label="Phone" value={captured.prescriberPhone} onChange={(v) => set("prescriberPhone", v)} />
-            <Field label="Principal place of practice" value={captured.prescriberPrincipalPlace} onChange={(v) => set("prescriberPrincipalPlace", v)} />
+            <Field label="Phone" required={isMissing("Prescriber phone")} value={captured.prescriberPhone} onChange={(v) => set("prescriberPhone", v)} />
+            <Field label="Principal place of practice" required={isMissing("Principal place of practice")} value={captured.prescriberPrincipalPlace} onChange={(v) => set("prescriberPrincipalPlace", v)} />
 
             <p className="micro mt-2">Administration</p>
-            <Field label="Premises of administration" value={captured.premisesOfAdministration} onChange={(v) => set("premisesOfAdministration", v)} />
+            <Field label="Premises of administration" required={isMissing("Premises of administration")} value={captured.premisesOfAdministration} onChange={(v) => set("premisesOfAdministration", v)} />
             {needsRouteCapture && (
-              <Field label="Route (applies to all)" value={captured.route} onChange={(v) => set("route", v)} />
+              // Constrained to the five legal routes — the same control the request form uses.
+              // A direction must never print a route somebody typed by hand.
+              <RouteSelect label="Route (applies to all)" className="w-full" value={captured.route}
+                onChange={(v) => set("route", v)}
+                invalid={isMissing("Route")} describedBy={missing.length > 0 ? MISSING_EXPLANATION_ID : undefined} />
             )}
-            <Field label="Number & intervals" value={captured.administrationCountAndIntervals} onChange={(v) => set("administrationCountAndIntervals", v)} />
+            <Field label="Number & intervals" required={isMissing("Number and intervals of administration")} value={captured.administrationCountAndIntervals} onChange={(v) => set("administrationCountAndIntervals", v)} />
 
             <p className="micro mt-2">Direction</p>
             {/* Round 6: the reviewed date is always the approval day — shown, not captured. */}
             <p className="text-sm text-ink">Patient reviewed: <span className="text-ink-soft">{direction.patientReviewedISO}</span></p>
-            <Field label="Period direction has effect" value={captured.directionPeriod} onChange={(v) => set("directionPeriod", v)} />
+            <Field label="Period direction has effect" required={isMissing("Period direction has effect")} value={captured.directionPeriod} onChange={(v) => set("directionPeriod", v)} />
 
             {missing.length === 0 ? (
               <button type="button" onClick={() => setPreviewing(true)}
@@ -234,12 +256,26 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+/** Ties every marked control to the one explanation of why it came up empty. */
+const MISSING_EXPLANATION_ID = "direction-missing-explanation";
+
+function Field({ label, value, onChange, required = false }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  /** Reported by missingDirectionFields — marks the control, never blocks typing into it. */
+  required?: boolean;
+}) {
   return (
     <label className="block">
-      <span className="micro">{label}</span>
+      <span className="micro">
+        {label}
+        {required && <NeededMark />}
+      </span>
       <input value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}
-        className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
+        aria-invalid={required} aria-describedby={required ? MISSING_EXPLANATION_ID : undefined}
+        className="mt-1 w-full rounded-field border bg-card px-3 py-2 text-sm text-ink outline-none focus:border-tint"
+        style={{ borderColor: required ? "var(--color-danger)" : "var(--color-line)" }} />
     </label>
   );
 }
