@@ -59,29 +59,35 @@ Sandbox mode is stored under `ax.demoMode` in `sessionStorage`.
 The module `src/lib/demo/demoMode.ts` is pure with `Storage` injected, mirroring the existing
 `src/lib/demo/loginPrefs.ts` pattern, so it unit-tests without a DOM.
 
-### 2. Mode becomes provider state, read after mount — with a tri-state to close the race
+### 2. Mode is derived during render, from three inputs
 
 ```
-const envLive = isFirebaseConfigured();
-const [demoOverride, setDemoOverride] = useState<boolean | null>(null); // null = not yet read
-const mode: Mode = !envLive || demoOverride === true ? "demo" : "live";
+const envLive      = isFirebaseConfigured();
+const demoOverride = useSyncExternalStore(subscribeDemoMode, readDemoMode, () => false);
+const hydrated     = useSyncExternalStore(noopSubscribe, () => true, () => false);
+const onDemoRoute  = usePathname() === "/demo";
+const mode: Mode = !envLive || demoOverride || onDemoRoute ? "demo" : "live";
 ```
 
-`null` means "the sessionStorage read has not happened yet". This matters for two reasons:
+- **`useSyncExternalStore`, not a mount effect.** The flag lives in `sessionStorage`, which the
+  server cannot see. A lazy `useState` initializer would make the prerendered HTML (always
+  live) disagree with the first client render; a mount-effect `setState` both trips
+  `react-hooks/set-state-in-effect` (an ESLint *error* in this repo) and hand-rolls exactly what
+  this hook exists for. `sessionStorage` does not notify the tab that wrote it, so
+  `demoMode.ts` doubles as a tiny store whose writes notify subscribers.
+- **`onDemoRoute` closes the timing hole.** The flag alone is a commit too late on a full page
+  load: `DemoLoginForm` sets it from a mount effect, so a visitor with a persisted Firebase
+  session would have the watcher restore it and issue Firestore reads *as them* first. Being on
+  `/demo` **is** demo mode, and `usePathname` resolves identically on server and client, so the
+  very first render is already correct — on hard *and* soft navigation.
+- **`hydrated` gates the watcher**, which must not subscribe during the hydration render, when
+  the flag is still the server's guess.
 
-- **Hydration.** Reading `sessionStorage` in a lazy `useState` initializer would make the
-  server-rendered HTML (always live) disagree with the first client render. Starting at `null`
-  makes server and first client render identical; a mount effect then reads storage and
-  commits the real value.
-- **Stale-identity race.** The live Firebase watcher effect must not subscribe during the
-  `null` window. If it did, on a Firebase-configured deployment it could restore a persisted
-  live session and set `identity` moments before mode flipped to `demo` — leaking a real
-  clinician's identity into a sandbox tab. The effect therefore guards on
-  `mode !== "live" || demoOverride === null`. The delay is one commit.
-
-Alternative considered: flip the mode and clear identity reactively afterwards. Rejected —
-it relies on cleanup ordering to prevent a real-identity flash, which is exactly the kind of
-thing that regresses silently.
+Alternatives considered and rejected: (a) flipping mode and clearing identity reactively
+afterwards — relies on cleanup ordering to prevent a real-identity flash, which regresses
+silently; (b) an inline pre-hydration `<script>` writing the flag — closes the race only for
+hard loads, since a `<script>` inserted by React reconciliation is inert per the HTML spec, so
+a visitor clicking through from the marketing site would still race.
 
 ### 3. `resolved` is derived, not stored
 
@@ -97,18 +103,26 @@ whole class of bug. Demo mode resolves immediately, as it does today.
 
 ### 4. Entering and leaving the sandbox are explicit provider actions
 
-- `enterDemoMode()` — writes the flag, sets the override, and clears `identity` /
-  `availableIdentities`. It deliberately does **not** sign the user out of Firebase: that
-  would be a destructive side effect of merely visiting a marketing page, and the watcher has
-  already unsubscribed, so a dormant Firebase session cannot interfere. The user's real
-  session is still there when they return to `/login`.
-- `exitDemoMode()` — clears the flag and the override, and clears `identity` so a sandbox
-  identity cannot survive into the live form.
-- `signOut()` also clears the flag, so signing out of the demo returns the tab to live mode.
+- `enterDemoMode()` — writes the flag and clears `identity` / `availableIdentities`. It
+  deliberately does **not** sign the user out of Firebase: that would be a destructive side
+  effect of merely visiting a marketing page, and the watcher has already unsubscribed, so a
+  dormant Firebase session cannot interfere. The user's real session is still there when they
+  return to `/login`.
+- `exitDemoMode()` — clears the flag and `identity`, so a sandbox identity cannot survive into
+  the live form.
+- `signOut()` clears `identity` but **keeps the tab sandboxed**. Clearing the flag here (the
+  original design) meant a clinician who was live signed-in and then entered `/demo` in the
+  same tab clicked "Sign out" and landed signed **IN** to their real account, because the
+  watcher resolved their dormant session. Signing out of Firebase instead would be worse:
+  auth persistence is shared across tabs, so it would end their real session elsewhere.
+  Staying sandboxed lets `AuthGuard` return them to `/demo` and leaves the real session
+  untouched; `/login` is the explicit way out.
 
-`/demo` calls `enterDemoMode()` from a mount effect; the live login form calls
-`exitDemoMode()` from a mount effect. Putting the exit call in the client form rather than in
-`login/page.tsx` keeps the page a server component and preserves static prerendering.
+`/demo` calls `enterDemoMode()` from a mount effect (belt-and-braces — Decision 2's route check
+already resolves the mode during render, but the flag must persist once the visitor navigates
+deeper into `/app`). The live login form calls `exitDemoMode()` from a mount effect. Putting
+the exit call in the client form rather than in `login/page.tsx` keeps the page a server
+component and preserves static prerendering.
 
 ### 5. `loginUrlFor` takes the mode as an argument
 
@@ -137,9 +151,18 @@ using `/login`.
 
 ## Risks / Trade-offs
 
-- **A live identity leaking into a sandbox tab** → closed by the `demoOverride === null` guard
-  on the watcher effect (Decision 2); covered by a provider test that asserts the watcher does
-  not subscribe before the storage read.
+- **A live identity leaking into a sandbox tab** → closed by deriving mode from the route and
+  gating the watcher on `hydrated` (Decision 2); covered by provider tests asserting the
+  watcher never subscribes while on `/demo` or in a flagged tab, and by an E2E case that
+  reaches `/demo` by soft navigation. Verified in-browser on a Firebase-configured build: the
+  full journey runs with zero console errors, where it previously logged permission-denied.
+- **Sandbox tabs making real Firestore reads** → every consumer now derives mode from the
+  provider. Two did not at first: the store, and `ConsultCallProvider`, which subscribed to
+  `consultSignals/{uid}` with a demo uid. `isFirebaseConfigured()` now has exactly one
+  session-mode caller (`auth.tsx`); `/login` calls it only to ask whether the deployment has a
+  backend at all.
+- **"Sign out" leaving a user signed in** → sandbox sign-out keeps the tab sandboxed rather
+  than flipping it live and letting the watcher resolve a dormant session (Decision 4).
 - **Blank `/app` in a sandbox tab if `resolved` were stored** → closed by deriving `resolved`
   (Decision 3); covered by a test that flips mode after mount and asserts the guard redirects.
 - **Store and provider disagreeing mid-flip** — both now read the same `mode`, and React
