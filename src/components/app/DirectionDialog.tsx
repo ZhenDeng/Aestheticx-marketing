@@ -9,13 +9,15 @@ import { useState } from "react";
 import type { Authorisation, EmergencyAuthorisation, Patient } from "@/lib/demo/types";
 import { fullName } from "@/lib/demo/types";
 import { useDemoStore } from "@/lib/demo/store";
+import { useDemoAuth } from "@/lib/demo/auth";
 import {
   DEFAULT_CAPTURED_FIELDS,
   buildDirectionDraft,
   directionPrescriberName,
   directionResponsibleProvider,
   missingDirectionFields,
-  premiseDisplayLine,
+  premiseForCapture,
+  routeForCapture,
   type CapturedDirectionFields,
 } from "@/lib/demo/direction";
 import { directionPdfFilename, renderDirectionPdf } from "@/lib/demo/directionPdf";
@@ -27,16 +29,26 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   onClose: () => void;
 }) {
   const store = useDemoStore();
-  // Round 6: capture fields prefill from persisted data — the premise STAMPED on the
-  // authorisation at request time, and the prescriber's profile contact when hydrated
-  // (a nurse exporting live can't read the doctor's users doc; the fields stay editable).
+  const { identity } = useDemoAuth();
+  // Capture fields prefill from data the app already holds, so the clinician doesn't retype it
+  // onto a legal document. All stay editable.
+  //
+  // prescriberPhone / prescriberPrincipalPlace come from the doctor's profile and therefore
+  // resolve only when it is loaded — i.e. when the DOCTOR exports their own direction, or in
+  // demo. A nurse exporting live gets blanks: hydrate loads only the caller's own users doc,
+  // and neither listDoctors nor the authorisation document carries prescriber contact. Closing
+  // that needs the backend to stamp it at approval; see the direction-capture-autofill change.
   const [captured, setCaptured] = useState<CapturedDirectionFields>(() => {
     const doctorProfile = store.profileForUser(authorisation.doctorID);
+    const actingProfile = store.profileForUser(identity?.user.id ?? "");
     return {
       ...DEFAULT_CAPTURED_FIELDS,
       prescriberPhone: doctorProfile.phone,
       prescriberPrincipalPlace: doctorProfile.principalPlace,
-      premisesOfAdministration: premiseDisplayLine(authorisation.premise) ?? "",
+      // Stamped premise, else where the acting user is currently practising.
+      premisesOfAdministration: premiseForCapture(authorisation.premise, actingProfile),
+      // The route was chosen per line item at request time — recover it rather than ask again.
+      route: routeForCapture(authorisation.medication, store.state.requests[authorisation.requestID]),
     };
   });
   const [previewing, setPreviewing] = useState(false);

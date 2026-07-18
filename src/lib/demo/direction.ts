@@ -6,7 +6,11 @@
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
 import { routeLabel } from "./types";
-import type { DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
+// activePremise only — the same selected -> default -> first rule that stamps new requests,
+// so the capture fallback cannot drift from it. backend.ts is pure and does not import this
+// module, so there is no cycle.
+import { activePremise } from "./backend";
+import type { AuthorisationRequest, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise, UserProfile } from "./types";
 
 /** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
 export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
@@ -116,9 +120,52 @@ export const DEFAULT_CAPTURED_FIELDS: CapturedDirectionFields = {
   prescriberPrincipalPlace: "",
   premisesOfAdministration: "",
   directionPeriod: "6 months",
-  administrationCountAndIntervals: "Up to 5, ≥ 4 weeks apart",
+  // PRN, never an invented count and interval. The previous default asserted "Up to 5, ≥ 4
+  // weeks apart" — a clinical schedule nobody entered, pre-filled onto a legal document.
+  administrationCountAndIntervals: "PRN",
   route: "",
 };
+
+/**
+ * Premises of administration for the capture dialog: the premise STAMPED on the authorisation
+ * (where administration was actually authorised), else the acting user's current premise by the
+ * same selected → default → first rule that stamps new requests, so capture and request agree.
+ *
+ * The fallback is deliberately the ACTING user's profile, not the prescriber's — live hydrates
+ * only the caller's own users doc, so a prescriber-based fallback would be blank exactly when
+ * it is needed (the same gap that blocks prescriber phone / principal place).
+ */
+export function premiseForCapture(
+  stamped: Premise | null | undefined,
+  actingProfile: UserProfile,
+): string {
+  return premiseDisplayLine(stamped) ?? premiseDisplayLine(activePremise(actingProfile)) ?? "";
+}
+
+const norm = (v: string) => v.trim().toLowerCase();
+
+/**
+ * Route for the capture dialog, recovered from the originating request — the route WAS chosen
+ * per line item at submission, so the clinician should not retype it.
+ *
+ * Matched on name + dosage, and used ONLY when exactly one such item carries a route. Two
+ * deliberate refusals: an ambiguous match yields "" rather than a guess, and the item is never
+ * derived from the authorisation id (demo mints `${requestId}-${index}`, but live ids come from
+ * a Cloud Function whose scheme this repo does not control — indexing would pass in demo and
+ * silently state the wrong route in live). missingDirectionFields then prompts for it, which is
+ * far better than a direction naming the wrong route of administration.
+ */
+export function routeForCapture(
+  medication: MedicationItem,
+  originatingRequest: AuthorisationRequest | null | undefined,
+): string {
+  if (!originatingRequest) return "";
+  const matches = originatingRequest.items.filter(
+    (i) => norm(i.name) === norm(medication.name) && norm(i.dosage) === norm(medication.dosage),
+  );
+  if (matches.length !== 1) return ""; // no match, or ambiguous — never guess
+  return matches[0].route?.trim() ?? "";
+}
 
 /** "16" + units → "16 U" — the quantity wording on the direction's administration rows. */
 function medicationQuantity(medication: MedicationItem): string {
