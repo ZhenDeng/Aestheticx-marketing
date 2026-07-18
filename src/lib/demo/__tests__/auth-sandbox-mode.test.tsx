@@ -10,6 +10,9 @@ import { DEMO_MODE_KEY } from "@/lib/demo/demoMode";
 // window (a restored live session must never leak into a sandbox tab).
 vi.mock("@/lib/firebase/client", () => ({ isFirebaseConfigured: () => true }));
 
+let pathname = "/";
+vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
+
 let subscribed = 0;
 type WatchCb = (user: { uid: string } | null) => void | Promise<void>;
 let watchCb: WatchCb | undefined;
@@ -31,7 +34,45 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   subscribed = 0;
   watchCb = undefined;
+  pathname = "/";
   window.sessionStorage.clear();
+});
+
+// Being ON /demo is itself demo mode, resolved during render rather than by an effect. This is
+// what stops a visitor with a live Firebase session from having the watcher restore it — and
+// fire Firestore reads as them — in the commit before the mount effect flips the flag.
+describe("DemoAuthProvider (/demo route)", () => {
+  it("is in demo mode on /demo before any flag is written", async () => {
+    pathname = "/demo";
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    expect(result.current.mode).toBe("demo");
+    await act(async () => {});
+    expect(result.current.mode).toBe("demo");
+  });
+
+  it("never subscribes the live watcher while on /demo", async () => {
+    pathname = "/demo";
+    renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+    expect(subscribed).toBe(0);
+  });
+
+  it("stays sandboxed after navigating from /demo into the app, via the flag", async () => {
+    pathname = "/demo";
+    const { result, rerender } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => { result.current.enterDemoMode(); });
+
+    pathname = "/app/dashboard"; // the picker routes here
+    rerender();
+    expect(result.current.mode).toBe("demo");
+  });
+
+  it("does not sandbox other routes just because /demo exists", async () => {
+    pathname = "/login";
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+    expect(result.current.mode).toBe("live");
+  });
 });
 
 describe("DemoAuthProvider (sandbox override)", () => {

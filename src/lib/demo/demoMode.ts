@@ -22,15 +22,6 @@ export function isDemoModeRequested(storage: Storage): boolean {
   }
 }
 
-/**
- * Inline script for /demo that claims the sandbox before React hydrates, so the very first
- * client render already resolves to demo mode. Lives here so the key and the on-marker have a
- * single definition — a page-local copy would drift silently. Built from compile-time
- * constants only, so there is nothing injectable in it.
- */
-export const CLAIM_SANDBOX_SCRIPT =
-  `try{sessionStorage.setItem(${JSON.stringify(DEMO_MODE_KEY)},${JSON.stringify(ON)})}catch(e){}`;
-
 // sessionStorage does not notify the tab that wrote it, so the flag is exposed as a tiny
 // external store: the auth provider reads it via useSyncExternalStore, and every write here
 // tells React to re-read the snapshot.

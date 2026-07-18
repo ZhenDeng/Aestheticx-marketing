@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CLAIM_SANDBOX_SCRIPT, DEMO_MODE_KEY, isDemoModeRequested, setDemoMode, subscribeDemoMode } from "@/lib/demo/demoMode";
+import { DEMO_MODE_KEY, isDemoModeRequested, setDemoMode, subscribeDemoMode } from "@/lib/demo/demoMode";
 
 /** Minimal in-memory Storage stand-in (the loginPrefs.test pattern). */
 function memoryStorage(): Storage {
@@ -46,24 +46,6 @@ describe("isDemoModeRequested", () => {
     const s = memoryStorage();
     s.setItem(DEMO_MODE_KEY, "maybe");
     expect(isDemoModeRequested(s)).toBe(false);
-  });
-});
-
-describe("CLAIM_SANDBOX_SCRIPT", () => {
-  // /demo inlines this to claim the sandbox before hydration. Executing it must leave storage
-  // in a state isDemoModeRequested accepts — this is what catches the key or on-marker drifting
-  // apart from the reader, which would fail silently in the browser.
-  it("puts storage into a state the reader accepts", () => {
-    window.sessionStorage.clear();
-    new Function(CLAIM_SANDBOX_SCRIPT)();
-    expect(isDemoModeRequested(window.sessionStorage)).toBe(true);
-    window.sessionStorage.clear();
-  });
-
-  it("swallows a storage failure rather than breaking the page", () => {
-    // Inline scripts run before React; an uncaught throw here would blank the demo for anyone
-    // with storage disabled.
-    expect(CLAIM_SANDBOX_SCRIPT).toContain("catch");
   });
 });
 

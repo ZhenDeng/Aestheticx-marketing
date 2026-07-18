@@ -12,7 +12,6 @@ import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { incomingCallFromSignal, callDisplayName, LIVEKIT_URL, type IncomingCall } from "@/lib/demo/calls";
 import { unitSuffix } from "@/lib/demo/catalog";
-import { isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AuthorisationRequest, Identity } from "@/lib/demo/types";
 import type { Room } from "livekit-client";
 
@@ -44,7 +43,7 @@ export function useConsultCall(): ConsultCallValue {
 
 export function ConsultCallProvider({ children }: { children: ReactNode }) {
   const store = useDemoStore();
-  const { identity } = useDemoAuth();
+  const { identity, mode } = useDemoAuth();
   const [call, setCall] = useState<ActiveCall | null>(null);
 
   const start = useCallback((requestID: string, patientName?: string) => {
@@ -69,7 +68,10 @@ export function ConsultCallProvider({ children }: { children: ReactNode }) {
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const uid = identity?.user.id ?? null;
   useEffect(() => {
-    if (!isFirebaseConfigured() || !uid) return;
+    // Gate on the provider's mode, not isFirebaseConfigured() alone: a sandbox tab on a
+    // Firebase-configured deployment holds a DEMO identity whose uid exists only in the seed,
+    // so subscribing here would open a real, unauthorised consultSignals listener for it.
+    if (mode !== "live" || !uid) return;
     let unsubscribe = () => {};
     let expireTimer: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
@@ -92,7 +94,7 @@ export function ConsultCallProvider({ children }: { children: ReactNode }) {
       });
     })();
     return () => { disposed = true; clearTimeout(expireTimer); unsubscribe(); };
-  }, [uid]);
+  }, [uid, mode]);
 
   const consumeSignal = useCallback(async () => {
     if (!uid) return;

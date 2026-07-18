@@ -29,7 +29,7 @@ const generateInvoice = vi.fn();
 const deleteInvoice = vi.fn();
 let invoices: Invoice[];
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/demo/auth", () => ({
   useDemoAuth: () => ({ identity: voss, availableIdentities: [voss], selectIdentity: vi.fn(), signOut: vi.fn() }),
 }));

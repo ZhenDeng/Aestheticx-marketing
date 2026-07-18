@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Identity } from "./types";
 import { DEMO_ACCOUNTS } from "./accounts";
@@ -41,6 +42,9 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+/** The route that is itself the sandbox entry point. */
+const DEMO_ROUTE = "/demo";
+
 /** Read once, at module scope: nothing subscribes to hydration, it just happens. */
 const noopSubscribe = () => () => {};
 
@@ -56,9 +60,15 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     () => false, // server: never sandboxed
   );
   // True only once the client has taken over. The live watcher below gates on it so it cannot
-  // subscribe during the hydration render, when `mode` is still the server's guess.
+  // subscribe during the hydration render, when the flag is still the server's guess.
   const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
-  const mode: Mode = !envLive || demoOverride ? "demo" : "live";
+  // Being on /demo IS demo mode, resolved during render on both server and client. The flag
+  // alone would be a commit too late on a full page load: DemoLoginForm sets it from a mount
+  // effect, so a visitor with a live Firebase session would have the watcher restore it and
+  // read Firestore as them first. usePathname needs no Suspense boundary (unlike
+  // useSearchParams) and does not opt the route out of static prerendering.
+  const onDemoRoute = usePathname() === DEMO_ROUTE;
+  const mode: Mode = !envLive || demoOverride || onDemoRoute ? "demo" : "live";
 
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [availableIdentities, setAvailableIdentities] = useState<Identity[]>([]);

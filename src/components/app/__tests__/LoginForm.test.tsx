@@ -12,7 +12,7 @@ import type { Identity } from "@/lib/demo/types";
 
 const push = vi.fn();
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push, replace }) }));
 
 // Mutable auth value so a test can flip mode / populate identity and re-render, mirroring the
 // live async identity resolution (signInLive resolves, then the Firebase listener lands identity).

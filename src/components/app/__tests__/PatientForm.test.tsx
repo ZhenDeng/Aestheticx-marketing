@@ -11,7 +11,7 @@ const nurse: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nu
 
 const push = vi.fn();
 const back = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, back }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push, back }) }));
 
 let identity: Identity | null;
 vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity }) }));

@@ -11,7 +11,7 @@ import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 
 // Force demo mode: the store then hydrates synchronously from the seed with a fixed `now`.
 vi.mock("@/lib/firebase/client", () => ({ isFirebaseConfigured: () => false }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }) }));
 
 import { DemoAuthProvider, useDemoAuth } from "@/lib/demo/auth";
 import { DemoStoreProvider } from "@/lib/demo/store";

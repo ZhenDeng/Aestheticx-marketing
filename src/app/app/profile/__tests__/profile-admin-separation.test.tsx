@@ -7,7 +7,7 @@ import type { Identity } from "@/lib/demo/types";
 
 let currentIdentity: Identity;
 const profile = { ahpra: "", abn: "", phone: "" };
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/demo/auth", () => ({
   useDemoAuth: () => ({ identity: currentIdentity, availableIdentities: [currentIdentity], selectIdentity: vi.fn(), signOut: vi.fn() }),
 }));
