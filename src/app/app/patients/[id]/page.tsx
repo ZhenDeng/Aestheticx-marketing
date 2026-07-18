@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions, notePreview, canSendAftercare, imageAttachments } from "@/lib/demo/backend";
+import { patientAccessLevel } from "@/lib/demo/isolation";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
@@ -78,7 +79,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const me = identity; // non-null, captured by the handlers below
 
   const patient = store.state.patients[id];
-  if (!patient || !patientPermissions(identity, patient).canView) {
+  // Clinical view OR commercial access (isolation guard) — a collaborating doctor reaches
+  // the clinic's client file to operate on it (spec: client-data-isolation).
+  if (!patient || !(patientPermissions(identity, patient).canView || patientAccessLevel(store.state, identity, patient) !== "none")) {
     return <p className="text-ink-soft">This patient is not in your view.</p>;
   }
   const perms = patientPermissions(identity, patient);

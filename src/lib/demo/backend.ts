@@ -61,6 +61,7 @@ import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
 import { approvalNote, buildApprovalDocumentModel, renderApprovalPdf } from "./approvalPdf";
 import { cooperatingDoctorsFor, relationshipFor, priceCentsFor, invoiceAppliesFor, cooperationDocId } from "./cooperation";
+import { patientAccessLevel } from "./isolation";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -310,8 +311,11 @@ export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string
 }
 
 export function visiblePatients(state: DemoState, identity: Identity): Patient[] {
+  // Clinical view (permissions matrix) OR commercial access (isolation guard) — the
+  // latter adds a collaborating doctor's reach into the clinic's client book
+  // (spec: client-data-isolation).
   return Object.values(state.patients)
-    .filter((p) => patientPermissions(identity, p).canView)
+    .filter((p) => patientPermissions(identity, p).canView || patientAccessLevel(state, identity, p) !== "none")
     .sort((a, b) => (a.lastName + a.givenName).localeCompare(b.lastName + b.givenName));
 }
 
