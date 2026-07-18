@@ -24,18 +24,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div style={tintStyle(identity)} className="flex min-h-screen flex-col bg-card text-ink">
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
-          <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-field text-card" style={{ background: "var(--color-tint)" }}>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-9 w-9 flex-none place-items-center rounded-field text-card" style={{ background: "var(--color-tint)" }}>
               <span className="font-display text-base">AX</span>
             </span>
             <span className="font-display text-lg">AestheticX</span>
-            <span className="micro rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
-              {status === "demo" ? "Demo · resets on refresh" : "Live"}
+            {/* The full "resets on refresh" hint needs room the 320px header hasn't got, so it
+                shortens to "Demo" below sm; whitespace-nowrap keeps it on one line either way. */}
+            <span className="micro flex-none whitespace-nowrap rounded-full px-2 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
+              {status === "demo" ? (
+                <>
+                  <span className="sm:hidden">Demo</span>
+                  <span className="hidden sm:inline">Demo · resets on refresh</span>
+                </>
+              ) : "Live"}
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-none items-center gap-4">
             <span className="hidden text-sm text-ink-soft sm:inline">{identityBadge(identity)}</span>
-            <button onClick={signOut} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint/50">
+            <button onClick={signOut} className="whitespace-nowrap rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint/50">
               Sign out
             </button>
           </div>
@@ -50,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-btn border px-2 py-2 text-center text-sm transition-colors sm:-mb-px sm:shrink-0 sm:whitespace-nowrap sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b-2 sm:bg-transparent sm:px-3 sm:py-2.5 ${
+                className={`rounded-btn border px-1.5 py-2 text-center text-xs leading-tight break-words transition-colors sm:-mb-px sm:shrink-0 sm:whitespace-nowrap sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b-2 sm:bg-transparent sm:px-3 sm:py-2.5 sm:text-sm sm:leading-normal ${
                   active
                     ? "border-[var(--color-tint)] bg-[var(--color-tint-soft)] font-medium text-ink"
                     : "border-line bg-card text-ink-soft hover:text-ink sm:border-transparent"
