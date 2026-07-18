@@ -8,6 +8,17 @@ Fixed by having `approveRequest` **stamp** the prescriber's contact onto every a
 writes, read from the approving doctor's `users/{uid}` doc. The web then prefers the stamp over
 its existing profile lookup.
 
+## Depends on `fix/direction-party-names` (hard precondition)
+
+A sibling change on branch `fix/direction-party-names` (`~/Documents/AestheticX`, uncommitted as
+of 2026-07-18) already stamps the Clause 68C **party names** — `doctorName` / `nurseName` — at the
+same write site, from the same `doctorSnap`, via a pure helper `directionPartyNames` in
+`domain.ts`. See [[clause-68c-party-names]].
+
+**This change extends that helper rather than adding a parallel one**, and therefore lands
+*after* it. Branch off `fix/direction-party-names`, not `main`. Two helpers taking the same
+`doctor: Record<string, unknown>` and spreading into the same `tx.set` would be duplication.
+
 ## Root cause (verified both repos)
 
 - `DirectionDialog.tsx` prefills from `store.profileForUser(authorisation.doctorID)`. This works
@@ -39,50 +50,57 @@ doctors created before those validations existed, and both fields can be blank i
 
 ## Backend (`~/Documents/AestheticX/backend`, branch `fix/direction-prescriber-contact`)
 
-No openspec in that repo — plain conventional-commit PR.
+Branched off `fix/direction-party-names`. No openspec in that repo — plain conventional-commit PR.
 
-- **`functions/src/domain.ts`** — `AuthorisationDoc` (`:87`) gains two optional fields,
-  `prescriberPhone?` and `prescriberPrincipalPlace?`. New pure helper:
+- **`functions/src/domain.ts`** — `AuthorisationDoc` gains `prescriberPhone?: string` and
+  `prescriberPrincipalPlace?: string`, alongside the `doctorName?` / `nurseName?` stamps.
+
+  `directionPartyNames` is **extended and renamed** to `clause68CStamps`, returning everything
+  `approveRequest` stamps onto an authorisation for the direction:
 
   ```ts
-  export function prescriberContact(doctor: Record<string, unknown>): {
+  export function clause68CStamps(
+    doctor: Record<string, unknown>,
+    request: { nurseName?: unknown },
+  ): {
+    doctorName?: string; nurseName?: string
     prescriberPhone?: string; prescriberPrincipalPlace?: string
   }
   ```
 
-  Trims present string values; **omits** anything blank, whitespace-only, or non-string.
+  It already carries a `usable()` coercion that trims strings and rejects non-strings; the two
+  new fields reuse it unchanged.
 
-- **`functions/src/index.ts`** — one spread at the existing authorisation write site (`:187`),
-  alongside `counterpartyId` / `patientName`:
-
-  ```ts
-  ...prescriberContact(doctorSnap.data() ?? {}),
-  ```
+- **`functions/src/index.ts`** — the existing `...partyNames` spread at the authorisation write
+  site becomes `...stamps`, from the renamed call. No other change.
 
 **No `firestore.rules` change.** `authorisations` is already `allow write: if false`
 (`firestore.rules:317`) — Function-only, so the Admin SDK writes new fields freely — and a nurse
 already reads the doc via `resource.data.nurseId == uid()`.
 
-### Why a pure helper, not a `fanOutAuthorisations` parameter
+### Why rename rather than extend in place
 
-Prescriber contact is not request-derived; it comes from a **read**, like `patientName`, which
-is likewise added at the set site rather than inside fan-out (`domain.ts:115`). Keeping it out
-of `fanOutAuthorisations` leaves that function a clean request→docs map.
+Once the helper returns phone and principal place, `directionPartyNames` is inaccurate — those
+are contact details, not party names. `clause68CStamps` names the responsibility precisely: *the
+fields approveRequest stamps for the Clause 68C direction*. It also matches the web's existing
+`CLAUSE_68C_FIELDS` naming.
 
-Testability decides it: `index.ts` has no unit tests, `domain.ts` is thoroughly covered. The only
-logic worth testing here is the coercion of untrusted Firestore data into two strings, and the
-helper puts exactly that where `domain.test.ts` can reach it. The wiring is then a one-line
-spread.
+The rename costs three mechanical edits (the export, the `index.ts` import and call, the
+`domain.test.ts` import) and lands after `fix/direction-party-names`, so it never conflicts with
+it. The `clause-68c-party-names` memory must be updated to the new name.
 
-### Why omit blanks rather than stamp `""`
+### Why the stamp omits blanks rather than writing `""`
 
-Matches the codebase idiom for absent stamps (`...(premise ? { premise } : {})`) and lets a
-reader distinguish *never stamped* from *stamped blank*, so the web fallback is automatic.
+Adopted verbatim from the party-names change, whose reasoning is sharper than "match the codebase
+idiom": the web resolver treats **any non-empty stamp as authoritative** and stops there. A
+placeholder or empty-but-present value would print onto the direction *and* satisfy the
+`missingDirectionFields` gate that exists to block exactly that — a non-empty string always passes
+it. Omitting lets the reader fall through to its next source and ultimately fail closed.
 
-Stamping `""` would actively **regress** a doctor exporting their own direction: they would get
-an empty stamped value in place of the live profile value they see today. Legacy doctors created
-before `userAdmin` validation may hold blank profile fields, so this is a real case, not a
-hypothetical.
+For contact specifically, stamping `""` would also **regress** a doctor exporting their own
+direction: they would get an empty stamped value in place of the live profile value they see
+today. Legacy doctors and clinic-account doctors both hold blank fields in practice, so this is a
+real case, not a hypothetical.
 
 ## Web (branched off `fix/direction-form-autofill`)
 
@@ -105,9 +123,15 @@ on `main` instead would conflict in `DirectionDialog.tsx`.
 - **`src/components/app/DirectionDialog.tsx:33`** — the two prefill lines call the resolver, and
   the comment documenting the gap is rewritten to describe the stamp.
 
-New openspec change `direction-prescriber-contact`, closing the non-goal that
-`direction-capture-autofill` declared. That change's own non-goal text is left alone — it stays
-accurate about *its* scope.
+New openspec change `direction-prescriber-contact`, closing the phone / principal-place half of
+the non-goal that `direction-capture-autofill` declared.
+
+### Scope: contact only, not the prescriber name
+
+The stamped `doctorName` / `nurseName` and the raw-uid `directionPrescriberName` defect belong to
+the party-names story, which owns its own web-side precedence chain (stamp → cooperation
+directory → demo accounts → `""`). This change does not touch `directionPrescriberName` or
+`directionResponsibleProvider`, and leaves the other half of the non-goal text standing.
 
 ### Why the stamp wins over the profile
 
@@ -137,25 +161,31 @@ more honest than a silently wrong one.
 
 TDD both sides — tests RED before implementation.
 
-- **`domain.test.ts`** — `prescriberContact`: present values trimmed; blank, whitespace-only,
-  non-string, and missing-doc cases all omit the key.
+- **`domain.test.ts`** — `clause68CStamps` stamps trimmed phone and principal place; omits each
+  independently when blank, whitespace-only, non-string, or absent. The existing party-name cases
+  are preserved through the rename.
 - **`mappers.test.ts`** — `mapAuthorisation` carries both stamps; absent stamps stay absent.
 - **`direction.test.ts`** — `prescriberContactForCapture`: stamp wins over profile; falls back to
-  profile when unstamped; both absent yields `""` so `missingDirectionFields` still reports.
+  profile when unstamped; resolves the two fields independently; both absent yields `""` so
+  `missingDirectionFields` still reports.
 - **`DirectionDialog-prefill.test.tsx`** — a nurse (no prescriber profile loaded) exporting a
   stamped authorisation sees both fields prefilled.
 
 ## Sequencing
 
-Independently deployable in either order. Web-first simply falls back to the profile lookup until
-the backend ships, because an unstamped authorisation is indistinguishable from a pre-stamp one.
-Natural order is backend first. Two PRs, two repos; the web PR merges after its base.
+1. `fix/direction-party-names` commits and lands. **Hard gate** — nothing here starts first.
+2. Backend `fix/direction-prescriber-contact`, branched off it.
+3. Web, branched off `fix/direction-form-autofill`.
+
+Backend and web are independently deployable in either order: web-first simply falls back to the
+profile lookup until the backend ships, because an unstamped authorisation is indistinguishable
+from a pre-stamp one.
 
 ## Out of scope
 
 - Backfilling existing authorisations (above).
+- The prescriber **name** and its raw-uid defect — the party-names story (above).
 - An emulator integration test for `approveRequest` — none exists today, and standing up the
   harness costs more than this change earns. The helper is unit-tested; the wiring is one line.
-- The raw-uid prescriber **name** gap, still a non-goal of `direction-capture-autofill`.
 - Extending `listDoctors`, the rejected alternative.
 - PDF layout, the `missingDirectionFields` gate, and persisting captured fields — all unchanged.
