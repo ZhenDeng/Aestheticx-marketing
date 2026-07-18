@@ -131,4 +131,25 @@ describe("DirectionDialog prefills", () => {
     await user.type(premises, "Other Rooms, 5 Elsewhere St");
     expect(premises.value).toBe("Other Rooms, 5 Elsewhere St");
   });
+
+  // The reported defect: a nurse holds no prescriber profile, so both Clause 68C contact fields
+  // were blank and the export gate blocked. The approval stamp is now their source.
+  it("prefills prescriber contact from the stamp when the nurse has no prescriber profile", () => {
+    open(authorisation({
+      prescriberPhone: "02 9555 0100",
+      prescriberPrincipalPlace: "88 Oxford St, Paddington NSW 2021",
+    }));
+    expect(field("Phone").value).toBe("02 9555 0100");
+    expect(field("Principal place of practice").value).toBe("88 Oxford St, Paddington NSW 2021");
+  });
+
+  it("falls back to the prescriber profile when the authorisation is unstamped", () => {
+    profiles["u-voss"] = {
+      ahpra: "", abn: "", phone: "0412 000 111", address: "",
+      principalPlace: "Profile Rooms, 1 Profile St", premises: [],
+    };
+    open(authorisation());
+    expect(field("Phone").value).toBe("0412 000 111");
+    expect(field("Principal place of practice").value).toBe("Profile Rooms, 1 Profile St");
+  });
 });

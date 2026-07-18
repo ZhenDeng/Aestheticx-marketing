@@ -18,6 +18,7 @@ import {
   directionResponsibleProvider,
   missingDirectionFields,
   premiseForCapture,
+  prescriberContactForCapture,
   routeForCapture,
   type CapturedDirectionFields,
 } from "@/lib/demo/direction";
@@ -34,13 +35,11 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   // Capture fields prefill from data the app already holds, so the clinician doesn't retype it
   // onto a legal document. All stay editable.
   //
-  // prescriberPhone / prescriberPrincipalPlace come from the doctor's profile and therefore
-  // resolve only when it is loaded — i.e. when the DOCTOR exports their own direction, or in
-  // demo. A nurse exporting live gets blanks: hydrate loads only the caller's own users doc,
-  // and neither listDoctors nor the authorisation document carries prescriber contact. Closing
-  // that needs the backend to stamp it at approval; see the direction-capture-autofill change.
+  // prescriberPhone / prescriberPrincipalPlace come from the stamp approveRequest writes at
+  // approval, falling back to the prescriber's profile — which live resolves only when the
+  // DOCTOR exports their own direction, since hydrate loads just the caller's own users doc.
+  // Authorisations approved before the stamp shipped therefore behave exactly as they did.
   const [captured, setCaptured] = useState<CapturedDirectionFields>(() => {
-    const doctorProfile = store.profileForUser(authorisation.doctorID);
     const actingProfile = store.profileForUser(identity?.user.id ?? "");
     // The originating request carries the line-item routes chosen at submission. Frozen once
     // approved — neither editPendingRequest nor resubmitRequest can touch an approved request's
@@ -48,8 +47,7 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
     const request = store.state.requests[authorisation.requestID];
     return {
       ...DEFAULT_CAPTURED_FIELDS,
-      prescriberPhone: doctorProfile.phone,
-      prescriberPrincipalPlace: doctorProfile.principalPlace,
+      ...prescriberContactForCapture(authorisation, store.profileForUser(authorisation.doctorID)),
       premisesOfAdministration: premiseForCapture({
         stamped: authorisation.premise,
         // A clinic authorisation must print the CLINIC's premises, never the acting nurse's own.
