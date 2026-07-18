@@ -6,7 +6,7 @@
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
 import { routeLabel } from "./types";
-import type { AuthorisationRequest, ClinicRef, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
+import type { AuthorisationRequest, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
 
 /** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
 export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
@@ -141,20 +141,22 @@ export const DEFAULT_CAPTURED_FIELDS: CapturedDirectionFields = {
  * caller's own users doc, so a prescriber-based fallback would be blank exactly when needed
  * (the same gap that blocks prescriber phone / principal place).
  *
+ * The clinic's premises are STAMPED onto the authorisation at approval (approveRequest), not
+ * looked up: firestore.rules makes clinics/{id} readable only to clinic members, so an
+ * independent cooperating doctor exporting this same direction could not resolve them, and a
+ * lookup would also show today's address on a months-old authorisation.
+ *
  * `actingPremise` is resolved by the caller (via backend's `activePremise`) rather than looked
  * up here, so this module keeps its no-Firebase, no-backend purity and adds no import cycle.
  */
 export function premiseForCapture(input: {
   stamped: Premise | null | undefined;
   clinicID: string | null;
-  clinic: ClinicRef | null;
+  clinicPremise: Premise | null | undefined;
   actingPremise: Premise | null;
 }): string {
   if (input.clinicID) {
-    const asPremise = input.clinic
-      ? { id: "", name: input.clinic.name ?? "", address: input.clinic.address ?? "" }
-      : null;
-    return premiseDisplayLine(asPremise) ?? premiseDisplayLine(input.stamped) ?? "";
+    return premiseDisplayLine(input.clinicPremise) ?? premiseDisplayLine(input.stamped) ?? "";
   }
   return premiseDisplayLine(input.stamped) ?? premiseDisplayLine(input.actingPremise) ?? "";
 }

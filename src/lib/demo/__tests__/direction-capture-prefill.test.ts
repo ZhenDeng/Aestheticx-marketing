@@ -27,29 +27,29 @@ function request(items: MedicationItem[]): AuthorisationRequest {
   };
 }
 
-const LUMIERE_REF = { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" };
+const LUMIERE_PREMISE: Premise = { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" };
 
 describe("premiseForCapture — independent context", () => {
   it("prefers the premise stamped on the authorisation", () => {
     // The stamp records where administration was actually authorised — it must win over
     // whatever the acting user happens to have selected today.
-    const line = premiseForCapture({ stamped: STAMPED, clinicID: null, clinic: null, actingPremise: BONDI });
+    const line = premiseForCapture({ stamped: STAMPED, clinicID: null, clinicPremise: null, actingPremise: BONDI });
     expect(line).toBe("Stamped Clinic, 1 Stamp Rd, Sydney NSW 2000");
   });
 
   it("falls back to the acting user's premise when nothing is stamped", () => {
-    const line = premiseForCapture({ stamped: null, clinicID: null, clinic: null, actingPremise: SURRY });
+    const line = premiseForCapture({ stamped: null, clinicID: null, clinicPremise: null, actingPremise: SURRY });
     expect(line).toBe("The Skin Room, 3/21 Crown St, Surry Hills NSW 2010");
   });
 
   it("is blank when there is nothing to fall back to", () => {
-    expect(premiseForCapture({ stamped: null, clinicID: null, clinic: null, actingPremise: null })).toBe("");
-    expect(premiseForCapture({ stamped: undefined, clinicID: null, clinic: null, actingPremise: null })).toBe("");
+    expect(premiseForCapture({ stamped: null, clinicID: null, clinicPremise: null, actingPremise: null })).toBe("");
+    expect(premiseForCapture({ stamped: undefined, clinicID: null, clinicPremise: null, actingPremise: null })).toBe("");
   });
 
   it("is blank when the stamped premise has no address and there is no fallback", () => {
     const empty: Premise = { id: "p-x", name: "Nameless", address: "   " };
-    expect(premiseForCapture({ stamped: empty, clinicID: null, clinic: null, actingPremise: null })).toBe("");
+    expect(premiseForCapture({ stamped: empty, clinicID: null, clinicPremise: null, actingPremise: null })).toBe("");
   });
 });
 
@@ -62,38 +62,49 @@ describe("premiseForCapture — independent context", () => {
 // cannot disagree about where administration happened.
 describe("premiseForCapture — clinic context", () => {
   it("uses the clinic's address, never the acting nurse's own premises", () => {
-    const line = premiseForCapture({ stamped: null, clinicID: LUMIERE_REF.id, clinic: LUMIERE_REF, actingPremise: BONDI });
+    const line = premiseForCapture({ stamped: null, clinicID: LUMIERE_PREMISE.id, clinicPremise: LUMIERE_PREMISE, actingPremise: BONDI });
     expect(line).toBe("Lumière Clinic, 2 Notts Ave, Bondi Beach NSW 2026");
     expect(line).not.toContain("Sarah Chen Aesthetics");
   });
 
   it("uses the clinic's address even over a stamped premise, as the approval document does", () => {
-    const line = premiseForCapture({ stamped: STAMPED, clinicID: LUMIERE_REF.id, clinic: LUMIERE_REF, actingPremise: BONDI });
+    const line = premiseForCapture({ stamped: STAMPED, clinicID: LUMIERE_PREMISE.id, clinicPremise: LUMIERE_PREMISE, actingPremise: BONDI });
     expect(line).toBe("Lumière Clinic, 2 Notts Ave, Bondi Beach NSW 2026");
   });
 
-  it("falls through to a stamped premise when the clinic cannot be resolved", () => {
+  it("falls through to a stamped premise when the clinic premises are not stamped", () => {
     // Unreachable via submitRequest today (a clinic request always stamps null), but it is a
     // real branch and mirrors buildApprovalDocumentModel's own fall-through. Pinned so the two
     // cannot drift apart if clinic requests ever start stamping a premise.
-    const line = premiseForCapture({ stamped: STAMPED, clinicID: LUMIERE_REF.id, clinic: null, actingPremise: BONDI });
+    const line = premiseForCapture({ stamped: STAMPED, clinicID: LUMIERE_PREMISE.id, clinicPremise: null, actingPremise: BONDI });
     expect(line).toBe("Stamped Clinic, 1 Stamp Rd, Sydney NSW 2000");
     expect(line).not.toContain("Sarah Chen Aesthetics");
   });
 
-  it("yields blank when the clinic carries no address (the live shape)", () => {
-    // Live builds the clinic ref from claims/mappers with id+name only — no address (see the
-    // JSDoc on ClinicRef). So this branch currently yields blank in live and the clinician is
-    // prompted, rather than the clinic address appearing. Pinned so the behaviour is a known
-    // quantity rather than a surprise.
-    const addressless = { id: "clinic-lumiere", name: "clinic-lumiere" };
-    expect(premiseForCapture({ stamped: null, clinicID: addressless.id, clinic: addressless, actingPremise: BONDI })).toBe("");
+  it("yields blank for a clinic authorisation approved before the stamp existed", () => {
+    // No backfill: authorisations approved before approveRequest stamped clinicPremise carry
+    // none. They must keep prompting rather than reaching for the acting nurse's private
+    // practice — the misattribution this precedence exists to prevent.
+    expect(premiseForCapture({
+      stamped: null, clinicID: "clinic-lumiere", clinicPremise: undefined, actingPremise: BONDI,
+    })).toBe("");
   });
 
-  it("refuses the acting nurse's premises when the clinic cannot be resolved", () => {
+  it("uses a stamped clinic premises that carries no name, address-only", () => {
+    // clinicPremiseStamp deliberately allows a blank name: an address alone locates the
+    // premises, and the fail-closed rule governs party lines, not the location.
+    expect(premiseForCapture({
+      stamped: null,
+      clinicID: "clinic-lumiere",
+      clinicPremise: { id: "clinic-lumiere", name: "", address: "2 Notts Ave, Bondi Beach NSW 2026" },
+      actingPremise: BONDI,
+    })).toBe("2 Notts Ave, Bondi Beach NSW 2026");
+  });
+
+  it("refuses the acting nurse's premises when the clinic premises are not stamped", () => {
     // The originating request isn't loaded, so we cannot name the clinic. Blank prompts the
     // clinician; falling through to their private practice would silently misattribute it.
-    const line = premiseForCapture({ stamped: null, clinicID: LUMIERE_REF.id, clinic: null, actingPremise: BONDI });
+    const line = premiseForCapture({ stamped: null, clinicID: LUMIERE_PREMISE.id, clinicPremise: null, actingPremise: BONDI });
     expect(line).toBe("");
   });
 });

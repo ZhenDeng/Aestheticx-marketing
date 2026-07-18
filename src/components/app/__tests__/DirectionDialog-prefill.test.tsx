@@ -82,21 +82,20 @@ describe("DirectionDialog prefills", () => {
   // own premises printed her private practice on a clinic patient's legal document — and Sarah
   // Chen holds both identities, so it is the ordinary case, not an edge case.
   it("uses the clinic's address for a clinic authorisation, never the nurse's own premises", () => {
-    requests = {
-      "req-1": {
-        ...originatingRequest("Intradermal"),
-        context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" } },
-      },
-    };
-    open(authorisation({ clinicID: "clinic-lumiere", premise: null }));
+    open(authorisation({
+      clinicID: "clinic-lumiere",
+      premise: null,
+      clinicPremise: { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" },
+    }));
 
     const v = field(/premises of administration/i).value;
     expect(v).toBe("Lumière Clinic, 2 Notts Ave, Bondi Beach NSW 2026");
     expect(v).not.toContain("Sarah Chen Aesthetics");
   });
 
-  it("leaves premises blank for a clinic authorisation whose request is not loaded", () => {
-    requests = {};
+  it("leaves premises blank for a clinic authorisation carrying no premises stamp", () => {
+    // Pre-stamp authorisations (no backfill). Blank prompts the clinician; falling through to
+    // the acting nurse's private practice would misattribute a clinic patient's legal document.
     open(authorisation({ clinicID: "clinic-lumiere", premise: null }));
     expect(field(/premises of administration/i).value).toBe("");
   });
