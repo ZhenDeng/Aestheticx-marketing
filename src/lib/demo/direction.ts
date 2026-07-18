@@ -6,7 +6,7 @@
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
 import { routeLabel } from "./types";
-import type { AuthorisationRequest, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
+import type { Authorisation, AuthorisationRequest, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise, UserProfile } from "./types";
 
 /** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
 export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
@@ -159,6 +159,27 @@ export function premiseForCapture(input: {
     return premiseDisplayLine(input.clinicPremise) ?? premiseDisplayLine(input.stamped) ?? "";
   }
   return premiseDisplayLine(input.stamped) ?? premiseDisplayLine(input.actingPremise) ?? "";
+}
+
+/**
+ * Prescriber contact for the capture dialog: the value STAMPED on the authorisation at approval
+ * (approveRequest snapshots the prescriber's profile), else the prescriber's profile when it
+ * happens to be loaded — which live means only when the DOCTOR exports their own direction.
+ *
+ * The stamp wins so every export of the same direction reads alike, whoever runs it. The two
+ * fields resolve independently: a clinic-account doctor has no principal place to stamp, and
+ * that must not drag the stamped phone back to the profile. Both blank leaves the fields empty
+ * and missingDirectionFields blocks the export — the correct failure on a legal document.
+ */
+export function prescriberContactForCapture(
+  authorisation: Pick<Authorisation, "prescriberPhone" | "prescriberPrincipalPlace">,
+  prescriberProfile: UserProfile,
+): { prescriberPhone: string; prescriberPrincipalPlace: string } {
+  return {
+    prescriberPhone: authorisation.prescriberPhone?.trim() || prescriberProfile.phone,
+    prescriberPrincipalPlace:
+      authorisation.prescriberPrincipalPlace?.trim() || prescriberProfile.principalPlace,
+  };
 }
 
 const norm = (v: string) => v.trim().toLowerCase();

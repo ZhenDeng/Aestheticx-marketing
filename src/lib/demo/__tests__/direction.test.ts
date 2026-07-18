@@ -11,6 +11,7 @@ import {
   formatDob,
   formatDocDate,
   missingDirectionFields,
+  prescriberContactForCapture,
   type DirectionContent,
 } from "@/lib/demo/direction";
 import { LUMIERE } from "@/lib/demo/accounts";
@@ -320,5 +321,49 @@ describe("direction party resolution (port of AuthorisationCard doctorName/reque
 
   it("treats a blank stamped name as unstamped rather than emitting whitespace", () => {
     expect(directionPrescriberName({ doctorID: LIVE_UID, doctorName: "   " }, [rel({})])).toBe("Dr Elena Voss");
+  });
+});
+
+describe("prescriberContactForCapture", () => {
+  const profile = {
+    ahpra: "", abn: "", phone: "0412 000 111", address: "",
+    principalPlace: "Profile Rooms, 1 Profile St", premises: [],
+  };
+  const blankProfile = { ...profile, phone: "", principalPlace: "" };
+
+  it("prefers the stamp so every export of the direction reads alike", () => {
+    expect(prescriberContactForCapture(
+      { prescriberPhone: "02 9555 0100", prescriberPrincipalPlace: "88 Oxford St" },
+      profile,
+    )).toEqual({ prescriberPhone: "02 9555 0100", prescriberPrincipalPlace: "88 Oxford St" });
+  });
+
+  // A nurse in live holds no prescriber profile — the stamp is the only source.
+  it("uses the stamp when the prescriber profile is blank", () => {
+    expect(prescriberContactForCapture(
+      { prescriberPhone: "02 9555 0100", prescriberPrincipalPlace: "88 Oxford St" },
+      blankProfile,
+    )).toEqual({ prescriberPhone: "02 9555 0100", prescriberPrincipalPlace: "88 Oxford St" });
+  });
+
+  it("falls back to the profile on an authorisation approved before the stamp", () => {
+    expect(prescriberContactForCapture({}, profile)).toEqual({
+      prescriberPhone: "0412 000 111",
+      prescriberPrincipalPlace: "Profile Rooms, 1 Profile St",
+    });
+  });
+
+  // A clinic-account doctor has no principalPlace to stamp; that must not suppress the phone.
+  it("resolves the two fields independently", () => {
+    expect(prescriberContactForCapture({ prescriberPhone: "02 9555 0100" }, profile)).toEqual({
+      prescriberPhone: "02 9555 0100",
+      prescriberPrincipalPlace: "Profile Rooms, 1 Profile St",
+    });
+  });
+
+  it("returns blanks when neither source has a value, so the export gate still reports", () => {
+    expect(prescriberContactForCapture({}, blankProfile)).toEqual({
+      prescriberPhone: "", prescriberPrincipalPlace: "",
+    });
   });
 });
