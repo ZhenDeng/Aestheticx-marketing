@@ -47,17 +47,18 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
-        {/* 14/07 feedback: the horizontal-scroll tab strip was hard to use on mobile —
-            below `sm:` every tab is visible at once as a wrapping pill grid; from `sm:`
-            up the underline tab strip is unchanged. */}
-        <nav className="mx-auto grid max-w-6xl grid-cols-3 gap-1.5 px-5 py-2 sm:flex sm:gap-1 sm:px-8 sm:py-0">
+        {/* 14/07 feedback: the horizontal-scroll tab strip was hard to use on mobile. Below `sm:`
+            every tab is visible at once as auto-width chips that WRAP — each pill is sized to its
+            own label (whitespace-nowrap), so a long label like "Authorisations" never breaks
+            across two lines; from `sm:` up the underline tab strip is unchanged. */}
+        <nav className="mx-auto flex max-w-6xl flex-wrap gap-2 px-5 py-2.5 sm:flex-nowrap sm:gap-1 sm:px-8 sm:py-0">
           {nav.map((item) => {
             const active = item.href === activeHref;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-btn border px-1.5 py-2 text-center text-xs leading-tight break-words transition-colors sm:-mb-px sm:shrink-0 sm:whitespace-nowrap sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b-2 sm:bg-transparent sm:px-3 sm:py-2.5 sm:text-sm sm:leading-normal ${
+                className={`whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors sm:-mb-px sm:shrink-0 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:border-b-2 sm:bg-transparent sm:px-3 sm:py-2.5 ${
                   active
                     ? "border-[var(--color-tint)] bg-[var(--color-tint-soft)] font-medium text-ink"
                     : "border-line bg-card text-ink-soft hover:text-ink sm:border-transparent"
