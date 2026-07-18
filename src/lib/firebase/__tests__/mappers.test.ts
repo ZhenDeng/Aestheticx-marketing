@@ -223,6 +223,20 @@ describe("mapAuthorisation", () => {
     expect(a).not.toHaveProperty("prescriberPhone");
     expect(a).not.toHaveProperty("prescriberPrincipalPlace");
   });
+
+  // Pins the trim: a whitespace-only stamp is truthy under raw str(), which would have mapped
+  // it as present and contradicted the absent-not-blank invariant documented on Authorisation.
+  it("treats a whitespace-only stamp as absent, not present-but-blank", () => {
+    const a = mapAuthorisation("a1", {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah",
+      clinicId: null, repeatsRemaining: 5, expiresAtMillis: 1800000000000,
+      medication: { name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] },
+      prescriberPhone: "   ",
+      prescriberPrincipalPlace: "   ",
+    });
+    expect(a).not.toHaveProperty("prescriberPhone");
+    expect(a).not.toHaveProperty("prescriberPrincipalPlace");
+  });
 });
 
 describe("mapAuthRequest", () => {

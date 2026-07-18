@@ -366,4 +366,13 @@ describe("prescriberContactForCapture", () => {
       prescriberPhone: "", prescriberPrincipalPlace: "",
     });
   });
+
+  // Guards the `||`: switching to `??` would freeze the field at the whitespace stamp instead
+  // of falling back, and every other test here would still pass.
+  it("falls back to the profile when the stamp is whitespace only", () => {
+    expect(prescriberContactForCapture({ prescriberPhone: "   " }, profile)).toEqual({
+      prescriberPhone: "0412 000 111",
+      prescriberPrincipalPlace: "Profile Rooms, 1 Profile St",
+    });
+  });
 });

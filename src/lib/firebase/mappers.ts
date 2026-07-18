@@ -140,8 +140,8 @@ export function mapAuthorisation(id: string, data: Doc): Authorisation {
   const expiresAt = data.expiresAtMillis != null ? intValue(data.expiresAtMillis) : toMillis(data.expiresAt);
   const premise = mapPremise(data.premise);
   const clinicPremise = mapPremise(data.clinicPremise);
-  const prescriberPhone = str(data.prescriberPhone);
-  const prescriberPrincipalPlace = str(data.prescriberPrincipalPlace);
+  const prescriberPhone = str(data.prescriberPhone).trim();
+  const prescriberPrincipalPlace = str(data.prescriberPrincipalPlace).trim();
   return {
     id,
     requestID: str(data.requestId),

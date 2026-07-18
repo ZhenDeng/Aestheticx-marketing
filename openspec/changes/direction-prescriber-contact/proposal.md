@@ -32,3 +32,19 @@ precedence chain (stamp → cooperation directory → demo accounts → `""`). T
 premise is the clinic-premise story. Neither is touched here.
 
 No backfill: authorisations approved before the stamp shipped keep today's behaviour.
+
+A **clinic-account prescriber has no `principalPlace` by design** (`userAdmin.ts:68` requires it
+only of doctors not on a clinic account). There is nothing to stamp for them, so Principal place
+of practice stays blank and the nurse still types it. Whether it should fall back to the clinic's
+address is a separate decision, not part of this change.
+
+## Impact
+
+- `src/lib/demo/types.ts` — `Authorisation` gains `prescriberPhone?` / `prescriberPrincipalPlace?`.
+- `src/lib/firebase/mappers.ts` — `mapAuthorisation` maps both stamps, absent/blank staying absent.
+- `src/lib/demo/direction.ts` — `prescriberContactForCapture` resolves stamp → profile, per field.
+- `src/components/app/DirectionDialog.tsx` — prefills both fields from the resolver.
+- Tests: `src/lib/firebase/__tests__/mappers.test.ts`, `src/lib/demo/__tests__/direction.test.ts`,
+  `src/components/app/__tests__/DirectionDialog-prefill.test.tsx`.
+- The `approveRequest` stamp itself is a backend (Cloud Functions) change, in a separate repo,
+  and is already merged. No Firestore rules or PDF layout change here.
