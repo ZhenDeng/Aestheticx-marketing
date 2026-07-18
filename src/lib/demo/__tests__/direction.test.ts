@@ -218,9 +218,11 @@ describe("direction builder (§3.2 capture → complete direction)", () => {
     expect(missingDirectionFields(direction)).toContain("Prescriber phone");
   });
 
-  it("captures iOS's prefilled defaults (period, intervals) — route never defaults (round 6)", () => {
+  it("captures the prefilled defaults (period, intervals) — route never defaults (round 6)", () => {
     expect(DEFAULT_CAPTURED_FIELDS.directionPeriod).toBe("6 months");
-    expect(DEFAULT_CAPTURED_FIELDS.administrationCountAndIntervals).toBe("Up to 5, ≥ 4 weeks apart");
+    // PRN, not an invented count-and-interval schedule. The old default asserted "Up to 5,
+    // >= 4 weeks apart" — a clinical claim nobody entered, on a legal document.
+    expect(DEFAULT_CAPTURED_FIELDS.administrationCountAndIntervals).toBe("PRN");
     expect(DEFAULT_CAPTURED_FIELDS.route).toBe("");
     expect(DEFAULT_CAPTURED_FIELDS.prescriberPhone).toBe("");
   });

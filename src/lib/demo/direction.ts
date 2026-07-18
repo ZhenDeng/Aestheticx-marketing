@@ -6,7 +6,7 @@
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
 import { routeLabel } from "./types";
-import type { DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
+import type { AuthorisationRequest, ClinicRef, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
 
 /** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
 export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
@@ -116,9 +116,73 @@ export const DEFAULT_CAPTURED_FIELDS: CapturedDirectionFields = {
   prescriberPrincipalPlace: "",
   premisesOfAdministration: "",
   directionPeriod: "6 months",
-  administrationCountAndIntervals: "Up to 5, ≥ 4 weeks apart",
+  // PRN, never an invented count and interval. The previous default asserted "Up to 5, ≥ 4
+  // weeks apart" — a clinical schedule nobody entered, pre-filled onto a legal document.
+  administrationCountAndIntervals: "PRN",
   route: "",
 };
+
+/**
+ * Premises of administration for the capture dialog. Precedence deliberately mirrors
+ * buildApprovalDocumentModel (approvalPdf.ts) so the capture dialog and the approval document
+ * can never disagree about where administration happened:
+ *
+ *   clinic context → the clinic's address; else the STAMPED premise; else (independent only)
+ *   the acting user's current premise.
+ *
+ * A clinic-context request stamps `premise: null` DELIBERATELY — that is a signal meaning "use
+ * the clinic's address" (backend submitRequest), NOT "unknown". So when `clinicID` is set the
+ * acting user's own premises are never consulted, even if the clinic cannot be resolved: Sarah
+ * Chen holds both an independent and a Lumière identity, and substituting her private Bondi
+ * practice for the clinic she actually treated at would put the wrong address on a legal
+ * document. Blank prompts the clinician instead.
+ *
+ * The independent fallback is the ACTING user, not the prescriber — live hydrates only the
+ * caller's own users doc, so a prescriber-based fallback would be blank exactly when needed
+ * (the same gap that blocks prescriber phone / principal place).
+ *
+ * `actingPremise` is resolved by the caller (via backend's `activePremise`) rather than looked
+ * up here, so this module keeps its no-Firebase, no-backend purity and adds no import cycle.
+ */
+export function premiseForCapture(input: {
+  stamped: Premise | null | undefined;
+  clinicID: string | null;
+  clinic: ClinicRef | null;
+  actingPremise: Premise | null;
+}): string {
+  if (input.clinicID) {
+    const asPremise = input.clinic
+      ? { id: "", name: input.clinic.name ?? "", address: input.clinic.address ?? "" }
+      : null;
+    return premiseDisplayLine(asPremise) ?? premiseDisplayLine(input.stamped) ?? "";
+  }
+  return premiseDisplayLine(input.stamped) ?? premiseDisplayLine(input.actingPremise) ?? "";
+}
+
+const norm = (v: string) => v.trim().toLowerCase();
+
+/**
+ * Route for the capture dialog, recovered from the originating request — the route WAS chosen
+ * per line item at submission, so the clinician should not retype it.
+ *
+ * Matched on name + dosage, and used ONLY when exactly one such item carries a route. Two
+ * deliberate refusals: an ambiguous match yields "" rather than a guess, and the item is never
+ * derived from the authorisation id (demo mints `${requestId}-${index}`, but live ids come from
+ * a Cloud Function whose scheme this repo does not control — indexing would pass in demo and
+ * silently state the wrong route in live). missingDirectionFields then prompts for it, which is
+ * far better than a direction naming the wrong route of administration.
+ */
+export function routeForCapture(
+  medication: MedicationItem,
+  originatingRequest: AuthorisationRequest | null | undefined,
+): string {
+  if (!originatingRequest) return "";
+  const matches = originatingRequest.items.filter(
+    (i) => norm(i.name) === norm(medication.name) && norm(i.dosage) === norm(medication.dosage),
+  );
+  if (matches.length !== 1) return ""; // no match, or ambiguous — never guess
+  return matches[0].route?.trim() ?? "";
+}
 
 /** "16" + units → "16 U" — the quantity wording on the direction's administration rows. */
 function medicationQuantity(medication: MedicationItem): string {

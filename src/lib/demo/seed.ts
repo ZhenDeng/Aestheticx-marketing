@@ -62,6 +62,7 @@ const letybo: MedicationItem = {
   category: "neurotoxin",
   unit: "units",
   areas: ["Forehead", "Glabella"],
+  route: "intramuscular",
   timing: "PRN monthly, max 6 treatments yearly (6 months in NSW)",
 };
 const voluma: MedicationItem = {
@@ -71,6 +72,7 @@ const voluma: MedicationItem = {
   brand: "Juvederm",
   unit: "millilitres",
   areas: ["Cheek", "Chin"],
+  route: "supraPeriosteal",
 };
 const profhilo: MedicationItem = {
   name: "Profhilo",
@@ -78,6 +80,9 @@ const profhilo: MedicationItem = {
   category: "skinBooster",
   unit: "millilitres",
   areas: ["Full Face"],
+  // The request form has required a route per line item since round 6; a seeded item without
+  // one describes a state the app can no longer produce (and hides the capture-dialog fallback).
+  route: "subdermal",
 };
 
 export function buildSeedState(): DemoState {
