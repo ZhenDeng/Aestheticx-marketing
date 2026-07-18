@@ -52,7 +52,7 @@ import type {
 } from "./types";
 import { LUMIERE, ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
-import { fullName, displayName, identityBadge, emptyDraft } from "./types";
+import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, computeInclusiveTotals, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
@@ -2545,6 +2545,159 @@ export function topUpWallet(state: DemoState, input: TopUpWalletInput, identity:
       targetType: "patient",
       targetID: patient.id,
       summary: `top-up ${formatAUD(input.paidCents)} paid + ${formatAUD(input.giftCents)} gift · balance ${formatAUD(walletBalanceCents(next, patient.id))}`,
+    },
+    now,
+  );
+}
+
+/** Fallback per-session labor fee when a clinic–practitioner pair has no agreed rate. */
+export const DEFAULT_SERVICE_FEE_CENTS = 15000;
+
+export interface CheckoutItemInput { itemID: string; qty: number; }
+export interface CheckoutClientInput {
+  patientID: string;
+  items: CheckoutItemInput[];
+  /** Settle the client invoice from the account balance — all-or-nothing. */
+  payFromWallet?: boolean;
+}
+
+// Check out a client (spec: client-checkout). The billing scenario derives from the
+// client's owner, never from operator choice:
+//   Scenario A — the operator's own silo owns the client: ONE client-sale invoice,
+//     issuer = the operator's own entity, priced from the operator's price list.
+//   Scenario B — clinic-owned client: the client-sale invoice issues from the CLINIC at
+//     clinic retail; a practitioner operator additionally gets a DRAFT service-fee
+//     invoice (practitioner → clinic, GST-exclusive + 10%) queued for review; both
+//     documents share a checkoutID. A clinic-admin operator earns no service fee.
+// Everything lands in one reducer pass, so the invoice pair + wallet drawdown are atomic.
+export function checkoutClient(state: DemoState, input: CheckoutClientInput, identity: Identity, now: number): DemoState {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  const access = patientAccessLevel(state, identity, patient);
+  if (access === "none") throw new BackendError("notPermitted");
+  if (input.items.length === 0) throw new BackendError("validationFailed");
+
+  // Scenario routing: the price list and client-facing issuer are the OWNING silo's.
+  const priceList = state.priceListByOwner[ownerKeyOf(patient.owner)] ?? [];
+  const lines = input.items.map(({ itemID, qty }) => {
+    const item = priceList.find((p) => p.id === itemID);
+    if (!item) throw new BackendError("validationFailed");
+    return { id: item.id, description: item.name, qty, unitCents: item.priceCents };
+  });
+  const computed = computeInclusiveTotals(lines);
+
+  const checkoutID = makeID("co");
+  const clientInvoice: Invoice = {
+    id: makeID("inv"),
+    doctorID: "", // matrix invoices leave the legacy doctor-centric fields inert
+    counterpartyID: patient.id,
+    counterpartyType: "client",
+    periodLabel: isoDay(now),
+    ...computed,
+    authorisationIDs: [],
+    createdAt: now,
+    paid: false,
+    kind: "client-sale",
+    issuerRef: patient.owner,
+    patientID: patient.id,
+    checkoutID,
+    issuer: issuerPartyFor(state, patient.owner),
+    billTo: clientBillTo(patient),
+  };
+
+  let invoices = [...state.invoices, clientInvoice];
+
+  // Scenario B labor fee: only a practitioner operating on a clinic-owned client earns
+  // one; checking out one's OWN client is the whole sale, not a session for hire.
+  const practitionerKind = identity.role === "doctor" ? "doctor" : identity.role === "nurse" ? "nurse" : null;
+  if (patient.owner.kind === "clinic" && practitionerKind) {
+    const clinicID = patient.owner.id;
+    const feeCents = state.serviceFeeCentsByPair[`${clinicID}_${identity.user.id}`] ?? DEFAULT_SERVICE_FEE_CENTS;
+    const gstCents = Math.round(feeCents * GST_RATE);
+    const feeInvoice: Invoice = {
+      id: makeID("inv"),
+      doctorID: "",
+      counterpartyID: clinicID,
+      counterpartyType: "clinic",
+      periodLabel: isoDay(now),
+      lines: [{
+        authorisationID: checkoutID,
+        dateISO: isoDay(now),
+        patientName: fullName(patient),
+        feeCents,
+        gstCents,
+        description: `Practitioner service fee — ${fullName(patient)} session`,
+        qty: 1,
+        unitCents: feeCents,
+      }],
+      subtotalCents: feeCents,
+      gstCents,
+      totalCents: feeCents + gstCents,
+      authorisationIDs: [],
+      createdAt: now,
+      paid: false,
+      kind: "service-fee",
+      draft: true,
+      issuerRef: { kind: practitionerKind, id: identity.user.id },
+      checkoutID,
+      issuer: invoicePartyFor(state, practitionerKind, identity.user.id),
+      billTo: invoicePartyFor(state, "clinic", clinicID),
+    };
+    invoices = [...invoices, feeInvoice];
+  }
+
+  let walletByPatientID = state.walletByPatientID;
+  let settled = clientInvoice;
+  if (input.payFromWallet) {
+    const balance = walletBalanceCents(state, patient.id);
+    if (balance < clientInvoice.totalCents) throw new BackendError("validationFailed");
+    const drawdown: WalletEntry = {
+      id: makeID("wal"),
+      kind: "drawdown",
+      amountCents: clientInvoice.totalCents,
+      invoiceID: clientInvoice.id,
+      by: identity.user.id,
+      at: now,
+    };
+    walletByPatientID = {
+      ...state.walletByPatientID,
+      [patient.id]: [...(state.walletByPatientID[patient.id] ?? []), drawdown],
+    };
+    settled = { ...clientInvoice, paid: true, paidAt: now, markedBy: "wallet" };
+    invoices = invoices.map((i) => (i.id === clientInvoice.id ? settled : i));
+  }
+
+  const next = { ...state, invoices, walletByPatientID };
+  const audited = appendAuditEntry(
+    next,
+    {
+      actor: identity,
+      action: "client_checkout",
+      targetType: "invoice",
+      targetID: clientInvoice.id,
+      summary: `checkout ${formatAUD(clientInvoice.totalCents)} · ${fullName(patient)}${input.payFromWallet ? " · paid from wallet" : ""}`,
+    },
+    now,
+  );
+  return audited;
+}
+
+// The practitioner reviews and finalizes their drafted service-fee invoice (spec:
+// client-checkout — "queued for drafting"). Issuer-only; idempotent on non-drafts.
+export function finalizeServiceFeeInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
+  const invoice = state.invoices.find((i) => i.id === invoiceID);
+  if (!invoice || invoice.kind !== "service-fee") throw new BackendError("notFound");
+  if (invoice.issuerRef?.id !== identity.user.id) throw new BackendError("notPermitted");
+  if (!invoice.draft) return state;
+  const invoices = state.invoices.map((i) => (i.id === invoiceID ? { ...i, draft: false } : i));
+  return appendAuditEntry(
+    { ...state, invoices },
+    {
+      actor: identity,
+      action: "service_fee_finalized",
+      targetType: "invoice",
+      targetID: invoiceID,
+      summary: `service fee finalized · ${formatAUD(invoice.totalCents)}`,
     },
     now,
   );
