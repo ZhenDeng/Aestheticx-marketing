@@ -162,15 +162,32 @@ describe("DemoAuthProvider (sandbox override)", () => {
     expect(window.sessionStorage.getItem(DEMO_MODE_KEY)).toBeNull();
   });
 
-  it("signing out of the sandbox returns the tab to live mode", async () => {
+  // Signing out of the sandbox must NOT flip the tab back to live. A clinician who was live
+  // signed-in and then wandered into /demo in the same tab would otherwise click "Sign out"
+  // and have the watcher restore their dormant Firebase session — ending up signed IN to
+  // their real account. Staying sandboxed lets AuthGuard return them to /demo, and leaves the
+  // real session untouched. /login is the explicit way out (it calls exitDemoMode).
+  it("signing out of the sandbox keeps the tab sandboxed", async () => {
     window.sessionStorage.setItem(DEMO_MODE_KEY, "1");
     const { result } = renderHook(() => useDemoAuth(), { wrapper });
     await waitFor(() => expect(result.current.mode).toBe("demo"));
 
     await act(async () => { result.current.signOut(); });
 
-    expect(window.sessionStorage.getItem(DEMO_MODE_KEY)).toBeNull();
-    expect(result.current.mode).toBe("live");
     expect(result.current.identity).toBeNull();
+    expect(result.current.mode).toBe("demo");
+    expect(window.sessionStorage.getItem(DEMO_MODE_KEY)).toBe("1");
+  });
+
+  it("signing out of the sandbox never subscribes the live watcher", async () => {
+    // The concrete failure this prevents: the watcher resolving a dormant real session.
+    window.sessionStorage.setItem(DEMO_MODE_KEY, "1");
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await waitFor(() => expect(result.current.mode).toBe("demo"));
+
+    await act(async () => { result.current.signOut(); });
+    await act(async () => {});
+
+    expect(subscribed).toBe(0);
   });
 });

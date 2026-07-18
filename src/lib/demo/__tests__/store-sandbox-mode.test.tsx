@@ -50,6 +50,30 @@ describe("DemoStoreProvider follows the provider's mode", () => {
     expect(Object.keys(result.current.state.patients)).toHaveLength(0);
   });
 
+  // DemoStoreProvider remounts its whole subtree on a mode change (key={mode}), which would
+  // also blow away ConsultCallProvider's in-flight call and any in-progress form state. That
+  // is only safe because every path that changes mode nulls identity in the same commit, so
+  // AuthGuard is already rendering null. Pin that invariant: a future path that flips mode
+  // while a session is live would silently destroy visible state.
+  it("never changes mode without identity becoming null in the same commit", async () => {
+    const { result } = renderHook(
+      () => ({ store: useDemoStore(), auth: useDemoAuth() }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.auth.mode).toBe("live"));
+
+    for (const flip of [
+      () => result.current.auth.enterDemoMode(),
+      () => result.current.auth.exitDemoMode(),
+    ]) {
+      const before = result.current.auth.mode;
+      await act(async () => { flip(); });
+      if (result.current.auth.mode !== before) {
+        expect(result.current.auth.identity).toBeNull();
+      }
+    }
+  });
+
   it("rebuilds the store when a live tab enters the sandbox", async () => {
     // The store snapshots its initial state from `live` at mount. Without a rebuild on the
     // mode flip, a tab that entered /demo would keep an empty Firestore-shaped state and

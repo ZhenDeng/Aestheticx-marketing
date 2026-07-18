@@ -36,6 +36,23 @@ test.describe("E11 — /demo and /login are separate", () => {
     await expect(page.getByRole("heading", { name: PICKER })).toBeVisible();
   });
 
+  // Every other spec reaches /demo with page.goto, i.e. a hard navigation. A visitor arriving
+  // from the marketing site gets a client-side (soft) navigation instead, where no document
+  // script runs and the App Router only re-renders. Demo mode is derived from usePathname
+  // during render precisely so both paths resolve identically — this pins that.
+  test("arriving at /demo by soft navigation still enters the sandbox", async ({ page }) => {
+    await page.goto("/login");
+    await page.locator('a[href="/demo"]').first().click(); // client-side nav, no page load
+    await expect(page).toHaveURL(/\/demo/);
+    await expect(page.getByRole("heading", { name: PICKER })).toBeVisible();
+
+    // The sandbox is genuinely on: signing in with a preset lands in the app on seed data.
+    await page.getByText("Sarah Chen — Nurse", { exact: true }).click();
+    await page.getByRole("button", { name: "Enter the demo" }).click();
+    await expect(page).toHaveURL(/\/app\/dashboard/);
+    await expect(page.getByText(/Welcome, Sarah Chen/)).toBeVisible();
+  });
+
   test("/demo offers a route back to the real login", async ({ page }) => {
     await page.goto("/demo");
     await page.locator('a[href="/login"]').first().click();

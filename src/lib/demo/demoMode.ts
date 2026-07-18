@@ -27,6 +27,32 @@ export function isDemoModeRequested(storage: Storage): boolean {
 // tells React to re-read the snapshot.
 const listeners = new Set<() => void>();
 
+// `window.sessionStorage` can throw on the PROPERTY ACCESS itself, not just on getItem/setItem
+// (privacy configurations that block storage entirely). The functions above take an injected
+// Storage so they stay unit-testable, which means the access happens at the call site — these
+// wrappers own it, so the provider never touches `window.sessionStorage` unguarded. It mounts
+// at the app root, so an unguarded throw there would blank the entire app.
+function sessionStorageOrNull(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** This tab's sandbox flag, or false if storage is unreachable. */
+export function readDemoMode(): boolean {
+  const storage = sessionStorageOrNull();
+  return storage ? isDemoModeRequested(storage) : false;
+}
+
+/** Set this tab's sandbox flag and notify subscribers, even if storage is unreachable. */
+export function writeDemoMode(on: boolean): void {
+  const storage = sessionStorageOrNull();
+  if (storage) setDemoMode(storage, on);
+  else listeners.forEach((l) => l()); // setDemoMode would have notified; keep that contract
+}
+
 export function subscribeDemoMode(onChange: () => void): () => void {
   listeners.add(onChange);
   return () => { listeners.delete(onChange); };

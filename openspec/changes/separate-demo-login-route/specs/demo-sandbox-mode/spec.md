@@ -106,12 +106,31 @@ the entry point matching the tab's active mode, preserving the requested path in
 - **WHEN** a redirect is computed for a path outside `/app`
 - **THEN** the target is the bare entry point with no `?next=` parameter
 
-### Requirement: Signing out leaves the sandbox
+### Requirement: Signing out of the sandbox keeps the tab sandboxed
 
-`signOut()` SHALL clear the sandbox flag so the tab returns to the environment-derived mode.
+`signOut()` SHALL clear the demo identity but SHALL NOT clear the sandbox flag, and SHALL NOT
+sign the tab out of Firebase. Leaving the sandbox is done by visiting `/login`.
+
+Rationale: a clinician who was live signed-in and then entered `/demo` in the same tab would
+otherwise click "Sign out" and have the auth watcher restore their dormant Firebase session —
+ending up signed IN to their real account. Signing out of Firebase instead would be worse
+still, since auth persistence is shared across tabs and would end their real session
+elsewhere.
 
 #### Scenario: Sign out from a sandbox session
 
 - **WHEN** a visitor in sandbox mode signs out
-- **THEN** the sandbox flag is removed from `sessionStorage`
-- **AND** on a Firebase-configured deployment the tab returns to live mode
+- **THEN** the demo identity is cleared
+- **AND** the tab remains in sandbox mode
+- **AND** the signed-out visitor is returned to `/demo`
+
+#### Scenario: Sign out does not resurrect a dormant live session
+
+- **WHEN** a tab holds a dormant Firebase session, enters `/demo`, and the visitor signs out
+- **THEN** the live auth watcher is not subscribed
+- **AND** the visitor is not signed in to the real account
+
+#### Scenario: Sign out from a live session is unchanged
+
+- **WHEN** a visitor in live mode signs out
+- **THEN** the Firebase session is ended and they are returned to `/login`

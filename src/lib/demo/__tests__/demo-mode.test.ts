@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEMO_MODE_KEY, isDemoModeRequested, setDemoMode, subscribeDemoMode } from "@/lib/demo/demoMode";
+import { DEMO_MODE_KEY, isDemoModeRequested, readDemoMode, setDemoMode, subscribeDemoMode, writeDemoMode } from "@/lib/demo/demoMode";
 
 /** Minimal in-memory Storage stand-in (the loginPrefs.test pattern). */
 function memoryStorage(): Storage {
@@ -75,6 +75,34 @@ describe("subscribeDemoMode", () => {
     setDemoMode(throwingStorage(), true);
     expect(cb).toHaveBeenCalledTimes(1);
     unsubscribe();
+  });
+});
+
+// The provider must never evaluate `window.sessionStorage` itself outside a guard: in some
+// privacy configurations the property ACCESS throws, not just getItem/setItem. These wrappers
+// own that access so the module's "every access is wrapped" claim actually holds at the call
+// site — the provider mounts at the app root, so a throw there blanks the whole app.
+describe("readDemoMode / writeDemoMode (window access guarded)", () => {
+  it("round-trips through the real sessionStorage", () => {
+    window.sessionStorage.clear();
+    expect(readDemoMode()).toBe(false);
+    writeDemoMode(true);
+    expect(readDemoMode()).toBe(true);
+    writeDemoMode(false);
+    expect(readDemoMode()).toBe(false);
+  });
+
+  it("reports not-requested when the window accessor itself throws", () => {
+    const spy = vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
+      throw new Error("blocked by privacy settings");
+    });
+    try {
+      expect(() => readDemoMode()).not.toThrow();
+      expect(readDemoMode()).toBe(false);
+      expect(() => writeDemoMode(true)).not.toThrow();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

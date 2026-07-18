@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, u
 import type { Identity } from "./types";
 import { DEMO_ACCOUNTS } from "./accounts";
 import { pickInitialIdentity, saveSelectedIdentity } from "./identityPrefs";
-import { isDemoModeRequested, setDemoMode, subscribeDemoMode } from "./demoMode";
+import { readDemoMode, subscribeDemoMode, writeDemoMode } from "./demoMode";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 
 type Mode = "demo" | "live";
@@ -56,7 +56,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   // server snapshot during hydration, then re-renders with the client snapshot.
   const demoOverride = useSyncExternalStore(
     subscribeDemoMode,
-    () => isDemoModeRequested(window.sessionStorage),
+    readDemoMode,
     () => false, // server: never sandboxed
   );
   // True only once the client has taken over. The live watcher below gates on it so it cannot
@@ -87,7 +87,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   // otherwise mint a new callback and re-fire that effect forever. Only setters and the
   // module-level store are captured, so the empty dep array is correct.
   const switchMode = useCallback((toDemo: boolean) => {
-    setDemoMode(window.sessionStorage, toDemo); // notifies the store; mode re-derives
+    writeDemoMode(toDemo); // notifies the store; mode re-derives
     setIdentity(null);
     setAvailableIdentities([]);
     setMustChangePassword(false);
@@ -165,8 +165,14 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
       enterDemoMode,
       exitDemoMode,
       signOut: () => {
-        // Signing out of the sandbox returns the tab to the environment-derived mode.
-        switchMode(false);
+        setIdentity(null);
+        setAvailableIdentities([]);
+        setMustChangePassword(false);
+        // Deliberately does NOT leave the sandbox. A clinician who was live signed-in and
+        // then wandered into /demo in the same tab would otherwise click "Sign out" and have
+        // the watcher restore their dormant Firebase session — ending up signed IN to their
+        // real account. Staying sandboxed lets AuthGuard return them to /demo and leaves the
+        // real session untouched; /login is the explicit way out (it calls exitDemoMode).
         if (mode === "live") {
           void import("@/lib/firebase/auth")
             .then((m) => m.signOutUser())
@@ -182,7 +188,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         setMustChangePassword(false);
       },
     }),
-    [mode, identity, resolved, availableIdentities, mustChangePassword, enterDemoMode, exitDemoMode, switchMode],
+    [mode, identity, resolved, availableIdentities, mustChangePassword, enterDemoMode, exitDemoMode],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
