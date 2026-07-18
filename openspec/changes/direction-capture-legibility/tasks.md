@@ -17,7 +17,7 @@
 - [x] 3.2 Map each capture field to the canonical `CLAUSE_68C_FIELDS` label it reports under, deriving inline state from the existing `missing` array — no second emptiness check
 - [x] 3.3 Extend `Field` (and the route selector's wrapper) to accept the required/invalid state, wiring `aria-invalid` and `aria-describedby` plus a visible non-colour-only required affordance
 - [x] 3.4 Add the one-line explanation shown only while `missing` is non-empty, worded as "couldn't be resolved from the record", not as a validation failure
-- [x] 3.5 Keep the bottom-of-form summary and both export gates exactly as they are — verify `missingDirectionFields` itself is unmodified (confirmed: `src/lib/demo/direction.ts` is untouched by this change)
+- [x] 3.5 Keep the bottom-of-form summary and both export gates exactly as they are — `missingDirectionFields` is unmodified, so what counts as missing is unchanged. (`direction.ts` is touched, but only `routeForCapture`, in the review fix at 6.2 — that changes what is *prefilled*, never what is *required*.)
 
 ## 4. Live-shaped regression coverage
 
@@ -27,11 +27,18 @@
 
 ## 5. Verification
 
-- [x] 5.1 Run the full unit suite; confirm `direction-pdf-ops.test.ts` still passes (pinned PDF bytes unchanged) — 114 files / 1130 tests green
+- [x] 5.1 Run the full unit suite; confirm `direction-pdf-ops.test.ts` still passes (pinned PDF bytes unchanged) — 115 files / 1138 tests green after the review fix, 33 e2e green
 - [x] 5.2 Run `tsc --noEmit` and lint clean — no errors; no lint warnings in changed files
 - [x] 5.3 Run the a11y/axe check covering the dialog, confirming the new invalid states introduce no colour-contrast or ARIA regressions — added `a11y — direction capture dialog with an unresolved field`, scanning the marked render specifically. It found a **pre-existing** `aria-prohibited-attr` defect on the repeats indicator (`aria-label` on a bare `<p>`, silently dropped for screen readers), fixed with `role="img"`
 - [x] 5.4 Drive the flow in the running app: open an authorisation's Direction from the patient file, confirm the label, the constrained route selector, the inline marks, and that filling the fields unlocks Preview then Download — covered by `E8b` end to end, plus screenshots of the sidebar affordance and both dialog states
 
-## 6. Follow-up (NOT in this change)
+## 6. Review round
 
-- [ ] 6.1 Backend repo: make prescriber phone / principal place resolvable for legacy authorisations — either backfill the `prescriberPhone` / `prescriberPrincipalPlace` stamp onto pre-existing authorisation docs, or carry prescriber contact on the nurse-readable cooperation relationship doc. Until then a nurse on a pre-stamp authorisation will always be prompted for both, which this change makes legible but cannot avoid.
+- [x] 6.1 Engineer review of the implementation — raised one HIGH: an HTML select handed a value matching no option silently selects its first *enabled* option, so a non-canonical stored route (e.g. `"Intramuscular"`) DISPLAYED as `"Intradermal"` while state and the exported PDF still held the original. Reproduced in jsdom before fixing
+- [x] 6.2 Fix: `routeForCapture` refuses any non-canonical value (as it already refuses an ambiguous match), and `RouteSelect` surfaces an out-of-enum value as itself so no caller — the request form included — can have a route substituted
+- [x] 6.3 Re-review after the fix: HIGH confirmed closed, independently reproduced against the patched code; no remaining CRITICAL/HIGH on the branch
+- [x] 6.4 Accepted one LOW without fixing: the shared selector now emits `aria-invalid="false"` on the request form where the attribute was previously absent. Spec-valid, AT-equivalent to omission, and the dialog's own tests assert that explicit `"false"` state
+
+## 7. Follow-up (NOT in this change)
+
+- [ ] 7.1 Backend repo: make prescriber phone / principal place resolvable for legacy authorisations — either backfill the `prescriberPhone` / `prescriberPrincipalPlace` stamp onto pre-existing authorisation docs, or carry prescriber contact on the nurse-readable cooperation relationship doc. Until then a nurse on a pre-stamp authorisation will always be prompted for both, which this change makes legible but cannot avoid.
