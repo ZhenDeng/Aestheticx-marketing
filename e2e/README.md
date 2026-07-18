@@ -44,13 +44,25 @@ identical data every time, with no Firebase project or emulator.
 | `e2-patient-consent` | Nurse: create patient → sign consent → verify on file + in list (E2) | ✅ |
 | `e3-authorisation-approval` | E3a doctor approves a seeded pending request; E3b nurse raises a request | ✅ |
 | `e5-billing-invoice` | Doctor: generate tax invoice → download PDF (E5, validates PR #101 layout) | ✅ |
+| `e6-admin-audit` | Admin patient lookup → open file → audit trail records the access (E6) | ✅ |
+| `e9-marketing` | Public pages load + link to /login; legal pages render (E9) | ✅ |
+| `e10-mobile` | Pixel 5 viewport: intake + billing render with no horizontal overflow (E10) | ✅ |
+| `a11y` | axe-core over login / marketing / dashboard, serious+critical gate | ✅ |
 
 PDF assertions check the download triggers + filename only; **PDF content correctness stays in
 the unit tests** (`src/lib/demo/__tests__/invoice-pdf.test.ts` etc.).
 
+The `a11y` spec excludes the `color-contrast` rule as a known baseline exception (the tinted/muted
+palette trips AA contrast on a few nodes) — tracked as separate debt; the check still guards
+structural a11y. Re-enable once contrast is fixed.
+
+## CI
+
+`.github/workflows/test.yml` runs the unit suite (`test:coverage`) and the E2E suite on every PR
+and push to `main`, uploading the coverage and Playwright reports as artifacts.
+
 ## Not yet covered (see TEST_PLAN §3)
 
 - **Full cross-role E3 round-trip** — needs a live/emulator suite (see constraint 2).
-- **E4** consult call, **E6** admin/audit, **E7** emergency auth, **E9** marketing smoke,
-  **E10** mobile viewport.
-- **a11y** — `@axe-core/playwright` assertions on these journeys (cheap to add now the harness exists).
+- **E4** consult call (ConsultCall simulates locally in demo, so feasible next), **E7** emergency auth.
+- Fix the `color-contrast` a11y baseline, then re-enable the rule.
