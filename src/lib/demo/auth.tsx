@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Identity } from "./types";
 import { DEMO_ACCOUNTS } from "./accounts";
 import { pickInitialIdentity, saveSelectedIdentity } from "./identityPrefs";
@@ -68,6 +68,25 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     setDemoOverride(isDemoModeRequested(window.sessionStorage));
   }, []);
 
+  // The login forms call these from a mount effect keyed on the callback identity, so they
+  // MUST be referentially stable. Built with useCallback rather than inline in the context
+  // useMemo (whose deps include `identity`): enterDemoMode's own setIdentity(null) would
+  // otherwise mint a new callback and re-fire that effect forever. Only setters are captured,
+  // and React guarantees those are stable, so the empty dep array is correct.
+  const switchMode = useCallback((toDemo: boolean) => {
+    setDemoMode(window.sessionStorage, toDemo);
+    setDemoOverride(toDemo);
+    setIdentity(null);
+    setAvailableIdentities([]);
+    setMustChangePassword(false);
+  }, []);
+  // Entering the sandbox deliberately does NOT sign the user out of Firebase: that would be a
+  // destructive side effect of merely visiting a marketing page. The watcher has already
+  // unsubscribed, so a dormant session cannot interfere, and the user's real session is still
+  // there when they return to /login. Clearing the identity is enough.
+  const enterDemoMode = useCallback(() => switchMode(true), [switchMode]);
+  const exitDemoMode = useCallback(() => switchMode(false), [switchMode]);
+
   // Live mode: react to Firebase auth state and resolve identities + the first-login gate.
   useEffect(() => {
     // Wait for the sandbox flag to be read before subscribing. Without this guard, a tab
@@ -131,31 +150,11 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         if (typeof window !== "undefined") saveSelectedIdentity(window.localStorage, id);
         setIdentity(id);
       },
-      // Entering the sandbox deliberately does NOT sign the user out of Firebase: that would
-      // be a destructive side effect of merely visiting a marketing page. The watcher has
-      // already unsubscribed, so a dormant session cannot interfere, and the user's real
-      // session is still there when they return to /login. Clearing the identity is enough.
-      enterDemoMode: () => {
-        setDemoMode(window.sessionStorage, true);
-        setDemoOverride(true);
-        setIdentity(null);
-        setAvailableIdentities([]);
-        setMustChangePassword(false);
-      },
-      exitDemoMode: () => {
-        setDemoMode(window.sessionStorage, false);
-        setDemoOverride(false);
-        setIdentity(null);
-        setAvailableIdentities([]);
-        setMustChangePassword(false);
-      },
+      enterDemoMode,
+      exitDemoMode,
       signOut: () => {
-        setIdentity(null);
-        setAvailableIdentities([]);
-        setMustChangePassword(false);
         // Signing out of the sandbox returns the tab to the environment-derived mode.
-        setDemoMode(window.sessionStorage, false);
-        setDemoOverride(false);
+        switchMode(false);
         if (mode === "live") {
           void import("@/lib/firebase/auth")
             .then((m) => m.signOutUser())
@@ -171,7 +170,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         setMustChangePassword(false);
       },
     }),
-    [mode, identity, resolved, availableIdentities, mustChangePassword],
+    [mode, identity, resolved, availableIdentities, mustChangePassword, enterDemoMode, exitDemoMode, switchMode],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

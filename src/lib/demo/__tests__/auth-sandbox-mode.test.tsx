@@ -89,6 +89,26 @@ describe("DemoAuthProvider (sandbox override)", () => {
     expect(result.current.availableIdentities).toEqual([]);
   });
 
+  // Regression: these are called from a mount effect keyed on the callback identity. When they
+  // were rebuilt by the context useMemo (deps include `identity`), enterDemoMode's own
+  // setIdentity(null) produced a new callback, which re-fired the effect — an infinite render
+  // loop that only showed up in the browser. They must be referentially stable.
+  it("enterDemoMode and exitDemoMode keep a stable identity across renders", async () => {
+    const { result, rerender } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+    const enter = result.current.enterDemoMode;
+    const exit = result.current.exitDemoMode;
+
+    rerender();
+    expect(result.current.enterDemoMode).toBe(enter);
+    expect(result.current.exitDemoMode).toBe(exit);
+
+    // Still stable after the state they themselves mutate has changed.
+    await act(async () => { result.current.enterDemoMode(); });
+    expect(result.current.enterDemoMode).toBe(enter);
+    expect(result.current.exitDemoMode).toBe(exit);
+  });
+
   it("exitDemoMode returns the tab to live mode and clears the flag", async () => {
     window.sessionStorage.setItem(DEMO_MODE_KEY, "1");
     const { result } = renderHook(() => useDemoAuth(), { wrapper });

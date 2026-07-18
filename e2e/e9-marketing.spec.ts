@@ -15,11 +15,12 @@ for (const path of PAGES) {
   });
 }
 
-test("E9 — the site-nav login link routes to the demo sign-in", async ({ page }) => {
+test("E9 — the site-nav login link routes to the real login, not the demo", async ({ page }) => {
   await page.goto("/");
   await page.locator('a[href="/login"]').first().click();
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByText("Choose a role to explore AestheticX")).toBeVisible();
+  // /login never serves the role picker any more — that is what /demo is for.
+  await expect(page.getByText("Choose a role to explore AestheticX")).toHaveCount(0);
 });
 
 test("E9 — legal pages render", async ({ page }) => {

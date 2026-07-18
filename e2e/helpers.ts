@@ -11,11 +11,12 @@ export const DEMO = {
 } as const;
 
 /**
- * Sign in through the demo role picker and wait for the app shell to land. `label` is one of the
- * DEMO constants. The demo password field accepts any value.
+ * Sign in through the demo role picker at /demo and wait for the app shell to land. `label` is
+ * one of the DEMO constants. The demo password field accepts any value. /demo is the only
+ * route that serves the picker — /login is the real Firebase login.
  */
 export async function loginAsDemo(page: Page, label: string): Promise<void> {
-  await page.goto("/login");
+  await page.goto("/demo");
   await expect(page.getByText("Choose a role to explore AestheticX")).toBeVisible();
   await page.getByText(label, { exact: true }).click();
   await page.getByRole("button", { name: "Enter the demo" }).click();

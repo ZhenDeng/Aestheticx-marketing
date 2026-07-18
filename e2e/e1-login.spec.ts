@@ -32,12 +32,12 @@ test.describe("E1 — login and role-correct navigation", () => {
 
   test("a signed-out visitor to a guarded route is redirected to login (E8)", async ({ page }) => {
     await page.goto("/app/calendar");
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/demo/);
     await expect(page.getByText("Choose a role to explore AestheticX")).toBeVisible();
   });
 
   // NOTE: the in-session role bounce (authenticated nurse hitting /app/admin -> /app/dashboard)
   // is NOT E2E-testable in demo mode: a full navigation resets the in-memory session, so a nurse
-  // who navigates to /app/admin is treated as signed-out and lands on /login. That role-based
+  // who navigates to /app/admin is treated as signed-out and lands on /demo. That role-based
   // redirect is covered by unit tests (authRedirect.ts, AuthGuard-role-redirect.test.tsx).
 });
