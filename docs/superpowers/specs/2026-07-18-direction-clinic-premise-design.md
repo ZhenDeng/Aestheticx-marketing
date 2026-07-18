@@ -269,18 +269,19 @@ TDD both sides — tests RED before implementation.
 
 Both changes are independently deployable; natural order is backend first. Two repos, two PRs.
 
-**This work sits on an unmerged stack.** As of 2026-07-18:
+**Branch state as of 2026-07-18** (updated — `fix/direction-form-autofill` landed while this
+design was being written):
 
 | Branch | Repo | State |
 |---|---|---|
-| `fix/direction-form-autofill` | web | unmerged — owns `premiseForCapture` + the `DirectionDialog` initialiser |
-| `claude/awesome-saha-1b8eeb` | web | design only, stacks on the above, edits the same initialiser |
-| `fix/direction-party-names` | backend | unmerged — owns the authorisation write site |
+| `fix/direction-form-autofill` | web | **merged** as PR #117 (`6b3f1fd`), archived as `2026-07-18-direction-capture-autofill`. `premiseForCapture` is on `main`. |
+| `claude/awesome-saha-1b8eeb` | web | design only (prescriber contact); edits the same `DirectionDialog` initialiser this change touches |
+| `fix/direction-party-names` | backend | unmerged, local-only — owns the authorisation write site |
 
-Recommendation: **land `fix/direction-form-autofill` and `fix/direction-party-names` first**, then
-build this on `main` in both repos. Three-deep stacks over the same two hunks will conflict, and
-none of the lower branches is blocked on this one. If that is not possible, branch web off
-`fix/direction-form-autofill` and backend off `fix/direction-party-names` and accept the rebase.
+So: **web branches off `main`**; **backend branches off `fix/direction-party-names`**, or off a
+`main` that has merged it. The remaining overlap is `DirectionDialog.tsx`'s `useState`
+initialiser, which the prescriber-contact change also edits — whichever lands second rebases over
+a few adjacent lines.
 
 An openspec change `direction-clinic-premise` should be created at implementation time, closing
 the "Live caveat" that `direction-capture-autofill`'s Decision 1 filed. That change's caveat text
