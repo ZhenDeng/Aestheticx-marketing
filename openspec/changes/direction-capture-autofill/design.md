@@ -52,6 +52,24 @@ acting user's profile is the one live actually hydrates. Falling back to the *pr
 premise would reintroduce exactly the unavailable-profile problem that blocks phone and
 principal place.
 
+**Live caveat, added after re-review — the same hedge Decision 2 gets.** This closes the
+*misattribution* bug everywhere: a clinic authorisation can no longer print the acting nurse's
+private practice, in any mode. But the *display* win is currently demo-only. Live builds its
+`ClinicRef` from `mapAuthRequest` (`mappers.ts:280`) and `identitiesFromClaims`
+(`identity.ts:28`), both of which populate `{id, name}` and no `address` — as `ClinicRef`'s own
+JSDoc says, "live documents resolve it from the clinics/{id} doc server-side", and there is no
+`clinics/{id}` read anywhere in `src`. The approval PDF is unaffected because a Cloud Function
+renders it server-side, but the 68C direction PDF is rendered entirely client-side
+(`directionPdf.ts`), so nothing resolves the address for it.
+
+Net effect in live for a clinic authorisation: clinic address is empty → falls through to the
+stamped premise (null, by the very rule this decision rests on) → blank, and
+`missingDirectionFields` prompts the clinician to type it. That is unchanged from before this
+branch — safe, not a regression — but it means "use the clinic's address" is not yet true in
+live. Closing it needs a client-readable clinic address (a `clinics/{id}` read, or a richer
+`mapAuthRequest`), which is filed separately. Pinned by a test asserting the live shape yields
+blank, so this is a known quantity rather than a surprise.
+
 Alternative rejected: `addressForIdentity(identity)`. It returns a bare address string for the
 identity, not a `Premise`, so it loses the premise NAME that `premiseDisplayLine` renders
 ("Sarah Chen Aesthetics, 12 Hall St…" vs just the street). The direction should name the
@@ -125,6 +143,9 @@ without React.
 - **Route fallback silently does nothing if requests are absent** → covered by a test for the
   missing-request case; and hydration was verified to load requests unfiltered rather than
   assumed.
+- **The clinic address is inert in live** → see Decision 1's caveat. The misattribution fix
+  holds everywhere; the display improvement is demo-only until a client-readable clinic address
+  exists. Blank-and-prompt in live, which is what it did before this branch.
 - **Route recovery may be inert even in live** → see Decision 2. Safe either way (it can only
   return a recorded route or `""`), but unconfirmed; needs a check against a real live
   authorisation/request pair.
