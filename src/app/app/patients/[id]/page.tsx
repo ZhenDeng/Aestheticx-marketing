@@ -322,7 +322,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                   {a.medication.dosage} {unitSuffix(a.medication.unit)}
                   {routeLabel(a.medication.route) ? ` · ${routeLabel(a.medication.route)}` : ""}
                 </p>
-                <p className="mt-1 flex gap-1" aria-label={`${a.repeatsRemaining} repeats remaining`}>
+                {/* role="img": the dots are a graphic, and ARIA prohibits aria-label on a bare
+                    <p>, so without a role the count was silently dropped for screen readers. */}
+                <p className="mt-1 flex gap-1" role="img" aria-label={`${a.repeatsRemaining} repeats remaining`}>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <span key={i} className="h-2 w-2 rounded-full" style={{ background: i < a.repeatsRemaining ? "var(--color-tint)" : "var(--color-line)" }} />
                   ))}
