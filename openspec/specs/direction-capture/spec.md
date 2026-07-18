@@ -6,28 +6,38 @@ What the NSW Clause 68C direction capture dialog prefills, from which source, an
 importantly — what it must refuse to guess. The direction is a legal document: an unfilled
 field prompts the clinician, whereas a wrongly-filled one can state the wrong route of
 administration or the wrong premises, so every rule here prefers blank over uncertain.
-
 ## Requirements
-
 ### Requirement: Premises of administration follows clinic, then stamp, then the acting user
 
 The direction capture dialog SHALL resolve Premises of administration by the same precedence the
-approval document uses: the clinic's address when the authorisation has a clinic context, else
+approval document uses: the clinic's premises when the authorisation has a clinic context, else
 the premise stamped on the authorisation, else the acting user's currently selected premise
 (selected → default → first). When the authorisation has a clinic context the acting user's own
-premises SHALL NEVER be used. The field SHALL remain editable.
+premises SHALL NEVER be used. The clinic's premises SHALL be read from the stamp written onto the
+authorisation at approval, never looked up at render time. The field SHALL remain editable.
 
-#### Scenario: Clinic authorisation uses the clinic's address
+#### Scenario: Clinic authorisation uses the stamped clinic premises
 
 - **WHEN** a direction is captured for an authorisation with a clinic context
-- **THEN** Premises of administration shows the clinic's address
+- **AND** the authorisation carries a stamped clinic premises
+- **THEN** Premises of administration shows that clinic's name and address
 - **AND** it does not show the acting clinician's own premises
 
-#### Scenario: Clinic authorisation whose clinic cannot be resolved is left blank
+#### Scenario: A stamped clinic premises with no name shows its address
 
-- **WHEN** the authorisation has a clinic context but the clinic cannot be resolved
+- **WHEN** the stamped clinic premises carries an address but no name
+- **THEN** Premises of administration shows the address alone
+
+#### Scenario: Clinic authorisation with no stamped premises is left blank
+
+- **WHEN** the authorisation has a clinic context but carries no stamped clinic premises
 - **THEN** Premises of administration is blank and is reported as still needed
 - **AND** the acting clinician's own premises are not substituted
+
+#### Scenario: The clinic's identifier is never shown as its name
+
+- **WHEN** the clinic's name cannot be resolved
+- **THEN** the clinic identifier SHALL NOT be shown in its place on the direction
 
 #### Scenario: Stamped premise wins for an independent authorisation
 
@@ -146,3 +156,4 @@ direction and its exported PDF.
 
 - **WHEN** the clinician edits a prefilled Premises of administration or Route
 - **THEN** the direction and the exported PDF use the edited value
+
