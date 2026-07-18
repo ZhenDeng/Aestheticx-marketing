@@ -67,7 +67,7 @@ Playwright is live: `npm run test:e2e`, chromium, `webServer` runs `next dev` on
 the Firebase env blanked so the app boots in the deterministic demo seed. Setup + the two
 demo-mode constraints (store resets on full load; no shared state across accounts) are documented
 in [../e2e/README.md](../e2e/README.md). Runs in CI on every PR (`.github/workflows/test.yml`).
-**20 tests green.**
+**22 tests green.**
 
 | # | Journey | Status |
 |---|---|---|
@@ -80,9 +80,9 @@ in [../e2e/README.md](../e2e/README.md). Runs in CI on every PR (`.github/workfl
 | E9 | Marketing smoke: /, /for-* + legal pages, CTAs → /login | ✅ `e9-marketing` |
 | E10 | Mobile viewport (Pixel 5): intake + billing, no horizontal overflow | ✅ `e10-mobile` |
 | a11y | axe-core over login / marketing / dashboard (serious+critical) | ✅ `a11y` (see note) |
+| E4 | Doctor runs a simulated consult call (ring → in-call → end) | ✅ `e4-consult-call` |
+| E7 | Approved filler → standing Hyaluronidase emergency authorisation on file | ✅ `e7-emergency-auth` |
 | E3 (full round-trip) | nurse submits → doctor approves the *same* request | ⛔ needs live/emulator (demo has no shared cross-account state) |
-| E4 | Consult call flow (ConsultCall — demo simulates locally, so feasible) | ▫ todo |
-| E7 | Emergency auth flow | ▫ todo |
 
 **a11y note:** the `color-contrast` rule is excluded as a known baseline exception — axe reports
 `serious` AA-contrast violations on a few nodes (login 1, home 2, dashboard 2) from the tinted/
@@ -136,5 +136,5 @@ Skip coverage for: marketing pages, `types.ts`, generated/config files.
 1. ~~Fix the 3 unhandled test errors; add coverage reporting (baseline numbers).~~ ✅ **Done** — see §6.
 2. ~~Component tests for the HIGH-priority 0%-coverage gaps: Login, Calendar page, Bookings, PatientForm/TreatmentNoteForm/AftercareForm.~~ ✅ **Done** — landed via #105 (auth + booking approval + clinical forms) and #103 (calendar integration smoke). components/app 23.8%→57.9%, overall 46.9%→53.4%.
 3. ~~Install Playwright; implement E1–E3, E5 (core loop + revenue path).~~ ✅ **Done** — demo-mode constraints documented in `e2e/README.md`.
-4. ~~Remaining journeys + `@axe-core/playwright` checks + CI.~~ ✅ **Mostly done** — added E6, E9, E10, a11y (20 E2E tests total) and a GitHub Actions workflow running unit + E2E on every PR. **Still open:** E4 (consult), E7 (emergency), the full cross-role E3 round-trip (live/emulator), and fixing the `color-contrast` a11y baseline.
+4. ~~Remaining journeys + `@axe-core/playwright` checks + CI.~~ ✅ **Done** — E4, E6, E7, E9, E10, a11y (**22 E2E tests total**) and a GitHub Actions workflow running unit + E2E on every PR. **Still open:** the full cross-role E3 round-trip (needs live/emulator), and fixing the `color-contrast` a11y baseline (in progress).
 5. **← NEXT.** MEDIUM/LOW component gaps opportunistically alongside feature work (TDD): `components/admin` (21%), `app/app/patients` pages, and the thin `lib/firebase` live watchers/storage (52.8%).
