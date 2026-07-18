@@ -257,11 +257,25 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                         Consumed {n.consumedAuthorisationIDs.length} repeat{n.consumedAuthorisationIDs.length === 1 ? "" : "s"}
                       </p>
                     )}
-                    {n.deliveryStatus === "failed" && store.status === "demo" && canAftercare && (
-                      <button onClick={() => store.retryAftercare(id, n.id, me)}
-                              className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
-                        Retry delivery
-                      </button>
+                    {/* A bare "Failed" badge is undiagnosable — the 18/07 report was a Resend
+                        rejection the backend had recorded all along. Show the reason it mirrored
+                        onto the note, and offer retry in live too (the deployed retryAftercare
+                        callable backs it), not just in the demo. */}
+                    {n.deliveryStatus === "failed" && (
+                      <div className="mt-2">
+                        {n.failureReason && (
+                          <p className="rounded-inner border px-3 py-2 text-sm"
+                             style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
+                            Delivery failed: {n.failureReason}
+                          </p>
+                        )}
+                        {canAftercare && (
+                          <button onClick={() => store.retryAftercare(id, n.id, me)}
+                                  className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
+                            Retry delivery
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

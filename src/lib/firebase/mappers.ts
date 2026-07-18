@@ -122,6 +122,9 @@ export function mapNote(id: string, patientID: string, data: Doc): Note {
       const s = str(data.deliveryStatus);
       return s === "queued" || s === "delivered" || s === "failed" ? s : undefined;
     })(),
+    // Not str(): an absent reason must stay undefined so the UI can distinguish "no reason
+    // recorded" from an empty one, rather than rendering a blank explanation line.
+    failureReason: typeof data.failureReason === "string" && data.failureReason !== "" ? data.failureReason : undefined,
     aftercareCategories: strArray(data.aftercareCategories)
       .filter((c): c is AftercareCategory => (AFTERCARE_CATEGORIES as readonly string[]).includes(c)),
   };
@@ -447,6 +450,7 @@ export function encodeNote(n: Note): Doc {
     attachments: (n.attachments ?? []).map((a) => ({ fileId: a.fileID, displayName: a.displayName, mimeType: a.mimeType })),
     // Aftercare-only fields — omitted on general/treatment notes (iOS parity, no schema noise).
     ...(n.deliveryStatus !== undefined && { deliveryStatus: n.deliveryStatus }),
+    ...(n.failureReason !== undefined && { failureReason: n.failureReason }),
     ...(n.aftercareCategories !== undefined && { aftercareCategories: n.aftercareCategories }),
   };
 }

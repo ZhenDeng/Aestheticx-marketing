@@ -235,6 +235,10 @@ export interface Note {
   medications: TreatmentMedication[];
   attachments?: NoteAttachment[];        // absent on legacy/aftercare notes
   deliveryStatus?: DeliveryStatus;       // aftercare records only
+  /** Why delivery failed, mirrored onto the note by the backend's mailDelivery trigger
+   *  (e.g. the verbatim provider rejection). Only ever set alongside deliveryStatus
+   *  "failed" — the trigger deletes it when a retry succeeds. */
+  failureReason?: string;
   aftercareCategories?: AftercareCategory[]; // audit trail of an aftercare send
 }
 
