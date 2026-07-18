@@ -51,7 +51,35 @@ export async function identitiesForUser(user: User): Promise<Identity[]> {
       await httpsCallable(functions(), "syncUserClaims")({ userId: user.uid });
     },
   }, healAttempted);
-  return identitiesFromClaims(claims, userDoc);
+  return identitiesFromClaims(claims, userDoc, await clinicNamesFor(claims.clinics));
+}
+
+/**
+ * Names for the caller's OWN clinics, read from `clinics/{id}`. Claims carry ids only, so without
+ * this the acting identity showed the raw clinic id wherever its name is rendered.
+ *
+ * Safe to read here specifically because these are the caller's own memberships:
+ * firestore.rules allows `clinics/{id}` to `inClinic(clinicId) || isSuperAdmin()`, which every
+ * id in one's own claims satisfies. (That same rule is why a clinic's address cannot be resolved
+ * client-side for an authorisation the caller is not a member of — that case is stamped at
+ * approval instead.)
+ *
+ * Best-effort per clinic: a failed or missing read yields no entry, which the resolver renders as
+ * a blank name rather than an id. Sign-in must not fail because a clinic doc is unreadable.
+ */
+async function clinicNamesFor(clinics: Record<string, string>): Promise<Record<string, string>> {
+  const ids = Object.keys(clinics ?? {});
+  if (ids.length === 0) return {};
+  const entries = await Promise.all(ids.map(async (id): Promise<[string, string] | null> => {
+    try {
+      const snap = await getDoc(doc(firestore(), "clinics", id));
+      const name = snap.exists() ? (snap.data() as { name?: unknown }).name : undefined;
+      return typeof name === "string" && name.trim() ? [id, name.trim()] : null;
+    } catch {
+      return null; // unreadable clinic → blank name, never the id
+    }
+  }));
+  return Object.fromEntries(entries.filter((e): e is [string, string] => e !== null));
 }
 
 // The signed-in user's uid right now, or null. Lets the auth watcher discard a stale

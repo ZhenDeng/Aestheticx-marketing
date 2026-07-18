@@ -169,7 +169,11 @@ export default function DashboardPage() {
       <h1 className="mt-2 font-display text-3xl text-ink">Welcome, {identity.user.name}</h1>
       <p className="mt-2 text-ink-soft">
         Acting as {identity.role === "clinicAdmin" ? "clinic admin" : identity.role}
-        {identity.context.kind === "clinic" ? ` · ${identity.context.clinic.name}` : " · independent"}.
+        {/* An unresolved clinic has a BLANK name, never its id — omit the clause rather than
+            print a dangling separator or an opaque identifier. */}
+        {identity.context.kind === "clinic"
+          ? (identity.context.clinic.name.trim() ? ` · ${identity.context.clinic.name.trim()}` : "")
+          : " · independent"}.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
