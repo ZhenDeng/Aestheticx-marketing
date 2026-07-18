@@ -1,4 +1,13 @@
-## ADDED Requirements
+# demo-sandbox-mode Specification
+
+## Purpose
+
+The `/demo` entry point and the per-tab in-memory sandbox behind it. Covers how a sandbox
+session is activated and torn down, and the isolation rules that let a prospect explore the
+demo while a clinician signs in for real against Firebase — on the same deployment, at the
+same time. `/login` is the real login and never serves the demo picker.
+
+## Requirements
 
 ### Requirement: Dedicated demo entry point
 
