@@ -130,7 +130,7 @@ describe("buildTaxInvoiceModel", () => {
     expect(m.issuedText).toBe("14 Jul 2026");
     expect(m.lines[0]).toEqual({
       description: "20/6/2026 – Amara Boyd treatment authorisation",
-      unit: "$25.00", gst: "$2.50", total: "$27.50",
+      qty: "1", unit: "$25.00", gst: "$2.50", total: "$27.50",
     });
     // $25 + 10% GST per authorisation: 2 lines → $50 + $5 = $55.
     expect(m.subtotalText).toBe("$50.00");

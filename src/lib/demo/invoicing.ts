@@ -206,14 +206,26 @@ export function formatAUD(cents: number): string {
 }
 
 // Invoices the identity may see (mirrors the backend invoices read rules).
-// Non-doctors see clinic-typed invoices for their clinic (clinicAdmin always acts in
-// clinic context here) or nurse-typed invoices addressed to their own user id.
+// Authorisation invoices keep the pre-matrix behavior exactly: doctors see what they
+// issued; non-doctors see clinic-typed invoices for their clinic (clinicAdmin always
+// acts in clinic context here) or nurse-typed invoices addressed to their own user id.
+// Matrix invoices are direction-scoped (delta spec: invoicing): visible to their ISSUER
+// silo — practitioner-issued documents follow the person (both identities), clinic-issued
+// documents follow clinic context — and, once no longer draft, to the BILL-TO
+// counterparty (a clinic receiving a service-fee invoice). Drafts stay issuer-only.
 export function invoicesFor(invoices: Invoice[], identity: Identity): Invoice[] {
-  if (identity.role === "doctor") return invoices.filter((i) => i.doctorID === identity.user.id);
   const clinicId = identity.context.kind === "clinic" ? identity.context.clinic.id : null;
-  return invoices.filter((i) =>
-    i.counterpartyType === "clinic"
-      ? clinicId !== null && i.counterpartyID === clinicId
-      : i.counterpartyType === "nurse" && i.counterpartyID === identity.user.id,
-  );
+  return invoices.filter((i) => {
+    if (resolveInvoiceKind(i) === "authorisation") {
+      if (identity.role === "doctor") return i.doctorID === identity.user.id;
+      return i.counterpartyType === "clinic"
+        ? clinicId !== null && i.counterpartyID === clinicId
+        : i.counterpartyType === "nurse" && i.counterpartyID === identity.user.id;
+    }
+    const issuer = i.issuerRef;
+    const isIssuer = issuer !== undefined && (issuer.kind === "clinic" ? issuer.id === clinicId : issuer.id === identity.user.id);
+    if (isIssuer) return true;
+    if (i.draft) return false;
+    return i.counterpartyType === "clinic" && clinicId !== null && i.counterpartyID === clinicId;
+  });
 }
