@@ -16,6 +16,21 @@ import {
 export const SEED_NOW = Date.UTC(2026, 5, 26, 0, 0, 0);
 const TODAY_ISO = isoDay(SEED_NOW); // stays in sync with SEED_NOW
 
+/**
+ * Clock for demo WRITES. Reads (expiry, "today") still use SEED_NOW — but stamping writes with
+ * it too made them tie with the seed, and since Array#sort is stable the seed (inserted first)
+ * won every newest-first tie-break: a record you just created rendered BELOW the sample data.
+ * Each call returns a strictly increasing stamp just past SEED_NOW, so writes sort newest-first
+ * and keep their creation order, while staying well inside SEED_NOW's own day — the demo's
+ * frozen "today" and its TODAY_ISO-keyed appointments are unaffected.
+ * Per-provider (not module state) so a remount — e.g. flipping between sandbox and live —
+ * restarts cleanly alongside the freshly rebuilt seed.
+ */
+export function createDemoWriteClock(): () => number {
+  let sequence = 0;
+  return () => SEED_NOW + ++sequence;
+}
+
 const sarahIndependent: Identity = DEMO_ACCOUNTS[0].identities[0];
 const sarahClinic: Identity = DEMO_ACCOUNTS[0].identities[1];
 const voss: Identity = DEMO_ACCOUNTS[2].identities[0];
