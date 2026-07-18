@@ -136,7 +136,9 @@ export function assembleState(rows: HydrationRows): DemoState {
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID };
+  // Billing matrix (price lists / service fees / wallets): no Firestore schema yet — the
+  // feature is demo-mode-first (live UI gates it off), so hydrate empty slices.
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {

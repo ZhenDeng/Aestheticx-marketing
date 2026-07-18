@@ -488,6 +488,9 @@ export type AuditAction =
   | "invoice_generated"
   | "invoice_marked_paid"
   | "invoice_deleted"
+  | "wallet_topup"
+  | "client_checkout"
+  | "service_fee_finalized"
   | "user_created"
   | "user_deleted"
   | "admin_patient_access";
@@ -526,6 +529,39 @@ export interface EmergencyAuthorisation {
   expiresAt: number;   // refreshedAt + EMERGENCY_VALIDITY_MONTHS
   sourceAuthorisationIDs: string[]; // audit trail of triggering authorisations
 }
+
+// --- Billing matrix: price lists, service fees, patient wallets (change: multi-tenant-billing-matrix) ---
+
+/** Stable key for a data silo: `${kind}:${id}` (e.g. "nurse:u-sarah", "clinic:clinic-lumiere"). */
+export function ownerKeyOf(owner: PatientOwner): string {
+  return `${owner.kind}:${owner.id}`;
+}
+
+// One sellable row of a silo's fee schedule / retail price list. Prices are
+// GST-INCLUSIVE retail (what the client pays) — see computeInclusiveTotals.
+export interface PriceListItem {
+  id: string;
+  kind: "service" | "product";
+  name: string;
+  priceCents: number;
+}
+
+// Append-only wallet ledger entry for a client's account balance. The balance is always
+// derived (Σ credits − Σ drawdowns), never stored — no drift. A top-up keeps the cash and
+// promotional portions as separate integer-cent fields so they stay independently
+// auditable inside the one entry (spec: patient-wallet).
+export type WalletEntry =
+  | {
+      id: string;
+      kind: "topup";
+      paidCents: number;
+      giftCents: number;
+      totalCreditCents: number;
+      invoiceID: string;
+      by: string;
+      at: number;
+    }
+  | { id: string; kind: "drawdown"; amountCents: number; invoiceID: string; by: string; at: number };
 
 export interface DemoState {
   patients: Record<string, Patient>;
@@ -577,6 +613,14 @@ export interface DemoState {
   // Invoices carry their own issuer/billTo snapshot, so this map feeds the admin editor + identity
   // display rather than invoice rendering.
   businessEntitiesByID: Record<string, BusinessEntity>;
+  // Billing matrix (change: multi-tenant-billing-matrix). Demo-mode-first — live mode
+  // gates these features off until the backend repo ships collections + callables.
+  /** Per-silo fee schedule / retail price list, keyed by ownerKeyOf(owner). */
+  priceListByOwner: Record<string, PriceListItem[]>;
+  /** Fixed per-session labor fee (手工费) in GST-exclusive cents, keyed `${clinicID}_${practitionerUid}`. */
+  serviceFeeCentsByPair: Record<string, number>;
+  /** Append-only wallet ledger per client. The client's silo is its patient's owner. */
+  walletByPatientID: Record<string, WalletEntry[]>;
 }
 
 // --- Pure display helpers (port of Patient computed properties) ---

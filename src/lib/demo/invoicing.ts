@@ -1,12 +1,27 @@
 // Per-script invoicing — money math in integer cents, ported verbatim from the
 // backend invoicing.ts so demo totals match server-computed totals.
-import type { Identity } from "./types";
+import type { Identity, PatientOwner } from "./types";
 
 export const DEFAULT_SCRIPT_PRICE_CENTS = 2500;
 export const GST_RATE = 0.1;
 
 export interface InvoiceAuthInput { id: string; dateISO: string; patientName: string; }
-export interface InvoiceLine { authorisationID: string; dateISO: string; patientName: string; feeCents: number; gstCents: number; }
+// `feeCents` is the line's NET (GST-exclusive) total; `gstCents` its GST portion — so
+// fee + gst is the amount payable for the line under both conventions (exclusive script
+// billing and GST-inclusive retail). Matrix lines additionally carry a free-text
+// description, quantity, and the GST-inclusive unit price for grid display; legacy
+// authorisation lines leave them unset (qty is always 1, description derives from
+// date + patient).
+export interface InvoiceLine {
+  authorisationID: string;
+  dateISO: string;
+  patientName: string;
+  feeCents: number;
+  gstCents: number;
+  description?: string;
+  qty?: number;
+  unitCents?: number;
+}
 export interface ComputedInvoice { lines: InvoiceLine[]; subtotalCents: number; gstCents: number; totalCents: number; }
 
 // Issuer / bill-to identity snapshotted onto an invoice at generation time (Tier 3 #4). The backend
@@ -21,6 +36,15 @@ export interface InvoiceParty {
   /** The practitioner's personal name (17/07 feedback: seller block leads "Dr Jenn Lee"
    *  above the trading name). Absent on clinics and on legacy snapshots. */
   name?: string;
+}
+
+// The billing-matrix invoice streams (change: multi-tenant-billing-matrix). A stored
+// invoice without `kind` predates the matrix and is an authorisation invoice — resolve
+// through resolveInvoiceKind, never read `kind` raw.
+export type InvoiceKind = "authorisation" | "client-sale" | "service-fee" | "top-up";
+
+export function resolveInvoiceKind(invoice: Invoice): InvoiceKind {
+  return invoice.kind ?? "authorisation";
 }
 
 export interface Invoice {
@@ -44,6 +68,21 @@ export interface Invoice {
   // Tier 3 #4: the issuer (doctor) and bill-to (counterparty) identity as of generation (undefined on legacy invoices).
   issuer?: InvoiceParty;
   billTo?: InvoiceParty;
+  // --- Billing-matrix fields (undefined on authorisation invoices) ---
+  // Matrix invoices leave the legacy doctor-centric fields inert (doctorID = "") and
+  // describe their parties here + in the frozen issuer/billTo snapshots instead.
+  kind?: InvoiceKind;
+  /** The silo that issued a matrix invoice (practitioner uid or clinic id). */
+  issuerRef?: PatientOwner;
+  /** The client billed on a client-sale / top-up invoice. */
+  patientID?: string;
+  /** Service-fee invoices are queued as drafts for the practitioner to finalize. */
+  draft?: boolean;
+  /** Links the split-billing pair (and wallet entries) born from one checkout/top-up. */
+  checkoutID?: string;
+  /** Top-up invoices: the promotional (non-taxable) portion and the total wallet credit. */
+  giftCents?: number;
+  totalCreditCents?: number;
 }
 
 export function computeInvoice(input: {
@@ -60,6 +99,36 @@ export function computeInvoice(input: {
     feeCents: input.pricePerScriptCents,
     gstCents: Math.round(input.pricePerScriptCents * input.gstRate),
   }));
+  const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);
+  const gstCents = lines.reduce((s, l) => s + l.gstCents, 0);
+  return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
+}
+
+// --- GST-inclusive retail math (spec: client-checkout / patient-wallet) ---
+// B2C amounts (price-list retail, top-up paid amounts) are what the client actually
+// pays: GST component = round(inclusive/11) per line, net = inclusive − GST. This keeps
+// the template's "The total price includes GST" statement literally true for the
+// matrix streams, while script billing keeps its exclusive computeInvoice convention.
+export interface InclusiveLineInput { id: string; description: string; qty: number; unitCents: number; }
+
+export function computeInclusiveTotals(inputs: InclusiveLineInput[]): ComputedInvoice {
+  if (inputs.length === 0) throw new Error("an invoice needs at least one line");
+  const lines: InvoiceLine[] = inputs.map((l) => {
+    if (!Number.isInteger(l.qty) || l.qty <= 0) throw new Error("line quantity must be a positive integer");
+    if (!Number.isInteger(l.unitCents) || l.unitCents <= 0) throw new Error("line unit price must be a positive amount of cents");
+    const inclusive = l.qty * l.unitCents;
+    const gstCents = Math.round(inclusive / 11);
+    return {
+      authorisationID: l.id,
+      dateISO: "",
+      patientName: "",
+      feeCents: inclusive - gstCents,
+      gstCents,
+      description: l.description,
+      qty: l.qty,
+      unitCents: l.unitCents,
+    };
+  });
   const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);
   const gstCents = lines.reduce((s, l) => s + l.gstCents, 0);
   return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
