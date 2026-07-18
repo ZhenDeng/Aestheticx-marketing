@@ -82,7 +82,18 @@ in [../e2e/README.md](../e2e/README.md). Runs in CI on every PR (`.github/workfl
 | a11y | axe-core over login / marketing / dashboard (serious+critical) | ✅ `a11y` (see note) |
 | E4 | Doctor runs a simulated consult call (ring → in-call → end) | ✅ `e4-consult-call` |
 | E7 | Approved filler → standing Hyaluronidase emergency authorisation on file | ✅ `e7-emergency-auth` |
-| E3 (full round-trip) | nurse submits → doctor approves the *same* request | ⛔ needs live/emulator (demo has no shared cross-account state) |
+| E3 (full round-trip) | nurse submits → the addressed doctor approves the *same* request → authorisations + emergency auths + prescriber recorded | ✅ **domain-level** integration test (`cross-role-authorisation-roundtrip.test.ts`) — see note |
+
+**E3 round-trip note:** a *browser* round-trip is not achievable from this repo. Two blockers: (1)
+demo mode has no shared state across accounts (store resets on the sign-out reload), and (2) in
+live mode the approve step is a backend Cloud Function (`mirrorApproveRequest` →
+`httpsCallable("approveRequest")`) whose logic lives in the separate functions repo, so even an
+auth+firestore emulator launched here can't execute it. The handoff is instead covered as a
+**shared-state integration test** over the real `backend.ts` functions (the same ones the app and
+seed use): nurse `submitRequest` → the addressed doctor `approveRequest` → authorisations issued,
+adrenaline + hyaluronidase emergency auths granted, prescriber recorded, request cleared; plus the
+permission boundary (nurse/other-doctor rejected). A true *browser* round-trip would need a
+combined frontend+functions emulator harness (a cross-repo effort).
 
 **a11y note:** the `color-contrast` rule is excluded as a known baseline exception — axe reports
 `serious` AA-contrast violations on a few nodes (login 1, home 2, dashboard 2) from the tinted/
