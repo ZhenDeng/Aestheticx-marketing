@@ -24,13 +24,31 @@ describe("safeNextPath", () => {
 
 describe("loginUrlFor", () => {
   it("carries the in-app target through the next param", () => {
-    expect(loginUrlFor("/app/patients/p-1", "")).toBe("/login?next=%2Fapp%2Fpatients%2Fp-1");
-    expect(loginUrlFor("/app/calendar", "?view=week")).toBe("/login?next=%2Fapp%2Fcalendar%3Fview%3Dweek");
+    expect(loginUrlFor("/app/patients/p-1", "", "live")).toBe("/login?next=%2Fapp%2Fpatients%2Fp-1");
+    expect(loginUrlFor("/app/calendar", "?view=week", "live")).toBe("/login?next=%2Fapp%2Fcalendar%3Fview%3Dweek");
   });
 
   it("returns a plain login URL for non-app paths", () => {
-    expect(loginUrlFor("/", "")).toBe("/login");
-    expect(loginUrlFor("/login", "?next=%2Fapp")).toBe("/login");
+    expect(loginUrlFor("/", "", "live")).toBe("/login");
+    expect(loginUrlFor("/login", "?next=%2Fapp", "live")).toBe("/login");
+  });
+
+  // A signed-out sandbox visitor must land back on the demo picker, not the real login —
+  // otherwise the round-trip drops them into a form they cannot use.
+  it("sends a sandbox visitor to /demo, keeping the next param", () => {
+    expect(loginUrlFor("/app/calendar", "", "demo")).toBe("/demo?next=%2Fapp%2Fcalendar");
+    expect(loginUrlFor("/app/calendar", "?view=week", "demo")).toBe("/demo?next=%2Fapp%2Fcalendar%3Fview%3Dweek");
+  });
+
+  it("returns a plain demo URL for non-app paths in sandbox mode", () => {
+    expect(loginUrlFor("/", "", "demo")).toBe("/demo");
+    expect(loginUrlFor("/demo", "?next=%2Fapp", "demo")).toBe("/demo");
+  });
+
+  it("applies the same open-redirect guard in both modes", () => {
+    expect(loginUrlFor("//evil.example/app", "", "demo")).toBe("/demo");
+    expect(loginUrlFor("/app\\evil", "", "demo")).toBe("/demo");
+    expect(loginUrlFor("//evil.example/app", "", "live")).toBe("/login");
   });
 });
 
