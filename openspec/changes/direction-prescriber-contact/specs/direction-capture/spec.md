@@ -29,6 +29,12 @@ remain editable.
 - **WHEN** the authorisation carries a stamped phone but no stamped principal place
 - **THEN** Phone shows the stamp and Principal place of practice falls back to the profile
 
+#### Scenario: A single unresolved field blocks export on its own
+
+- **WHEN** Phone resolves from the stamp or the profile
+- **AND** Principal place of practice resolves from neither
+- **THEN** `missingDirectionFields` reports Principal place of practice alone, and export stays blocked
+
 #### Scenario: Blank when neither source has a value
 
 - **WHEN** nothing is stamped and the prescriber's profile is not loaded

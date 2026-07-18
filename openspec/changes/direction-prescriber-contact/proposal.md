@@ -17,7 +17,8 @@ they were when the direction was authorised. This change consumes the stamp.
   when unstamped — which live means only when the DOCTOR exports their own direction.
 - The two fields SHALL resolve independently: a stamped phone with no stamped principal place
   yields the stamped phone and the profile's principal place.
-- Both remain editable, and `missingDirectionFields` still gates export when both are blank.
+- Both remain editable, and `missingDirectionFields` still gates export **per field**, exactly as
+  today — either one left unresolved blocks the export on its own.
 
 ## Capabilities
 
