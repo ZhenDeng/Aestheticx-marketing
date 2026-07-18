@@ -153,6 +153,29 @@ describe("mapAuthorisation", () => {
     expect(a.medication.name).toBe("Letybo");
     expect(a.clinicID).toBeNull();
   });
+
+  // Party-name stamps written by the approveRequest Cloud Function — the Clause 68C
+  // direction's only trustworthy source for who authorised the treatment.
+  it("reads the doctorName/nurseName stamps", () => {
+    const a = mapAuthorisation("a1", {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah",
+      doctorName: "Dr Elena Voss", nurseName: "Sarah Chen",
+      clinicId: null, repeatsRemaining: 4, expiresAtMillis: 1800000000000,
+      medication: { name: "Letybo", dosage: "16", category: "neurotoxin", unit: "units", areas: ["Forehead"] },
+    });
+    expect(a.doctorName).toBe("Dr Elena Voss");
+    expect(a.nurseName).toBe("Sarah Chen");
+  });
+
+  it("leaves the name stamps absent on legacy docs that predate them", () => {
+    const a = mapAuthorisation("a1", {
+      requestId: "r1", patientId: "p1", doctorId: "u-voss", nurseId: "u-sarah",
+      clinicId: null, repeatsRemaining: 4, expiresAtMillis: 1800000000000,
+      medication: { name: "Letybo", dosage: "16", category: "neurotoxin", unit: "units", areas: ["Forehead"] },
+    });
+    expect(a.doctorName).toBeUndefined();
+    expect(a.nurseName).toBeUndefined();
+  });
 });
 
 describe("mapAuthRequest", () => {

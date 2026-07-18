@@ -463,6 +463,11 @@ export function approveRequest(
     // stamped premise rides onto every fanned-out authorisation (backend fanOutAuthorisations).
     reviewedAt: now,
     premise: request.premise ?? null,
+    // Clause 68C party names, stamped at approval alongside the premise: the approver IS the
+    // addressed doctor (asserted above) and the nurse rode in on the request. Resolving these
+    // at render time would print a raw uid in live mode.
+    doctorName: identity.user.name,
+    nurseName: request.nurse.name,
   }));
 
   const authorisations = { ...state.authorisations };

@@ -178,6 +178,14 @@ export interface Authorisation {
   /** Approval time — the Clause 68C "date the prescriber reviewed the patient" (round 6).
    *  Absent on authorisations approved before the stamp existed. */
   reviewedAt?: number;
+  /** Party names denormalised AT APPROVAL for the Clause 68C direction — the prescriber who
+   *  authorised and the nurse responsible. Stamped rather than resolved at render time: the
+   *  document must name the parties as they were at authorisation, and a nurse exporting in
+   *  live mode cannot read the doctor's users doc to look one up. Absent on authorisations
+   *  approved before the stamp existed — directionPrescriberName/directionResponsibleProvider
+   *  fall back to the cooperation directory, then fail closed. */
+  doctorName?: string;
+  nurseName?: string;
   /** Copy of the request's stamped premise (round 6); absent on legacy documents. */
   premise?: Premise | null;
 }

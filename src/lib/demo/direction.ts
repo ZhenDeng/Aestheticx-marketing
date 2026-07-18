@@ -6,7 +6,7 @@
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
 import { routeLabel } from "./types";
-import type { AuthorisationRequest, ClinicRef, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
+import type { AuthorisationRequest, ClinicRef, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise } from "./types";
 
 /** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
 export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
@@ -276,7 +276,11 @@ export function buildDirectionDraft(input: {
       route: routeLabel(m.route) ?? captured.route,
       quantity: medicationQuantity(m),
     })),
-    prescriberAttestation: `Electronically authorised by ${input.prescriberName}`,
+    // An unresolved prescriber fails closed (see directionPrescriberName); don't render a
+    // dangling "Electronically authorised by " while the export is gated.
+    prescriberAttestation: input.prescriberName.trim() === ""
+      ? ""
+      : `Electronically authorised by ${input.prescriberName}`,
     emergencyAuthorisations: input.emergencies.map((e) => ({
       label: emergencyKindLabel(e.kind),
       detail: `standing order · expires ${formatDocDate(e.expiresAt)}`,
@@ -284,15 +288,50 @@ export function buildDirectionDraft(input: {
   };
 }
 
+const trimmed = (v: string | undefined): string => (typeof v === "string" ? v.trim() : "");
+
+const demoAccountName = (userID: string): string =>
+  trimmed(DEMO_ACCOUNTS.flatMap((a) => a.identities).find((i) => i.user.id === userID)?.user.name);
+
+/*
+ * Party-name resolution for the direction's prescriber / responsible-provider lines below.
+ *
+ * Precedence is deliberate and legal, not cosmetic:
+ *   1. the name STAMPED on the authorisation at approval — who actually authorised it;
+ *   2. the cooperation directory, for authorisations approved before the stamp existed;
+ *   3. DEMO_ACCOUNTS, the demo cast;
+ *   4. "" — fail closed.
+ *
+ * A stamp outranks the directory because a directory entry can be renamed after the fact,
+ * and the document must name the parties as they were at the moment of authorisation.
+ *
+ * Step 4 is the safety property. These ids are raw Firebase uids in live mode, so the old
+ * id fallback silently printed "PRESCRIBER: xY3kf9…" onto a Clause 68C document — and
+ * missingDirectionFields could not catch it, because a uid is a non-empty string. Returning
+ * "" routes an unresolved party through that same gate and blocks the export instead.
+ */
+
 /** Doctor display name for the direction's prescriber line (iOS AuthorisationCard.doctorName). */
-export function directionPrescriberName(doctorID: string): string {
-  const identity = DEMO_ACCOUNTS.flatMap((a) => a.identities).find((i) => i.user.id === doctorID);
-  return identity?.user.name ?? doctorID;
+export function directionPrescriberName(
+  authorisation: { doctorID: string; doctorName?: string },
+  relationships: CooperationRelationship[] = [],
+): string {
+  const stamped = trimmed(authorisation.doctorName);
+  if (stamped) return stamped;
+  const related = relationships.find((r) => r.doctorID === authorisation.doctorID);
+  return trimmed(related?.doctorName) || demoAccountName(authorisation.doctorID);
 }
 
 /** The requesting nurse (with clinic badge) — the responsible provider (iOS requesterBadge). */
-export function directionResponsibleProvider(nurseID: string, clinicID: string | null): string {
-  const identity = DEMO_ACCOUNTS.flatMap((a) => a.identities).find((i) => i.user.id === nurseID);
-  if (!identity) return nurseID;
-  return clinicID === LUMIERE.id ? `${identity.user.name} @ ${LUMIERE.name}` : identity.user.name;
+export function directionResponsibleProvider(
+  authorisation: { nurseID: string; nurseName?: string; clinicID: string | null },
+  relationships: CooperationRelationship[] = [],
+): string {
+  const stamped = trimmed(authorisation.nurseName);
+  const related = relationships.find(
+    (r) => r.counterpartyType === "nurse" && r.counterpartyID === authorisation.nurseID,
+  );
+  const name = stamped || trimmed(related?.counterpartyName) || demoAccountName(authorisation.nurseID);
+  if (!name) return ""; // fail closed — never badge a bare uid
+  return authorisation.clinicID === LUMIERE.id ? `${name} @ ${LUMIERE.name}` : name;
 }

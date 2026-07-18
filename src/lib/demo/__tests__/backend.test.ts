@@ -206,6 +206,21 @@ describe("approveRequest", () => {
     const start = new Date(NOW);
     expect(expiry.getUTCMonth()).toBe((start.getUTCMonth() + VALIDITY_MONTHS) % 12);
   });
+  // The Clause 68C direction names both parties, and ids alone are unresolvable once the
+  // exporter is a nurse who can't read the doctor's users doc. Stamp the names at approval,
+  // like the emergency standing order and the approval note already do.
+  it("stamps the prescriber and responsible-provider names at approval", () => {
+    let state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    state = submitted.state;
+    const { granted } = approveRequest(state, submitted.request.id, voss, NOW);
+
+    expect(granted[0].doctorName).toBe("Dr Elena Voss");
+    expect(granted[0].nurseName).toBe("Sarah Chen");
+  });
+
   it("refuses approval from a doctor who does not own the request", () => {
     let state = stateWith(nursePatient("p1", "u-sarah"));
     const submitted = submitRequest(
