@@ -31,7 +31,7 @@ export default defineConfig({
   ],
   webServer: {
     command: `npx next dev -p ${PORT}`,
-    url: `http://localhost:${PORT}/login`,
+    url: `http://localhost:${PORT}/demo`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: BLANK_FIREBASE,

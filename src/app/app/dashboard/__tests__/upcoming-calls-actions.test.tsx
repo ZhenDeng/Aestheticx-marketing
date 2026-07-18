@@ -32,7 +32,7 @@ function upcomingCall(over: Partial<Appointment> = {}): Appointment {
 let state: DemoState;
 const markAppointment = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/demo/auth", () => ({
   useDemoAuth: () => ({ identity: voss, availableIdentities: [voss], selectIdentity: vi.fn(), signOut: vi.fn() }),
 }));

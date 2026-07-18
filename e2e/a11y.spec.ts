@@ -27,9 +27,17 @@ async function scan(page: import("@playwright/test").Page) {
   return results.violations.filter((v) => GATED.includes(v.impact ?? ""));
 }
 
-test("a11y — public login page", async ({ page }) => {
-  await page.goto("/login");
+test("a11y — public demo sign-in", async ({ page }) => {
+  await page.goto("/demo");
   await expect(page.getByText("Choose a role to explore AestheticX")).toBeVisible();
+  const violations = await scan(page);
+  expect(violations, JSON.stringify(violations.map((v) => v.id), null, 2)).toEqual([]);
+});
+
+test("a11y — public login page", async ({ page }) => {
+  // No Firebase env in the E2E run, so this renders the "sign-in unavailable" state.
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   const violations = await scan(page);
   expect(violations, JSON.stringify(violations.map((v) => v.id), null, 2)).toEqual([]);
 });

@@ -32,12 +32,36 @@ test.describe("E1 — login and role-correct navigation", () => {
 
   test("a signed-out visitor to a guarded route is redirected to login (E8)", async ({ page }) => {
     await page.goto("/app/calendar");
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/demo/);
     await expect(page.getByText("Choose a role to explore AestheticX")).toBeVisible();
+  });
+
+  // The redirect above only proves half the round-trip. ?next= has to survive being carried to
+  // the demo picker and bring the visitor back to the page they actually asked for — otherwise
+  // a deep link silently dumps everyone on the dashboard.
+  test("the ?next= round-trip returns the visitor to the page they asked for (E8)", async ({ page }) => {
+    await page.goto("/app/calendar");
+    await expect(page).toHaveURL(/\/demo\?next=%2Fapp%2Fcalendar/);
+
+    await page.getByText(DEMO.nurse, { exact: true }).click();
+    await page.getByRole("button", { name: "Enter the demo" }).click();
+
+    await expect(page).toHaveURL(/\/app\/calendar/);
+  });
+
+  // A ?next= the chosen role may not reach must be corrected, not obeyed.
+  test("a ?next= the role cannot reach falls back to the role home (E8)", async ({ page }) => {
+    await page.goto("/app/admin"); // clinical roles are not allowed here
+    await expect(page).toHaveURL(/\/demo\?next=%2Fapp%2Fadmin/);
+
+    await page.getByText(DEMO.nurse, { exact: true }).click();
+    await page.getByRole("button", { name: "Enter the demo" }).click();
+
+    await expect(page).toHaveURL(/\/app\/dashboard/);
   });
 
   // NOTE: the in-session role bounce (authenticated nurse hitting /app/admin -> /app/dashboard)
   // is NOT E2E-testable in demo mode: a full navigation resets the in-memory session, so a nurse
-  // who navigates to /app/admin is treated as signed-out and lands on /login. That role-based
+  // who navigates to /app/admin is treated as signed-out and lands on /demo. That role-based
   // redirect is covered by unit tests (authRedirect.ts, AuthGuard-role-redirect.test.tsx).
 });

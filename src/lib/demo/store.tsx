@@ -8,7 +8,6 @@ import * as backend from "./backend";
 import * as billing from "./billing";
 import * as invoicing from "./invoicing";
 import * as emergency from "./emergency";
-import { isFirebaseConfigured } from "@/lib/firebase/client";
 // Pure (no firebase SDK), safe to import statically — categorises mirror failures so the
 // banner distinguishes a permission lockout from a transient blip (16/07 feedback bug 1).
 import { syncErrorMessage } from "@/lib/firebase/syncError";
@@ -151,9 +150,23 @@ function clinicId(identity: Identity): string | null {
   return identity.context.kind === "clinic" ? identity.context.clinic.id : null;
 }
 
+/**
+ * Rebuilds the store whenever the tab switches between the sandbox and live. The inner
+ * provider snapshots `live` into its initial state, `status` and `now` at mount, so a mode
+ * flip has to remount it — otherwise a tab entering /demo would keep the empty,
+ * Firestore-shaped state and never load the seed (a blank app).
+ */
 export function DemoStoreProvider({ children }: { children: ReactNode }) {
-  const live = isFirebaseConfigured();
-  const { identity, availableIdentities } = useDemoAuth();
+  const { mode } = useDemoAuth();
+  return <ModeScopedStoreProvider key={mode}>{children}</ModeScopedStoreProvider>;
+}
+
+function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
+  // Mode comes from the auth provider, which is the single source of truth — deriving it
+  // here from isFirebaseConfigured() again would let the store and the provider disagree
+  // once a tab enters the sandbox on a Firebase-configured deployment.
+  const { mode, identity, availableIdentities } = useDemoAuth();
+  const live = mode === "live";
   const [state, setState] = useState<DemoState>(() => (live ? backend.emptyState() : buildSeedState()));
   const [status, setStatus] = useState<Status>(live ? "loading" : "demo");
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);

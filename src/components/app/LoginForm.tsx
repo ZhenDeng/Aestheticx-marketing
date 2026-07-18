@@ -16,14 +16,16 @@ function nextDestination(role: Role): string {
   return redirectForRole(role, target) ?? target;
 }
 
-export function LoginForm() {
-  const { mode } = useDemoAuth();
-  return mode === "live" ? <LiveLogin /> : <DemoLogin />;
-}
-
-function LiveLogin() {
-  const { signInLive, identity } = useDemoAuth();
+/**
+ * The real login, served only from /login. Leaving the sandbox on mount means a visitor who
+ * wandered over from /demo gets a clean live sign-in rather than a live form rendered over a
+ * sandboxed store.
+ */
+export function LiveLoginForm() {
+  const { signInLive, identity, exitDemoMode } = useDemoAuth();
   const router = useRouter();
+
+  useEffect(() => { exitDemoMode(); }, [exitDemoMode]);
   // Prefill the remembered email (device-local; never the password). SSR-guarded lazy
   // initializer, the loadRecentlyUsed pattern — React skips input `value` in hydration
   // diffing, so the prerendered empty field hydrating to the stored email is safe.
@@ -92,10 +94,17 @@ function LiveLogin() {
   );
 }
 
-function DemoLogin() {
-  const { accounts, signIn } = useDemoAuth();
+/**
+ * The interactive demo, served only from /demo. Switching the tab into the sandbox on mount is
+ * what makes this work on a Firebase-configured deployment: without it the picker would render
+ * but the app behind it would still talk to Firestore.
+ */
+export function DemoLoginForm() {
+  const { accounts, signIn, enterDemoMode } = useDemoAuth();
   const router = useRouter();
   const [selected, setSelected] = useState(0);
+
+  useEffect(() => { enterDemoMode(); }, [enterDemoMode]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();

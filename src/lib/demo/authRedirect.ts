@@ -20,10 +20,18 @@ export function safeNextPath(raw: string | null): string {
   return isInAppPath(raw) ? raw : FALLBACK;
 }
 
-/** Login URL that carries an in-app target (path + query) through ?next=. */
-export function loginUrlFor(pathname: string, search: string): string {
-  if (!isInAppPath(pathname)) return "/login";
-  return `/login?next=${encodeURIComponent(pathname + search)}`;
+/** The signed-out entry point for each mode: the demo picker, or the real login. */
+const ENTRY_POINT = { demo: "/demo", live: "/login" } as const;
+
+/**
+ * Sign-in URL that carries an in-app target (path + query) through ?next=. The mode is passed
+ * in rather than read from the auth context so this module stays pure — a sandbox visitor
+ * must bounce back to /demo, not to a live form they cannot use.
+ */
+export function loginUrlFor(pathname: string, search: string, mode: "demo" | "live"): string {
+  const entry = ENTRY_POINT[mode];
+  if (!isInAppPath(pathname)) return entry;
+  return `${entry}?next=${encodeURIComponent(pathname + search)}`;
 }
 
 /**

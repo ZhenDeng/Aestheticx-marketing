@@ -17,7 +17,7 @@ let currentIdentity: Identity;
 let profile: Record<string, unknown>;
 const updateProfile = vi.fn();
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/demo/auth", () => ({
   useDemoAuth: () => ({ identity: currentIdentity, availableIdentities: [currentIdentity], selectIdentity: vi.fn(), signOut: vi.fn() }),
 }));
