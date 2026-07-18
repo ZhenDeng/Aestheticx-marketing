@@ -106,7 +106,7 @@ describe("topUpWallet", () => {
     const state = buildSeedState();
     const claire = findPatient(state, "Claire Donovan");
     const next = topUpWallet(state, { patientID: claire.id, paidCents: 400000, giftCents: 100000 }, sarahIndependent, SEED_NOW);
-    const audit = Object.values(next.auditLogByID).find((e) => e.action === "wallet_topup");
+    const audit = Object.values(next.auditLogByID).find((e) => e.action === "wallet_topup" && e.targetID === claire.id);
     expect(audit).toBeDefined();
     expect(audit!.summary).toContain("$4,000.00");
     expect(audit!.summary).toContain("$1,000.00");

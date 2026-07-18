@@ -9,6 +9,7 @@ import {
   approveRequest,
   saveTreatmentNote,
   saveGeneralNote,
+  topUpWallet,
   isoDay,
 } from "./backend";
 
@@ -196,6 +197,11 @@ export function buildSeedState(): DemoState {
     "NKDA", "Perindopril 5mg", { kind: "doctor", id: "u-voss" },
   );
   state = { ...state, patients: { ...state.patients, [grace.id]: grace } };
+
+  // Billing matrix: a seeded promotional top-up so the wallet surfaces open with data —
+  // Amara holds $2,500 paid + $500 gift under the CLINIC silo (runs through the real
+  // reducer, so the ledger entry and the linked paid-only top-up invoice both exist).
+  state = topUpWallet(state, { patientID: amara.id, paidCents: 250000, giftCents: 50000 }, sarahClinic, SEED_NOW);
 
   // Seeded appointments for today (clinic + doctor calendars).
   const appts = [
