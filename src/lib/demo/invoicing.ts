@@ -51,7 +51,9 @@ export interface Invoice {
   id: string;
   doctorID: string;
   counterpartyID: string;
-  counterpartyType: "nurse" | "clinic";
+  // "client" only on matrix invoices billed to a patient (counterpartyID = patient id);
+  // authorisation invoices stay "nurse" | "clinic".
+  counterpartyType: "nurse" | "clinic" | "client";
   periodLabel: string;
   lines: InvoiceLine[];
   subtotalCents: number;

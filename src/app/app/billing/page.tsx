@@ -137,7 +137,7 @@ export default function BillingPage() {
             return (
             <li key={inv.id} className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3">
               <span className="text-sm text-ink">
-                {inv.periodLabel} · {ownerDisplayLabel(store.state, isDoctor ? { kind: inv.counterpartyType, id: inv.counterpartyID } : { kind: "doctor", id: inv.doctorID })}
+                {inv.periodLabel} · {ownerDisplayLabel(store.state, isDoctor && inv.counterpartyType !== "client" ? { kind: inv.counterpartyType, id: inv.counterpartyID } : { kind: "doctor", id: inv.doctorID })}
                 <span className="ml-2 font-medium">{formatAUD(inv.totalCents)}</span>
                 <span className="ml-2 rounded-btn px-2 py-0.5 text-xs" style={inv.paid
                   ? { background: "var(--color-tint)", color: "var(--color-card)" }

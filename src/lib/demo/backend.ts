@@ -30,6 +30,7 @@ import type {
   PatientDraft,
   PatientField,
   PatientOwner,
+  WalletEntry,
   PatientSummary,
   Premise,
   SignedFormRecord,
@@ -54,14 +55,14 @@ import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
+import { computeInvoice, computeInclusiveTotals, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
 import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
 import { approvalNote, buildApprovalDocumentModel, renderApprovalPdf } from "./approvalPdf";
 import { cooperatingDoctorsFor, relationshipFor, priceCentsFor, invoiceAppliesFor, cooperationDocId } from "./cooperation";
-import { patientAccessLevel } from "./isolation";
+import { patientAccessLevel, canTopUp } from "./isolation";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -2261,9 +2262,15 @@ export function invoicePartyFor(state: DemoState, kind: "doctor" | "nurse" | "cl
 /** The issuer/bill-to pair for a tax invoice: generation-time snapshots when present
  *  (live invoices, Tier 3 #4), else resolved from state (demo + legacy invoices). */
 export function invoicePartiesFor(state: DemoState, invoice: Invoice): { issuer: InvoiceParty; billTo: InvoiceParty } {
+  // Matrix invoices billed to a client always freeze billTo at generation; the state
+  // fallback below only serves legacy authorisation invoices (client parties are
+  // patients, not resolvable business entities).
+  const billToFallback = invoice.counterpartyType === "client"
+    ? { businessName: "", abn: "", email: "" }
+    : invoicePartyFor(state, invoice.counterpartyType, invoice.counterpartyID);
   return {
     issuer: invoice.issuer ?? invoicePartyFor(state, "doctor", invoice.doctorID),
-    billTo: invoice.billTo ?? invoicePartyFor(state, invoice.counterpartyType, invoice.counterpartyID),
+    billTo: invoice.billTo ?? billToFallback,
   };
 }
 
@@ -2425,6 +2432,120 @@ export function markInvoicePaid(state: DemoState, invoiceID: string, identity: I
   return appendAuditEntry(
     { ...state, invoices },
     { actor: identity, action: "invoice_marked_paid", targetType: "invoice", targetID: invoiceID, summary: `marked paid · ${invoice.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}` },
+    now,
+  );
+}
+
+// --- Billing matrix: patient wallet + client checkout (change: multi-tenant-billing-matrix) ---
+
+function assertNonNegativeCents(n: number): void {
+  if (!Number.isInteger(n) || n < 0) throw new BackendError("validationFailed");
+}
+
+// The bill-to block for a client-facing invoice: the client's name leads as the party
+// name and the ABN stays empty — the renderer omits the ABN row for clients entirely
+// (the em-dash fallback is an ATO requirement for SELLERS only).
+function clientBillTo(patient: Patient): InvoiceParty {
+  return {
+    businessName: fullName(patient),
+    abn: "",
+    email: patient.email,
+    ...(patient.address ? { address: patient.address } : {}),
+  };
+}
+
+/** A matrix invoice's issuing silo as an invoicePartyFor kind. */
+function issuerPartyFor(state: DemoState, owner: PatientOwner): InvoiceParty {
+  return invoicePartyFor(state, owner.kind, owner.id);
+}
+
+/** Derived account balance: Σ top-up credits − Σ drawdowns. Never stored (spec: patient-wallet). */
+export function walletBalanceCents(state: DemoState, patientID: string): number {
+  return (state.walletByPatientID[patientID] ?? []).reduce(
+    (sum, e) => sum + (e.kind === "topup" ? e.totalCreditCents : -e.amountCents),
+    0,
+  );
+}
+
+export interface TopUpWalletInput {
+  patientID: string;
+  /** Money actually collected (实际支付), integer cents. */
+  paidCents: number;
+  /** Promotional bonus (赠送金额), integer cents — non-taxable, ledger-only. */
+  giftCents: number;
+}
+
+// Top up a client's account balance (spec: patient-wallet). Owner-silo only. Credits
+// paid + gift in one ledger entry, and issues the linked tax invoice for the PAID amount
+// alone (GST-inclusive); a gift-only top-up records no invoice — nothing was collected,
+// so there is no financial transaction to document. The invoice is born paid: a top-up
+// is settled at the counter by definition.
+export function topUpWallet(state: DemoState, input: TopUpWalletInput, identity: Identity, now: number): DemoState {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (!canTopUp(state, identity, patient)) throw new BackendError("notPermitted");
+  assertNonNegativeCents(input.paidCents);
+  assertNonNegativeCents(input.giftCents);
+  const totalCreditCents = input.paidCents + input.giftCents;
+  if (totalCreditCents <= 0) throw new BackendError("validationFailed");
+
+  let invoices = state.invoices;
+  let invoiceID = "";
+  if (input.paidCents > 0) {
+    const computed = computeInclusiveTotals([
+      { id: "top-up", description: "Account top-up — pre-payment", qty: 1, unitCents: input.paidCents },
+    ]);
+    const invoice: Invoice = {
+      id: makeID("inv"),
+      doctorID: "", // matrix invoices leave the legacy doctor-centric fields inert
+      counterpartyID: patient.id,
+      counterpartyType: "client",
+      periodLabel: isoDay(now),
+      ...computed,
+      authorisationIDs: [],
+      createdAt: now,
+      paid: true,
+      paidAt: now,
+      markedBy: identity.user.id,
+      kind: "top-up",
+      issuerRef: patient.owner,
+      patientID: patient.id,
+      giftCents: input.giftCents,
+      totalCreditCents,
+      issuer: issuerPartyFor(state, patient.owner),
+      billTo: clientBillTo(patient),
+    };
+    invoices = [...state.invoices, invoice];
+    invoiceID = invoice.id;
+  }
+
+  const entry: WalletEntry = {
+    id: makeID("wal"),
+    kind: "topup",
+    paidCents: input.paidCents,
+    giftCents: input.giftCents,
+    totalCreditCents,
+    invoiceID,
+    by: identity.user.id,
+    at: now,
+  };
+  const next = {
+    ...state,
+    invoices,
+    walletByPatientID: {
+      ...state.walletByPatientID,
+      [patient.id]: [...(state.walletByPatientID[patient.id] ?? []), entry],
+    },
+  };
+  return appendAuditEntry(
+    next,
+    {
+      actor: identity,
+      action: "wallet_topup",
+      targetType: "patient",
+      targetID: patient.id,
+      summary: `top-up ${formatAUD(input.paidCents)} paid + ${formatAUD(input.giftCents)} gift · balance ${formatAUD(walletBalanceCents(next, patient.id))}`,
+    },
     now,
   );
 }
