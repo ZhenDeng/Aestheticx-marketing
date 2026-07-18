@@ -10,10 +10,10 @@
   --color-paper-deep: #ede6da;
   --color-card: #fffdf8;
 
-  /* Ink (text) */
+  /* Ink (text) — tuned for WCAG 2.1 AA (>=4.5:1) on paper/card and tinted-soft surfaces */
   --color-ink: #211c16;
-  --color-ink-soft: #71665a;
-  --color-ink-faint: #a99c8c;
+  --color-ink-soft: #6d6357;
+  --color-ink-faint: #71695e;
 
   /* Lines */
   --color-line: #e3d9c8;
@@ -21,17 +21,17 @@
 
   /* Gold — consequence: authorisations, signatures, legal, CTAs */
   --color-gold: #ae8a50;
-  --color-gold-deep: #8f6f3c;
+  --color-gold-deep: #836537;
   --color-gold-soft: #efe3cb;
 
   /* Danger — allergies, expiry, failures */
   --color-danger: #a14034;
   --color-danger-soft: #f6e4e0;
 
-  /* Role tints */
-  --color-rose: #a65b5b;
+  /* Role tints — foreground tints tuned to clear AA on their own -soft chip backgrounds */
+  --color-rose: #914f4f;
   --color-rose-soft: #f3e2df;
-  --color-sage: #56705f;
+  --color-sage: #4f6857;
   --color-sage-soft: #e2e9e1;
   --color-slate: #56657f;
   --color-slate-soft: #e2e6ee;

@@ -6,18 +6,24 @@ import { DEMO, loginAsDemo } from "./helpers";
 // violations (WCAG 2.0/2.1 A + AA). Minor/moderate issues are not gated here to keep the check
 // stable; tighten later once the serious/critical floor holds.
 //
-// `color-contrast` is DISABLED as a known baseline exception: the tinted/muted text in the
-// current palette trips AA contrast on a few nodes per page. That's real debt tracked separately
-// — excluding the one rule keeps this check guarding the STRUCTURAL a11y that matters most
-// (labels, roles, names, alt text) instead of failing on day one. Re-enable once contrast is fixed.
+// `color-contrast` is ENABLED: the "Porcelain & Ink" text tokens (--color-ink-soft/-faint,
+// --color-gold-deep, and the role tints) were tuned in globals.css to clear AA (>=4.5:1) on
+// paper/card and on their tinted-soft chip backgrounds, so the rule now passes on every gated
+// page. KNOWN_BASELINE is the escape hatch for a rule we can't yet satisfy — list an axe rule id
+// here (with a linked follow-up) to keep this check green while the underlying fix is pending.
 const GATED = ["serious", "critical"];
-const KNOWN_BASELINE = ["color-contrast"];
+const KNOWN_BASELINE: string[] = [];
 
 async function scan(page: import("@playwright/test").Page) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .disableRules(KNOWN_BASELINE)
-    .analyze();
+  // Force the ".reveal" entrance (opacity 0 -> 1 over 0.6s, driven by an IntersectionObserver) to
+  // its settled state before axe runs. Otherwise axe can sample an element mid-fade and report a
+  // spurious color-contrast failure against the reduced-opacity foreground.
+  await page.addStyleTag({
+    content: ".reveal{opacity:1 !important;transform:none !important;transition:none !important}",
+  });
+  let builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]);
+  if (KNOWN_BASELINE.length > 0) builder = builder.disableRules(KNOWN_BASELINE);
+  const results = await builder.analyze();
   return results.violations.filter((v) => GATED.includes(v.impact ?? ""));
 }
 
