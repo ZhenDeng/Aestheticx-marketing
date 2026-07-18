@@ -91,6 +91,10 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     setIdentity(null);
     setAvailableIdentities([]);
     setMustChangePassword(false);
+    // Re-arm the resolved gate. Leaving it set would make `resolved` stale-true with a null
+    // identity at the moment mode flips to live — exactly the signed-out-looking window the
+    // gate exists to hold AuthGuard through while a persisted session restores.
+    setLiveResolved(false);
   }, []);
   // Entering the sandbox deliberately does NOT sign the user out of Firebase: that would be a
   // destructive side effect of merely visiting a marketing page. The watcher has already

@@ -67,6 +67,26 @@ describe("DemoAuthProvider (exitDemoMode on a live session)", () => {
     expect(result.current.mode).toBe("live");
   });
 
+  // `resolved` gates AuthGuard's redirect: it must stay false until the live watcher has
+  // actually reported, or a signed-out-looking moment bounces the user before their persisted
+  // session finishes restoring. liveResolved carrying a stale `true` across demo -> live would
+  // defeat exactly that gate — inert only while AuthGuard happens not to be mounted here.
+  it("re-arms the resolved gate when the tab returns to live mode", async () => {
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+
+    liveUid = "u-real";
+    await act(async () => { await watchCb?.({ uid: "u-real" }); });
+    expect(result.current.resolved).toBe(true); // watcher has reported
+
+    await act(async () => { result.current.enterDemoMode(); });
+    await act(async () => { result.current.exitDemoMode(); });
+
+    expect(result.current.mode).toBe("live");
+    expect(result.current.identity).toBeNull();
+    expect(result.current.resolved).toBe(false); // must wait for the watcher again
+  });
+
   it("still tears down a sandbox identity when leaving the sandbox", async () => {
     window.sessionStorage.setItem(DEMO_MODE_KEY, "1");
     const { result } = renderHook(() => useDemoAuth(), { wrapper });
