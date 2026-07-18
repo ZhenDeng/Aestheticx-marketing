@@ -17,11 +17,18 @@ let subscribed = 0;
 type WatchCb = (user: { uid: string } | null) => void | Promise<void>;
 let watchCb: WatchCb | undefined;
 
+let liveUid: string | null = null;
+const LIVE_IDENTITY = {
+  user: { id: "u-real", name: "Real Clinician" },
+  role: "nurse" as const,
+  context: { kind: "independent" as const },
+};
+
 vi.mock("@/lib/firebase/auth", () => ({
   watchUser: (cb: WatchCb) => { subscribed += 1; watchCb = cb; return () => {}; },
-  identitiesForUser: async () => [],
+  identitiesForUser: async () => [LIVE_IDENTITY],
   mustChangePasswordForUser: async () => false,
-  currentUserUid: () => null,
+  currentUserUid: () => liveUid,
   signOutUser: async () => {},
 }));
 
@@ -35,7 +42,42 @@ beforeEach(() => {
   subscribed = 0;
   watchCb = undefined;
   pathname = "/";
+  liveUid = null;
   window.sessionStorage.clear();
+});
+
+// LiveLoginForm calls exitDemoMode() from a mount effect, so this runs whenever ANY visitor
+// lands on /login — including a live user who is already signed in and is only passing back
+// through it. Tearing their identity down there would strand them: /login forwards a
+// signed-in user to their home, but with identity nulled the forward never happens and the
+// AuthGuard bounces them straight back. Leaving a sandbox must be a no-op when there is no
+// sandbox to leave.
+describe("DemoAuthProvider (exitDemoMode on a live session)", () => {
+  it("does not tear down a live identity when the tab was never sandboxed", async () => {
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+
+    liveUid = "u-real";
+    await act(async () => { await watchCb?.({ uid: "u-real" }); });
+    expect(result.current.identity?.user.id).toBe("u-real");
+
+    await act(async () => { result.current.exitDemoMode(); });
+
+    expect(result.current.identity?.user.id).toBe("u-real");
+    expect(result.current.mode).toBe("live");
+  });
+
+  it("still tears down a sandbox identity when leaving the sandbox", async () => {
+    window.sessionStorage.setItem(DEMO_MODE_KEY, "1");
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await waitFor(() => expect(result.current.mode).toBe("demo"));
+    await act(async () => { result.current.signIn(LIVE_IDENTITY); });
+
+    await act(async () => { result.current.exitDemoMode(); });
+
+    expect(result.current.identity).toBeNull();
+    expect(result.current.mode).toBe("live");
+  });
 });
 
 // Being ON /demo is itself demo mode, resolved during render rather than by an effect. This is

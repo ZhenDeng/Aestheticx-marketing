@@ -97,7 +97,14 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   // unsubscribed, so a dormant session cannot interfere, and the user's real session is still
   // there when they return to /login. Clearing the identity is enough.
   const enterDemoMode = useCallback(() => switchMode(true), [switchMode]);
-  const exitDemoMode = useCallback(() => switchMode(false), [switchMode]);
+  // No-op when there is no sandbox to leave. LiveLoginForm calls this from a mount effect, so
+  // it runs for EVERY visitor to /login — including a live user who is already signed in and
+  // merely passing back through. Unconditionally clearing `identity` there would strand them:
+  // /login forwards a signed-in user to their home, and with the identity gone the forward
+  // never fires while AuthGuard bounces them straight back.
+  const exitDemoMode = useCallback(() => {
+    if (readDemoMode()) switchMode(false);
+  }, [switchMode]);
 
   // Live mode: react to Firebase auth state and resolve identities + the first-login gate.
   useEffect(() => {
