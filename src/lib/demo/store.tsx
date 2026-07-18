@@ -2,12 +2,13 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppointmentLead, DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
-import { fullName } from "./types";
+import { fullName, ownerKeyOf } from "./types";
 import { buildSeedState, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 import * as billing from "./billing";
 import * as invoicing from "./invoicing";
 import * as emergency from "./emergency";
+import * as isolation from "./isolation";
 // Pure (no firebase SDK), safe to import statically — categorises mirror failures so the
 // banner distinguishes a permission lockout from a transient blip (16/07 feedback bug 1).
 import { syncErrorMessage } from "@/lib/firebase/syncError";
@@ -121,6 +122,17 @@ interface StoreValue {
   generateInvoice: (input: import("./backend").GenerateInvoiceInput, identity: Identity) => void;
   deleteInvoice: (invoiceID: string, identity: Identity) => void;
   markInvoicePaid: (invoiceID: string, identity: Identity) => void;
+  // Billing matrix (change: multi-tenant-billing-matrix). Demo-mode-first: the reducers
+  // run only in demo; live mode flags the feature off until the backend repo ships
+  // collections + callables, and the UI hides the surfaces behind matrixEnabled.
+  matrixEnabled: boolean;
+  patientAccess: (patient: import("./types").Patient, identity: Identity) => import("./isolation").PatientAccessLevel;
+  walletEntries: (patientID: string) => import("./types").WalletEntry[];
+  walletBalance: (patientID: string) => number;
+  priceListFor: (owner: import("./types").PatientOwner) => import("./types").PriceListItem[];
+  topUpWallet: (input: import("./backend").TopUpWalletInput, identity: Identity) => void;
+  checkoutClient: (input: import("./backend").CheckoutClientInput, identity: Identity) => void;
+  finalizeServiceFee: (invoiceID: string, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
@@ -367,6 +379,26 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
+      },
+      // Billing matrix: demo-mode reducers only. Live callers never reach these — the UI
+      // gates every surface behind matrixEnabled — but a friendly sync error covers a
+      // future slip rather than throwing into React.
+      matrixEnabled: !live,
+      patientAccess: (patient, id) => isolation.patientAccessLevel(state, id, patient),
+      walletEntries: (pid) => state.walletByPatientID[pid] ?? [],
+      walletBalance: (pid) => backend.walletBalanceCents(state, pid),
+      priceListFor: (owner) => state.priceListByOwner[ownerKeyOf(owner)] ?? [],
+      topUpWallet: (input, id) => {
+        if (!live) { setState((s) => backend.topUpWallet(s, input, id, now)); return; }
+        setLastSyncError("Account top-ups are not yet available in live mode.");
+      },
+      checkoutClient: (input, id) => {
+        if (!live) { setState((s) => backend.checkoutClient(s, input, id, now)); return; }
+        setLastSyncError("Client checkout is not yet available in live mode.");
+      },
+      finalizeServiceFee: (invoiceID, id) => {
+        if (!live) { setState((s) => backend.finalizeServiceFeeInvoice(s, invoiceID, id, now)); return; }
+        setLastSyncError("Service-fee invoices are not yet available in live mode.");
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
