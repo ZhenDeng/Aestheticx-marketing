@@ -193,9 +193,11 @@ describe("mapAuthorisation", () => {
 
     // No backfill: an authorisation approved before the stamp existed carries none, and must
     // stay distinguishable from one stamped empty so the capture dialog still prompts.
-    expect(mapAuthorisation("a2", base).clinicPremise).toBeUndefined();
-    expect(mapAuthorisation("a3", { ...base, clinicPremise: { id: "c", name: "n", address: "  " } }).clinicPremise)
-      .toBeUndefined();
+    // `toBeUndefined()` would also pass with the key present-and-undefined, so assert absence
+    // directly instead.
+    expect("clinicPremise" in mapAuthorisation("a2", base)).toBe(false);
+    expect("clinicPremise" in mapAuthorisation("a3", { ...base, clinicPremise: { id: "c", name: "n", address: "  " } }))
+      .toBe(false);
   });
 });
 
