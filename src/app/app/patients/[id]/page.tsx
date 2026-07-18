@@ -122,8 +122,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
     setNoteAttachments([]);
   }
 
+  // grid-cols-1 (minmax(0,1fr)) lets the single mobile column shrink below its content's
+  // min-content, so a long name / address / phone wraps instead of overflowing at ~320px.
   return (
-    <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.4fr_1fr]">
       <div>
         <Link href={isAdminViewer ? "/app/admin/patients" : "/app/patients"} className="text-sm text-ink-soft hover:text-ink">
           ← {isAdminViewer ? "Patient lookup" : "All patients"}
@@ -137,9 +139,11 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         <div className="mt-3 flex items-center gap-4">
           {/* iOS: 72pt avatar on the file header; tap-to-upload when details are editable. */}
           <PatientAvatarPicker patient={patient} identity={me} canEdit={perms.canEditDetails} size={72} />
-          <div className="min-w-0">
-            <h1 className="font-display text-3xl text-ink">{displayName(patient)}</h1>
-            <p className="mt-1 text-ink-soft">
+          {/* flex-1 min-w-0 constrains the name block to the space left of the avatar; the name
+              steps down a size and both lines break so a long name/number never overflows at ~320px. */}
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-2xl text-ink break-words sm:text-3xl">{displayName(patient)}</h1>
+            <p className="mt-1 break-words text-ink-soft">
               {patient.dateOfBirth.day}/{patient.dateOfBirth.month}/{patient.dateOfBirth.year} · {patient.gender} · {patient.phone}
             </p>
           </div>
