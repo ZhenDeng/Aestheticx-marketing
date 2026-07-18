@@ -12,6 +12,10 @@ printed on a Clause 68C direction SHALL be one of the five legal values. As on t
 the selector SHALL NOT be pre-chosen when no route could be recovered — the clinician must make an
 active choice.
 
+A recovered route that is not one of the five canonical values SHALL be refused, exactly as an
+ambiguous match is, and the field reported as still needed. The selector SHALL NEVER display a
+route other than the value it was given.
+
 #### Scenario: Route recovered from the request
 
 - **WHEN** an authorisation's medication has no route
@@ -46,6 +50,18 @@ active choice.
 
 - **WHEN** no route could be recovered from the medication or the originating request
 - **THEN** the selector rests on an unselected placeholder rather than defaulting to a route
+
+#### Scenario: A non-canonical stored route is refused, not substituted
+
+- **WHEN** the matching line item carries a route that is not one of the five canonical values
+- **THEN** Route is left blank and reported as still needed
+- **AND** no canonical route is shown in its place
+
+#### Scenario: The selector never displays a route it was not given
+
+- **WHEN** the selector is given a value outside the five routes
+- **THEN** it shows that value, marked as unrecognised
+- **AND** it does not silently select a different route
 
 ## ADDED Requirements
 

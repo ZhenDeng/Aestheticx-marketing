@@ -103,6 +103,21 @@ describe("Route is captured as one of the five legal routes", () => {
     open(authorisation({ medication: { ...authorisation().medication, route: "intramuscular" } }));
     expect(screen.queryByLabelText(/route/i)).not.toBeInTheDocument();
   });
+
+  // An HTML select handed a value matching no option silently selects its first ENABLED option.
+  // So a non-canonical stored route would have displayed as a DIFFERENT route than the one the
+  // export prints — the clinician reviews "Intradermal" and downloads a direction saying
+  // "Intramuscular". Strictly worse than the free-text input this replaced.
+  it("never displays a route other than the one it was given", () => {
+    requests = { "req-1": { ...routelessRequest(), items: [{ ...routelessRequest().items[0], route: "Intramuscular" }] } };
+    open(authorisation());
+
+    const select = screen.getByLabelText(/route/i) as HTMLSelectElement;
+    expect(select.value).not.toBe("intradermal");
+    // Refused at the source, so it presents as unresolved and must be actively chosen.
+    expect(select.value).toBe("");
+    expect(select).toHaveAttribute("aria-invalid", "true");
+  });
 });
 
 describe("An unresolved required field is marked at the field", () => {

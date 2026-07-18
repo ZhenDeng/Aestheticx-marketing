@@ -31,6 +31,16 @@ export function RouteSelect({ value, onChange, label = "Route of administration"
         style={{ borderColor: invalid ? "var(--color-danger)" : "var(--color-line)" }}>
         {/* Never pre-chosen: the clinician must actively pick a route (iOS LineItemEditorView). */}
         <option value="" disabled>Select route…</option>
+        {/* A select handed a value matching no option silently selects its first ENABLED option,
+            so an out-of-enum stored value would DISPLAY as a different route than the one held —
+            and the caller would never know. Route is a loose `string` end to end and live values
+            come from a Cloud Function whose scheme this repo does not control, so surface such a
+            value as itself rather than let the control quietly substitute one of the five.
+            routeForCapture already refuses these upstream; this is the backstop for every other
+            caller, the request form included. */}
+        {value && !(ROUTES_OF_ADMINISTRATION as readonly string[]).includes(value) && (
+          <option value={value}>{value} (not a recognised route)</option>
+        )}
         {ROUTES_OF_ADMINISTRATION.map((r) => (
           <option key={r} value={r}>{ROUTE_DISPLAY_LABELS[r]}</option>
         ))}

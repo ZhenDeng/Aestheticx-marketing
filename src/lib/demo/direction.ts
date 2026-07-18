@@ -5,8 +5,8 @@
 // fields — it is never persisted. Wording pending practitioner/legal sign-off.
 import { DEMO_ACCOUNTS, LUMIERE } from "./accounts";
 import { categoryDisplayName, unitSuffix } from "./catalog";
-import { routeLabel } from "./types";
-import type { Authorisation, AuthorisationRequest, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise, UserProfile } from "./types";
+import { ROUTES_OF_ADMINISTRATION, routeLabel } from "./types";
+import type { Authorisation, AuthorisationRequest, CooperationRelationship, DateOfBirth, EmergencyAuthorisation, EmergencyKind, MedicationItem, Premise, RouteOfAdministration, UserProfile } from "./types";
 
 /** "Name, Address" for a stamped premise — mirrors the backend's premiseDisplayLine. */
 export function premiseDisplayLine(premise: Premise | null | undefined): string | null {
@@ -188,12 +188,24 @@ const norm = (v: string) => v.trim().toLowerCase();
  * Route for the capture dialog, recovered from the originating request — the route WAS chosen
  * per line item at submission, so the clinician should not retype it.
  *
- * Matched on name + dosage, and used ONLY when exactly one such item carries a route. Two
- * deliberate refusals: an ambiguous match yields "" rather than a guess, and the item is never
+ * Matched on name + dosage, and used ONLY when exactly one such item carries a route. Three
+ * deliberate refusals: an ambiguous match yields "" rather than a guess; the item is never
  * derived from the authorisation id (demo mints `${requestId}-${index}`, but live ids come from
  * a Cloud Function whose scheme this repo does not control — indexing would pass in demo and
- * silently state the wrong route in live). missingDirectionFields then prompts for it, which is
- * far better than a direction naming the wrong route of administration.
+ * silently state the wrong route in live); and a recovered value that is not one of the five
+ * canonical routes is refused outright.
+ *
+ * That last refusal is not pedantry. `MedicationItem.route` is a loose `string` and live values
+ * come from that same uncontrolled Cloud Function, so a stored route need not be canonical. The
+ * capture dialog renders the five routes as a `select`, and an HTML select handed a value
+ * matching no option silently selects its first ENABLED option — so a stored "Intramuscular"
+ * would DISPLAY as "Intradermal" while the export still printed Intramuscular. Recovering an
+ * unrepresentable value is therefore worse than recovering nothing: it shows the clinician a
+ * different route than the document will state. Refusing routes it through the same prompt as
+ * any other unresolved field, and the clinician makes an active, visible choice.
+ *
+ * missingDirectionFields then prompts for it, which is far better than a direction naming the
+ * wrong route of administration.
  */
 export function routeForCapture(
   medication: MedicationItem,
@@ -204,8 +216,12 @@ export function routeForCapture(
     (i) => norm(i.name) === norm(medication.name) && norm(i.dosage) === norm(medication.dosage),
   );
   if (matches.length !== 1) return ""; // no match, or ambiguous — never guess
-  return matches[0].route?.trim() ?? "";
+  const route = matches[0].route?.trim() ?? "";
+  return isCanonicalRoute(route) ? route : "";
 }
+
+const isCanonicalRoute = (route: string): route is RouteOfAdministration =>
+  (ROUTES_OF_ADMINISTRATION as readonly string[]).includes(route);
 
 /** "16" + units → "16 U" — the quantity wording on the direction's administration rows. */
 function medicationQuantity(medication: MedicationItem): string {
