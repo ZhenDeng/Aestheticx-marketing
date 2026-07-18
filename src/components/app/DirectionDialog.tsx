@@ -10,6 +10,7 @@ import type { Authorisation, EmergencyAuthorisation, Patient } from "@/lib/demo/
 import { fullName } from "@/lib/demo/types";
 import { useDemoStore } from "@/lib/demo/store";
 import { useDemoAuth } from "@/lib/demo/auth";
+import { activePremise } from "@/lib/demo/backend";
 import {
   DEFAULT_CAPTURED_FIELDS,
   buildDirectionDraft,
@@ -41,14 +42,24 @@ export function DirectionDialog({ authorisation, patient, emergencies, onClose }
   const [captured, setCaptured] = useState<CapturedDirectionFields>(() => {
     const doctorProfile = store.profileForUser(authorisation.doctorID);
     const actingProfile = store.profileForUser(identity?.user.id ?? "");
+    // The originating request carries both the practice context (which names the clinic) and
+    // the line-item routes chosen at submission. Frozen once approved — neither
+    // editPendingRequest nor resubmitRequest can touch an approved request's items.
+    const request = store.state.requests[authorisation.requestID];
+    const clinicContext = request?.context.kind === "clinic" ? request.context.clinic : null;
     return {
       ...DEFAULT_CAPTURED_FIELDS,
       prescriberPhone: doctorProfile.phone,
       prescriberPrincipalPlace: doctorProfile.principalPlace,
-      // Stamped premise, else where the acting user is currently practising.
-      premisesOfAdministration: premiseForCapture(authorisation.premise, actingProfile),
+      premisesOfAdministration: premiseForCapture({
+        stamped: authorisation.premise,
+        // A clinic authorisation must print the CLINIC's address, never the acting nurse's own.
+        clinicID: authorisation.clinicID,
+        clinic: clinicContext,
+        actingPremise: activePremise(actingProfile),
+      }),
       // The route was chosen per line item at request time — recover it rather than ask again.
-      route: routeForCapture(authorisation.medication, store.state.requests[authorisation.requestID]),
+      route: routeForCapture(authorisation.medication, request),
     };
   });
   const [previewing, setPreviewing] = useState(false);

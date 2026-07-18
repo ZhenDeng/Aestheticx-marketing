@@ -1,20 +1,33 @@
 ## ADDED Requirements
 
-### Requirement: Premises of administration prefills from the stamped premise, then the acting user's selection
+### Requirement: Premises of administration follows clinic, then stamp, then the acting user
 
-The direction capture dialog SHALL prefill Premises of administration from the premise stamped
-on the authorisation. When the authorisation carries no stamped premise, it SHALL fall back to
-the acting user's currently selected premise, resolved selected → default → first. The field
-SHALL remain editable.
+The direction capture dialog SHALL resolve Premises of administration by the same precedence the
+approval document uses: the clinic's address when the authorisation has a clinic context, else
+the premise stamped on the authorisation, else the acting user's currently selected premise
+(selected → default → first). When the authorisation has a clinic context the acting user's own
+premises SHALL NEVER be used. The field SHALL remain editable.
 
-#### Scenario: Stamped premise wins
+#### Scenario: Clinic authorisation uses the clinic's address
 
-- **WHEN** a direction is captured for an authorisation with a stamped premise
+- **WHEN** a direction is captured for an authorisation with a clinic context
+- **THEN** Premises of administration shows the clinic's address
+- **AND** it does not show the acting clinician's own premises
+
+#### Scenario: Clinic authorisation whose clinic cannot be resolved is left blank
+
+- **WHEN** the authorisation has a clinic context but the clinic cannot be resolved
+- **THEN** Premises of administration is blank and is reported as still needed
+- **AND** the acting clinician's own premises are not substituted
+
+#### Scenario: Stamped premise wins for an independent authorisation
+
+- **WHEN** a direction is captured for an independent authorisation with a stamped premise
 - **THEN** Premises of administration shows that premise, not the acting user's selection
 
 #### Scenario: Falls back to the acting user's selected premise
 
-- **WHEN** a direction is captured for an authorisation with no stamped premise
+- **WHEN** a direction is captured for an independent authorisation with no stamped premise
 - **AND** the acting user has a selected premise
 - **THEN** Premises of administration shows that premise
 
@@ -26,7 +39,8 @@ SHALL remain editable.
 
 #### Scenario: Blank when nothing is available
 
-- **WHEN** the authorisation has no stamped premise and the acting user has no premises
+- **WHEN** an independent authorisation has no stamped premise and the acting user has no
+  premises
 - **THEN** Premises of administration is blank and is reported as still needed
 
 ### Requirement: Route prefills from the originating request

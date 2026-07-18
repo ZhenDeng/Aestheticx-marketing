@@ -10,8 +10,11 @@ Facts established before designing (each checked in the code, not assumed):
   tolerates a dangling selection. It is what stamps the premise on new requests, so reusing it
   keeps capture and request consistent by construction.
 - `authRequests` is hydrated live with **no status filter** (`hydrate.ts:287`), so the
-  originating request of an approved authorisation is present in `state.requests`. A route
-  fallback that reads it is not dead code in live.
+  originating request of an approved authorisation is present in `state.requests` — it is
+  reachable. (Whether its route ever *differs* from the authorisation's is a separate question,
+  and not one this repo can answer; see Decision 2.)
+- A clinic-context request stamps `premise: null` deliberately (`backend.ts:403-407`) — the
+  document uses the clinic's address. That null is a signal, not a gap.
 - The acting user's own `users/{uid}` doc **is** hydrated (`hydrate.ts:228`) — it is only *other*
   users' profiles that are unavailable. So an acting-user-based premise fallback works live,
   while a prescriber-profile-based one cannot (see the proposal's non-goals).
@@ -33,10 +36,17 @@ Facts established before designing (each checked in the code, not assumed):
 
 ## Decisions
 
-### 1. Premise fallback uses the ACTING user, not the prescriber
+### 1. Premise precedence: clinic → stamped → acting user
 
-The stamped premise stays first — it records where administration was actually authorised. The
-fallback is the acting user's `activePremise`, for two reasons: it is the premise the app would
+Clinic context wins outright, mirroring `buildApprovalDocumentModel` (`approvalPdf.ts:116-124`)
+so the capture dialog and the approval document cannot disagree about where administration
+happened. When `clinicID` is set the acting user's own premises are never consulted — not even
+as a last resort — because a clinic request's `premise: null` means "the clinic's address", and
+substituting a nurse's private practice there misattributes a legal document.
+
+For independent authorisations the stamped premise stays first — it records where administration
+was actually authorised. The fallback is then the acting user's `activePremise`, for two
+reasons: it is the premise the app would
 stamp on a request submitted right now, so it is the same answer by the same rule; and the
 acting user's profile is the one live actually hydrates. Falling back to the *prescriber's*
 premise would reintroduce exactly the unavailable-profile problem that blocks phone and
@@ -47,7 +57,29 @@ identity, not a `Premise`, so it loses the premise NAME that `premiseDisplayLine
 ("Sarah Chen Aesthetics, 12 Hall St…" vs just the street). The direction should name the
 premises, not only locate it.
 
-### 2. Route matching is conservative — ambiguity yields blank
+### 2. Route recovery targets a LIVE-only divergence, and is unverifiable from this repo
+
+**Scope caveat, added after review.** In the demo path this resolver can only ever return `""`.
+`approveRequest` (`backend.ts:450-457`) sets `medication: item` from the frozen request item — the
+same object — and both edit paths are status-gated to pre-approval. So whenever
+`needsRouteCapture` is true (a route-less medication), the matching request item is that same
+route-less object. Demo cannot produce the divergence this recovers.
+
+It targets **live**, where the authorisation document is written by a Cloud Function in a
+separate repo. The reported screenshot is the evidence: the Route capture field was rendering
+(so the authorisation's medication had no route) on a request whose route the reporter says was
+chosen at submission. That is exactly the divergence recovered here.
+
+It is **not proof**. The alternative reading — that the reporter's authorisation is genuinely
+legacy and its request also lacks a route — is consistent with the same screenshot, and in that
+case this recovers nothing. Confirming it requires inspecting a real live authorisation document
+against its `authRequests` document, which cannot be done from this repo.
+
+The resolver is kept because it is strictly safe: it can only ever return a route the originating
+request actually recorded, or `""`. But it should not be described as having closed the reported
+Route gap until someone checks a live pair. Flagged for the owner rather than assumed.
+
+### 2b. Route matching is conservative — ambiguity yields blank
 
 The authorisation's medication is matched against the originating request's items by trimmed,
 case-insensitive **name + dosage**, and the route is taken only when exactly one such item has a
@@ -71,7 +103,16 @@ a real clinical statement and the app's own existing default elsewhere
 it is consistent with what the product already says, and it keeps the field non-blank so the
 export gate is not tripped by a field the clinician has no specific answer for.
 
-### 4. Resolvers live in `direction.ts`, not the component
+### 4. Resolvers take plain data; the caller resolves `activePremise`
+
+`premiseForCapture` receives an already-resolved `actingPremise` rather than importing
+`activePremise` from `backend.ts`. An earlier revision did import it, which review showed closed
+a real module cycle — `approvalPdf.ts → direction.ts → backend.ts → approvalPdf.ts` — benign only
+because the reference resolved at call time, and contradicting this module's own "pure" header.
+Passing the value in keeps `direction.ts` free of that dependency (`madge --circular` now reports
+only the two pre-existing `types.ts` cycles).
+
+### 4b. Resolvers live in `direction.ts`, not the component
 
 `premiseForCapture` and `routeForCapture` are pure functions taking plain data. The dialog stays
 a thin caller, and the fallback rules — the part with actual judgement in them — are unit-tested
@@ -84,6 +125,15 @@ without React.
 - **Route fallback silently does nothing if requests are absent** → covered by a test for the
   missing-request case; and hydration was verified to load requests unfiltered rather than
   assumed.
+- **Route recovery may be inert even in live** → see Decision 2. Safe either way (it can only
+  return a recorded route or `""`), but unconfirmed; needs a check against a real live
+  authorisation/request pair.
+- **Premises misattributed for a clinic authorisation** → found in review. A clinic request
+  stamps `premise: null` deliberately, meaning "use the clinic's address"; reading it as
+  "unknown" printed the acting nurse's PRIVATE practice on a clinic patient's direction.
+  Precedence now mirrors `buildApprovalDocumentModel`, and when `clinicID` is set the acting
+  user's premises are never consulted — even if the clinic cannot be resolved, where it yields
+  blank rather than a misattribution.
 - **Trade-off: conservative route matching leaves some recoverable cases blank** (e.g. two
   identical name+dosage lines differing only by body site). Accepted deliberately: the failure
   mode of guessing is a legal document stating the wrong route of administration.

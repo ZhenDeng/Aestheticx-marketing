@@ -74,6 +74,30 @@ describe("DirectionDialog prefills", () => {
     expect(field(/premises of administration/i).value).toBe("Stamped Clinic, 1 Stamp Rd, Sydney NSW 2000");
   });
 
+  // The bug this pins: a clinic-context request stamps premise: null deliberately, meaning
+  // "use the clinic's address". Reading that as "unknown" and substituting the acting nurse's
+  // own premises printed her private practice on a clinic patient's legal document — and Sarah
+  // Chen holds both identities, so it is the ordinary case, not an edge case.
+  it("uses the clinic's address for a clinic authorisation, never the nurse's own premises", () => {
+    requests = {
+      "req-1": {
+        ...originatingRequest("Intradermal"),
+        context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" } },
+      },
+    };
+    open(authorisation({ clinicID: "clinic-lumiere", premise: null }));
+
+    const v = field(/premises of administration/i).value;
+    expect(v).toBe("Lumière Clinic, 2 Notts Ave, Bondi Beach NSW 2026");
+    expect(v).not.toContain("Sarah Chen Aesthetics");
+  });
+
+  it("leaves premises blank for a clinic authorisation whose request is not loaded", () => {
+    requests = {};
+    open(authorisation({ clinicID: "clinic-lumiere", premise: null }));
+    expect(field(/premises of administration/i).value).toBe("");
+  });
+
   it("recovers Route from the originating request when the medication has none", () => {
     open(authorisation());
     expect(field(/route/i).value).toBe("Intradermal");
