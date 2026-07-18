@@ -433,6 +433,31 @@ export function openRequestsForPatient(state: DemoState, patientID: string, nurs
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/**
+ * The approving doctor's Clause 68C contact, stamped onto every authorisation they grant.
+ * Port of the deployed backend's `prescriberContactStamp` (backend/functions/src/domain.ts) —
+ * keep the two in step.
+ *
+ * Each field is OMITTED independently when unusable, never stamped empty. That is load-bearing,
+ * not tidiness: the capture dialog treats any non-empty stamp as authoritative and stops there,
+ * so a blank stamp would both empty the field on the document AND satisfy the
+ * missingDirectionFields gate that exists to catch exactly that. Omitting instead lets the reader
+ * fall back to the prescriber's profile. Independence matters too — a clinic-account doctor
+ * legitimately holds no principal place and must still stamp a usable phone.
+ */
+function prescriberContactStamp(
+  doctor: UserProfile,
+): { prescriberPhone?: string; prescriberPrincipalPlace?: string } {
+  // Treat the profile as untrusted: a legacy record may hold a missing or non-string value.
+  const usable = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+  const prescriberPhone = usable(doctor.phone);
+  const prescriberPrincipalPlace = usable(doctor.principalPlace);
+  return {
+    ...(prescriberPhone ? { prescriberPhone } : {}),
+    ...(prescriberPrincipalPlace ? { prescriberPrincipalPlace } : {}),
+  };
+}
+
 export function approveRequest(
   state: DemoState,
   requestID: string,
@@ -476,6 +501,11 @@ export function approveRequest(
     doctorName: identity.user.name,
     nurseName: request.nurse.name,
     ...(clinicPremise ? { clinicPremise } : {}),
+    // The approving doctor's Clause 68C contact, from their profile at approval — mirrors the
+    // deployed approveRequest's prescriberContactStamp (backend index.ts). Demo did not stamp
+    // this and only appeared to work because profileForUser resolves every user here; live, a
+    // nurse can read only her own users doc, so the stamp is the ONLY way she ever sees it.
+    ...prescriberContactStamp(profileForUser(state, request.doctorID)),
   }));
 
   const authorisations = { ...state.authorisations };

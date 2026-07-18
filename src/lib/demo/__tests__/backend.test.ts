@@ -6,6 +6,7 @@ import type {
   Identity,
   Patient,
   MedicationItem,
+  UserProfile,
 } from "@/lib/demo/types";
 import {
   emptyState,
@@ -229,6 +230,84 @@ describe("approveRequest", () => {
     state = submitted.state;
     const other: Identity = { ...voss, user: { id: "u-okafor", name: "Dr James Okafor" } };
     expect(() => approveRequest(state, submitted.request.id, other, NOW)).toThrow();
+  });
+});
+
+// The deployed approveRequest stamps prescriberContactStamp(doctorSnap) onto every authorisation
+// (backend index.ts). Demo did not, and only appeared to work because profileForUser resolves
+// every user here — so demo could not reproduce live, and a regression in the stamp would pass
+// every demo-mode test. These pin demo to the deployed semantics.
+describe("approveRequest — prescriber contact stamp", () => {
+  function approveWithDoctorProfile(profile: Partial<UserProfile>) {
+    let state = stateWith(nursePatient("p1", "u-sarah"));
+    state = {
+      ...state,
+      profileByUser: {
+        ...state.profileByUser,
+        "u-voss": { ahpra: "", abn: "", phone: "", address: "", principalPlace: "", premises: [], ...profile },
+        // The nurse's own contact must never be mistaken for the prescriber's.
+        "u-sarah": {
+          ahpra: "", abn: "", phone: "0400 NURSE", address: "",
+          principalPlace: "Nurse's Rooms, 1 Wrong St", premises: [],
+        },
+      },
+    };
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo, botoxItem], identity: sarahIndependent }, NOW,
+    );
+    return approveRequest(submitted.state, submitted.request.id, voss, NOW).granted;
+  }
+
+  it("stamps the approving doctor's contact onto every granted authorisation", () => {
+    const granted = approveWithDoctorProfile({
+      phone: "02 9388 4410",
+      principalPlace: "A. Voss Medical, 88 Oxford St, Paddington NSW 2021",
+    });
+
+    expect(granted).toHaveLength(2);
+    for (const a of granted) {
+      expect(a.prescriberPhone).toBe("02 9388 4410");
+      expect(a.prescriberPrincipalPlace).toBe("A. Voss Medical, 88 Oxford St, Paddington NSW 2021");
+    }
+  });
+
+  it("stamps the doctor's contact, never the requesting nurse's", () => {
+    const granted = approveWithDoctorProfile({ phone: "02 9388 4410", principalPlace: "Voss Rooms" });
+    expect(granted[0].prescriberPhone).not.toBe("0400 NURSE");
+    expect(granted[0].prescriberPrincipalPlace).not.toContain("Wrong St");
+  });
+
+  // The omission is load-bearing, not tidiness: the reader treats any non-empty stamp as
+  // authoritative and stops there, so a blank stamp would BOTH empty the field on the document
+  // AND satisfy the missingDirectionFields gate that exists to catch exactly that.
+  it("omits an unusable value rather than stamping it blank", () => {
+    const granted = approveWithDoctorProfile({ phone: "", principalPlace: "   " });
+    expect(granted[0]).not.toHaveProperty("prescriberPhone");
+    expect(granted[0]).not.toHaveProperty("prescriberPrincipalPlace");
+  });
+
+  it("resolves the two fields independently", () => {
+    // A clinic-account doctor legitimately holds no principal place and must still stamp a phone.
+    const granted = approveWithDoctorProfile({ phone: "02 9388 4410", principalPlace: "" });
+    expect(granted[0].prescriberPhone).toBe("02 9388 4410");
+    expect(granted[0]).not.toHaveProperty("prescriberPrincipalPlace");
+  });
+
+  it("trims a padded value", () => {
+    const granted = approveWithDoctorProfile({ phone: "  02 9388 4410  ", principalPlace: " Voss Rooms " });
+    expect(granted[0].prescriberPhone).toBe("02 9388 4410");
+    expect(granted[0].prescriberPrincipalPlace).toBe("Voss Rooms");
+  });
+
+  it("omits both when the doctor has no profile at all", () => {
+    let state = stateWith(nursePatient("p1", "u-sarah"));
+    const submitted = submitRequest(
+      state, { patientID: "p1", doctorID: "u-voss", items: [profhilo], identity: sarahIndependent }, NOW,
+    );
+    state = submitted.state;
+    const { granted } = approveRequest(state, submitted.request.id, voss, NOW);
+    expect(granted[0]).not.toHaveProperty("prescriberPhone");
+    expect(granted[0]).not.toHaveProperty("prescriberPrincipalPlace");
   });
 });
 

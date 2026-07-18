@@ -1,0 +1,43 @@
+## ADDED Requirements
+
+### Requirement: A required profile field cannot be cleared once provisioned
+
+Provisioning requires a phone of every account and a principal place of practice of every doctor,
+because both print on the Clause 68C direction and are stamped onto each authorisation at
+approval. The profile editor SHALL NOT allow either to be saved blank.
+
+An attempt to clear one SHALL be refused with an explanation of what it would break — the field is
+not merely invalid, it silently disables every direction drawn from that doctor's future
+approvals, and the doctor who cleared it would never see the consequence. Other edits in the same
+save SHALL NOT be applied while a required field is blank.
+
+#### Scenario: A doctor cannot clear their phone
+
+- **WHEN** a doctor empties Phone and saves
+- **THEN** the change is refused and the stored phone is unchanged
+- **AND** the editor explains that directions from their approvals would be blocked without it
+
+#### Scenario: A doctor cannot clear their principal place of practice
+
+- **WHEN** a doctor empties Principal place of practice and saves
+- **THEN** the change is refused and the stored value is unchanged
+
+#### Scenario: Whitespace does not count as a value
+
+- **WHEN** a required field is saved containing only spaces
+- **THEN** it is refused exactly as an empty field is
+
+#### Scenario: A valid edit still saves
+
+- **WHEN** a doctor changes Phone to another non-blank value
+- **THEN** it is saved and the refusal is not shown
+
+#### Scenario: An unrelated edit is not applied alongside a refused one
+
+- **WHEN** a doctor blanks Phone and edits AHPRA in the same save
+- **THEN** neither change is applied
+
+#### Scenario: Principal place is only required of doctors
+
+- **WHEN** an account that holds no doctor role saves a profile with no principal place
+- **THEN** the save is allowed, that field not being shown or required for them

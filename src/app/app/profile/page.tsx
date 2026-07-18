@@ -265,6 +265,10 @@ function ProfileFields({ me, profile, showsAhpra, showsPrincipalPlace, showsAddr
   );
 }
 
+const blank = (v: string) => v.trim() === "";
+/** Ties the refused-save message to whichever required field is empty. */
+const REFUSAL_ID = "profile-required-field-refusal";
+
 function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPrincipalPlace, showsAddress, store }: {
   me: Identity; profile: UserProfile; identityAddress: string; showsAhpra: boolean; showsPrincipalPlace: boolean; showsAddress: boolean; store: ReturnType<typeof useDemoStore>;
 }) {
@@ -272,10 +276,36 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
   const [phone, setPhone] = useState(profile.phone);
   const [principalPlace, setPrincipalPlace] = useState(profile.principalPlace);
   const [address, setAddress] = useState(identityAddress);
+  // Whether a save has been ATTEMPTED — not the message itself. A stored message would go stale:
+  // correcting the field makes the form clean again, the Save button disappears, and the user is
+  // left reading an error about a value they already fixed. Deriving it means it clears the moment
+  // the field becomes valid.
+  const [attempted, setAttempted] = useState(false);
   const dirty = ahpra !== profile.ahpra || phone !== profile.phone
     || principalPlace !== profile.principalPlace || (showsAddress && address !== identityAddress);
 
+  // Provisioning requires these (userAdmin.ts), and approval stamps them onto every authorisation
+  // for the Clause 68C direction. Editing let a doctor take them straight back out: from then on
+  // their approvals stamp nothing, and every direction drawn from one is permanently blocked for
+  // the nurse holding it — while the doctor who caused it sees nothing at all. Refuse instead.
+  function blockedReason(): string | null {
+    if (blank(phone)) {
+      return "A phone number is required — it prints on every Clause 68C direction, so directions from your approvals would be blocked without it.";
+    }
+    if (showsPrincipalPlace && blank(principalPlace)) {
+      return "A principal place of practice is required — it prints on every Clause 68C direction, so directions from your approvals would be blocked without it.";
+    }
+    return null;
+  }
+
+  const refusal = attempted ? blockedReason() : null;
+
   function save() {
+    // A refused save applies NOTHING, including unrelated fields edited alongside: a partial save
+    // would leave the form showing values that were never stored.
+    setAttempted(true);
+    if (blockedReason()) return;
+
     if (ahpra !== profile.ahpra || phone !== profile.phone || principalPlace !== profile.principalPlace) {
       store.updateProfile({
         ...(ahpra !== profile.ahpra ? { ahpra } : {}),
@@ -304,7 +334,11 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
       </div>
       <label className={row}>
         <span className="micro">Phone</span>
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={FIELD_PLACEHOLDER.phone} className={input} />
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={FIELD_PLACEHOLDER.phone}
+          aria-invalid={refusal !== null && blank(phone)}
+          aria-describedby={refusal !== null && blank(phone) ? REFUSAL_ID : undefined}
+          className={input}
+          style={refusal !== null && blank(phone) ? { borderColor: "var(--color-danger)" } : undefined} />
       </label>
       {/* Round 6: prints in the Clause 68C direction body and the PDF signature block. */}
       {showsPrincipalPlace && (
@@ -315,7 +349,10 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
             onChange={(e) => setPrincipalPlace(e.target.value)}
             placeholder="Practice name, street address"
             rows={2}
+            aria-invalid={refusal !== null && !blank(phone) && blank(principalPlace)}
+            aria-describedby={refusal !== null && !blank(phone) && blank(principalPlace) ? REFUSAL_ID : undefined}
             className="mt-1.5 w-full resize-none rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+            style={refusal !== null && !blank(phone) && blank(principalPlace) ? { borderColor: "var(--color-danger)" } : undefined}
           />
         </label>
       )}
@@ -335,8 +372,17 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
           />
         </label>
       )}
+      {refusal && (
+        <p id={REFUSAL_ID} role="alert" className="mt-2 rounded-inner px-3 py-2 text-xs text-ink-soft"
+          style={{ background: "var(--color-danger-soft)" }}>
+          {refusal}
+        </p>
+      )}
       {dirty && (
         <div className="flex justify-end py-2.5">
+          {/* Deliberately NOT disabled while blank: a disabled control gives no reason, and an
+              unexplained dead button is the same failure this guard exists to prevent. Let the
+              save be attempted, then refuse it with the consequence stated. */}
           <button onClick={save} className="rounded-btn px-4 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
             Save details
           </button>
