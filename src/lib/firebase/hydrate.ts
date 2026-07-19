@@ -195,6 +195,42 @@ export async function notesRowsForPatient(
   return [...byId.values()];
 }
 
+/**
+ * Appointments for the caller's calendar scopes, deduped by id. The OWN-calendar query
+ * (ownerId == uid) stays hard so a real outage fails loudly for everyone. The clinic-calendar
+ * queries (ownerId == clinicId) degrade on permission-denied ONLY: their read grant
+ * (inClinic(ownerId)) ships in its own rules deploy, and before it lands the denial is
+ * wholesale ("rules are not filters") — a hard query here aborted the entire hydrate and
+ * locked every clinic account out at login (19/07 bug 1). bookedById queries keep their
+ * existing best-effort contract (grant deployed separately). Transient errors rethrow on
+ * every scope — degrading is reserved for provability gaps, never outages.
+ *
+ * Exported for testing. `q` mirrors runQuery for one equality constraint and must throw a
+ * permission-denied FirebaseError when rules reject the read.
+ */
+export async function appointmentRowsForScopes(
+  uid: string,
+  clinicIds: string[],
+  q: (field: "ownerId" | "bookedById", owner: string) => Promise<Row[]>,
+): Promise<Row[]> {
+  const deniedToEmpty = async (field: "ownerId" | "bookedById", owner: string): Promise<Row[]> => {
+    try {
+      return await q(field, owner);
+    } catch (e) {
+      if (isPermissionDenied(e)) return [];
+      throw e;
+    }
+  };
+  const byId = new Map<string, Row>();
+  for (const row of await q("ownerId", uid)) byId.set(row.id, row);
+  for (const row of await deniedToEmpty("bookedById", uid)) byId.set(row.id, row);
+  for (const cid of clinicIds) {
+    for (const row of await deniedToEmpty("ownerId", cid)) byId.set(row.id, row);
+    for (const row of await deniedToEmpty("bookedById", cid)) byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 // availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
 // caller's own + any clinics they belong to; a missing doc means "not configured" → the
 // default schedule applies client-side. Doc id == ownerId, matching mapTreatmentAvailability.
@@ -370,15 +406,11 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   }
 
   // Appointments owned by the user or their clinics, plus auth slots they (or their clinic) booked
-  // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`. The
-  // bookedById query is best-effort (runQuerySafe): it degrades to empty until the backend's
-  // appointments read rule for bookedById deploys, so the web side is safe to deploy first.
-  const apptOwners = [uid, ...clinicIds];
-  const apptsById = new Map<string, Row>();
-  for (const owner of apptOwners) {
-    for (const row of await runQuery("appointments", where("ownerId", "==", owner))) apptsById.set(row.id, row);
-    for (const row of await runQuerySafe("appointments", where("bookedById", "==", owner))) apptsById.set(row.id, row);
-  }
+  // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`.
+  // Scope hardness lives in appointmentRowsForScopes: own calendar loud, clinic calendar +
+  // bookedById degrade on denial so a rules/web deploy skew can't lock a clinic account out.
+  const appointments = await appointmentRowsForScopes(uid, clinicIds, (field, owner) =>
+    runQuery("appointments", where(field, "==", owner)));
 
   // Invoices scoped to this user (rules: doctor, counterparty nurse, or clinic member);
   // scriptPricing is doctor-readable.
@@ -413,7 +445,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     emergencyAuthorisations: [...emergencyById.values()],
     cooperationRelationships: [...coopById.values()],
     requests: [...reqsById.values()],
-    appointments: [...apptsById.values()],
+    appointments,
     formsByPatient,
     invoices: [...invoicesById.values()],
     scriptPricing: scriptPricingRows,
