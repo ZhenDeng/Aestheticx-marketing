@@ -65,7 +65,11 @@ export default function ProfilePage() {
   const isSuperAdmin = me.role === "superAdmin";
   const isClinician = me.role === "doctor" || me.role === "nurse";
   // The account's full identity set, cross-mode (live claims, else the demo account).
-  const identities = heldIdentities(me, availableIdentities);
+  const identities = heldIdentities(
+    me,
+    availableIdentities,
+    typeof store.cooperationRelationships === "function" ? store.cooperationRelationships() : [],
+  );
   // AHPRA belongs to the ACCOUNT (a practitioner registration), not the active identity —
   // a super admin who also holds a clinician role sees it without switching identities.
   // Accounts with no clinical role (pure admins) still hide it.

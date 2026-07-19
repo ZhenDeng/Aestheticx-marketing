@@ -25,10 +25,10 @@ export async function signOutUser(): Promise<void> {
   await fbSignOut(firebaseAuth());
 }
 
-// One heal attempt per uid per page session: a successful repair whose refreshed token
-// lags claim propagation re-fires the token watcher, and without this latch each cycle
-// would call the repair callable again.
-const healAttempted = new Set<string>();
+// One in-flight heal per uid plus a short success cooldown: a force-refreshed token can
+// re-fire the watcher before claims propagate. Failures release immediately, and later
+// clinic changes can retry during the same page session.
+const healGuard = new Map<string, number>();
 
 // Resolve the signed-in user's identities from custom claims + their users/{uid} doc.
 // Self-heals the 16/07 wiped-claims signature along the way (empty token roles while the
@@ -50,7 +50,7 @@ export async function identitiesForUser(user: User): Promise<Identity[]> {
     repairOwnClaims: async () => {
       await httpsCallable(functions(), "syncUserClaims")({ userId: user.uid });
     },
-  }, healAttempted);
+  }, healGuard);
   return identitiesFromClaims(claims, userDoc, await clinicNamesFor(claims.clinics));
 }
 
