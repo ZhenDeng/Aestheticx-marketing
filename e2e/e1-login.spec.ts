@@ -5,7 +5,7 @@ import { DEMO, loginAsDemo } from "./helpers";
 // navigation, and the admin/clinical route separation (constitution §16/Rule 7) must hold.
 
 test.describe("E1 — login and role-correct navigation", () => {
-  test("nurse lands on the dashboard with clinical nav and no Invoice", async ({ page }) => {
+  test("nurse lands on the dashboard with the full clinical nav", async ({ page }) => {
     await loginAsDemo(page, DEMO.nurse);
     await expect(page).toHaveURL(/\/app\/dashboard/);
 
@@ -13,8 +13,11 @@ test.describe("E1 — login and role-correct navigation", () => {
     for (const item of ["Dashboard", "Patients", "Authorisations", "Calendar"]) {
       await expect(nav.getByRole("link", { name: item, exact: true })).toBeVisible();
     }
-    // Invoice is doctor-only (15/07 feedback) — a nurse must not see it.
-    await expect(nav.getByRole("link", { name: "Invoice", exact: true })).toHaveCount(0);
+    // Billing matrix: the Invoice tab opens to every clinical role — nurses issue their
+    // own streams (client sales, top-ups, service fees). Supersedes the 15/07
+    // doctor-only restriction, which applied while authorisation invoicing was the
+    // sole stream.
+    await expect(nav.getByRole("link", { name: "Invoice", exact: true })).toBeVisible();
   });
 
   test("doctor sees the Invoice section", async ({ page }) => {

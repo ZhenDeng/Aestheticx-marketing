@@ -29,6 +29,7 @@ import type {
   PatientDraft,
   PatientField,
   PatientOwner,
+  WalletEntry,
   PatientSummary,
   Premise,
   SignedFormRecord,
@@ -50,16 +51,17 @@ import type {
 } from "./types";
 import { LUMIERE, ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
-import { fullName, displayName, identityBadge, emptyDraft } from "./types";
+import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
+import { computeInvoice, computeInclusiveTotals, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
 import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
 import { approvalNote, buildApprovalDocumentModel, renderApprovalPdf } from "./approvalPdf";
 import { cooperatingDoctorsFor, relationshipFor, priceCentsFor, invoiceAppliesFor, cooperationDocId } from "./cooperation";
+import { patientAccessLevel, canTopUp } from "./isolation";
 
 export const REPEATS_PER_AUTHORISATION = 5;
 export const VALIDITY_MONTHS = 6;
@@ -96,6 +98,9 @@ export function emptyState(): DemoState {
     auditLogByID: {},
     productsByID: {}, // Tier 3 #5B: live hydrates the catalog; empty → selection falls back to PRODUCT_CATALOG.
     businessEntitiesByID: {}, // Tier 3 #4: live hydrates entities; empty → invoice snapshots / legacy fallback cover display.
+    priceListByOwner: {},
+    serviceFeeCentsByPair: {},
+    walletByPatientID: {},
   };
 }
 
@@ -306,8 +311,11 @@ export function ownerDisplayLabel(state: DemoState, owner: PatientOwner): string
 }
 
 export function visiblePatients(state: DemoState, identity: Identity): Patient[] {
+  // Clinical view (permissions matrix) OR commercial access (isolation guard) — the
+  // latter adds a collaborating doctor's reach into the clinic's client book
+  // (spec: client-data-isolation).
   return Object.values(state.patients)
-    .filter((p) => patientPermissions(identity, p).canView)
+    .filter((p) => patientPermissions(identity, p).canView || patientAccessLevel(state, identity, p) !== "none")
     .sort((a, b) => (a.lastName + a.givenName).localeCompare(b.lastName + b.givenName));
 }
 
@@ -1887,11 +1895,19 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
+  // The wallet ledger follows the merge too — a duplicate's account credit must land
+  // on the kept file, never orphan under a deleted patient id (billing matrix).
+  const walletByPatientID = { ...state.walletByPatientID };
+  if (walletByPatientID[removeId]?.length) {
+    walletByPatientID[keepId] = [...(walletByPatientID[keepId] ?? []), ...walletByPatientID[removeId]];
+  }
+  delete walletByPatientID[removeId];
+
   // Recompute the kept file's reviewer set from the re-pointed request set (mirror of the
   // backend trigger) rather than unioning the two stale arrays — this drops any reviewer
   // whose request didn't actually move, keeping the invariant true.
   return syncReviewerAccess(
-    { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests },
+    { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests, walletByPatientID },
     keepId,
   );
 }
@@ -2263,9 +2279,15 @@ export function invoicePartyFor(state: DemoState, kind: "doctor" | "nurse" | "cl
 /** The issuer/bill-to pair for a tax invoice: generation-time snapshots when present
  *  (live invoices, Tier 3 #4), else resolved from state (demo + legacy invoices). */
 export function invoicePartiesFor(state: DemoState, invoice: Invoice): { issuer: InvoiceParty; billTo: InvoiceParty } {
+  // Matrix invoices billed to a client always freeze billTo at generation; the state
+  // fallback below only serves legacy authorisation invoices (client parties are
+  // patients, not resolvable business entities).
+  const billToFallback = invoice.counterpartyType === "client"
+    ? { businessName: "", abn: "", email: "" }
+    : invoicePartyFor(state, invoice.counterpartyType, invoice.counterpartyID);
   return {
     issuer: invoice.issuer ?? invoicePartyFor(state, "doctor", invoice.doctorID),
-    billTo: invoice.billTo ?? invoicePartyFor(state, invoice.counterpartyType, invoice.counterpartyID),
+    billTo: invoice.billTo ?? billToFallback,
   };
 }
 
@@ -2395,6 +2417,10 @@ export function generateInvoice(
 export function deleteInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
   const invoice = state.invoices.find((i) => i.id === invoiceID);
   if (!invoice) throw new BackendError("notFound");
+  // Matrix invoices are deliberately NOT deletable in this change: top-up and
+  // wallet-settled invoices are cross-linked from the append-only wallet ledger, so
+  // deletion would orphan ledger entries. The doctorID gate below is "" on matrix
+  // invoices and therefore fails closed for everyone.
   if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
   const memberIDs = new Set(invoice.authorisationIDs);
   const authorisations = { ...state.authorisations };
@@ -2419,7 +2445,18 @@ export function deleteInvoice(state: DemoState, invoiceID: string, identity: Ide
 export function markInvoicePaid(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
   const invoice = state.invoices.find((i) => i.id === invoiceID);
   if (!invoice) throw new BackendError("notFound");
-  if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
+  if (invoice.kind) {
+    // Matrix invoices (doctorID is inert ""): the ISSUER silo settles them — the
+    // issuing practitioner, or any clinic-context member for clinic-issued documents.
+    // Drafts can't be settled; finalize first (queued-for-review semantics).
+    const issuer = invoice.issuerRef;
+    const isIssuer = issuer !== undefined && (issuer.kind === "clinic"
+      ? contextClinicID(identity) === issuer.id
+      : issuer.id === identity.user.id);
+    if (!isIssuer || invoice.draft) throw new BackendError("notPermitted");
+  } else if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) {
+    throw new BackendError("notPermitted");
+  }
   if (invoice.paid) return state; // already paid — no-op (idempotent, matches the backend)
   const invoices = state.invoices.map((i) =>
     i.id === invoiceID ? { ...i, paid: true, paidAt: now, markedBy: identity.user.id } : i,
@@ -2427,6 +2464,273 @@ export function markInvoicePaid(state: DemoState, invoiceID: string, identity: I
   return appendAuditEntry(
     { ...state, invoices },
     { actor: identity, action: "invoice_marked_paid", targetType: "invoice", targetID: invoiceID, summary: `marked paid · ${invoice.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}` },
+    now,
+  );
+}
+
+// --- Billing matrix: patient wallet + client checkout (change: multi-tenant-billing-matrix) ---
+
+function assertNonNegativeCents(n: number): void {
+  if (!Number.isInteger(n) || n < 0) throw new BackendError("validationFailed");
+}
+
+// The bill-to block for a client-facing invoice: the client's name leads as the party
+// name and the ABN stays empty — the renderer omits the ABN row for clients entirely
+// (the em-dash fallback is an ATO requirement for SELLERS only).
+function clientBillTo(patient: Patient): InvoiceParty {
+  return {
+    businessName: fullName(patient),
+    abn: "",
+    email: patient.email,
+    ...(patient.address ? { address: patient.address } : {}),
+  };
+}
+
+/** A matrix invoice's issuing silo as an invoicePartyFor kind. */
+function issuerPartyFor(state: DemoState, owner: PatientOwner): InvoiceParty {
+  return invoicePartyFor(state, owner.kind, owner.id);
+}
+
+/** Derived account balance: Σ top-up credits − Σ drawdowns. Never stored (spec: patient-wallet). */
+export function walletBalanceCents(state: DemoState, patientID: string): number {
+  return (state.walletByPatientID[patientID] ?? []).reduce(
+    (sum, e) => sum + (e.kind === "topup" ? e.totalCreditCents : -e.amountCents),
+    0,
+  );
+}
+
+export interface TopUpWalletInput {
+  patientID: string;
+  /** Money actually collected (实际支付), integer cents. */
+  paidCents: number;
+  /** Promotional bonus (赠送金额), integer cents — non-taxable, ledger-only. */
+  giftCents: number;
+}
+
+// Top up a client's account balance (spec: patient-wallet). Owner-silo only. Credits
+// paid + gift in one ledger entry, and issues the linked tax invoice for the PAID amount
+// alone (GST-inclusive); a gift-only top-up records no invoice — nothing was collected,
+// so there is no financial transaction to document. The invoice is born paid: a top-up
+// is settled at the counter by definition.
+export function topUpWallet(state: DemoState, input: TopUpWalletInput, identity: Identity, now: number): DemoState {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (!canTopUp(state, identity, patient)) throw new BackendError("notPermitted");
+  assertNonNegativeCents(input.paidCents);
+  assertNonNegativeCents(input.giftCents);
+  const totalCreditCents = input.paidCents + input.giftCents;
+  if (totalCreditCents <= 0) throw new BackendError("validationFailed");
+
+  let invoices = state.invoices;
+  let invoiceID = "";
+  if (input.paidCents > 0) {
+    const computed = computeInclusiveTotals([
+      { id: "top-up", description: "Account top-up — pre-payment", qty: 1, unitCents: input.paidCents },
+    ]);
+    const invoice: Invoice = {
+      id: makeID("inv"),
+      doctorID: "", // matrix invoices leave the legacy doctor-centric fields inert
+      counterpartyID: patient.id,
+      counterpartyType: "client",
+      periodLabel: isoDay(now),
+      ...computed,
+      authorisationIDs: [],
+      createdAt: now,
+      paid: true,
+      paidAt: now,
+      markedBy: identity.user.id,
+      kind: "top-up",
+      issuerRef: patient.owner,
+      patientID: patient.id,
+      giftCents: input.giftCents,
+      totalCreditCents,
+      issuer: issuerPartyFor(state, patient.owner),
+      billTo: clientBillTo(patient),
+    };
+    invoices = [...state.invoices, invoice];
+    invoiceID = invoice.id;
+  }
+
+  const entry: WalletEntry = {
+    id: makeID("wal"),
+    kind: "topup",
+    paidCents: input.paidCents,
+    giftCents: input.giftCents,
+    totalCreditCents,
+    invoiceID,
+    by: identity.user.id,
+    at: now,
+  };
+  const next = {
+    ...state,
+    invoices,
+    walletByPatientID: {
+      ...state.walletByPatientID,
+      [patient.id]: [...(state.walletByPatientID[patient.id] ?? []), entry],
+    },
+  };
+  return appendAuditEntry(
+    next,
+    {
+      actor: identity,
+      action: "wallet_topup",
+      targetType: "patient",
+      targetID: patient.id,
+      summary: `top-up ${formatAUD(input.paidCents)} paid + ${formatAUD(input.giftCents)} gift · balance ${formatAUD(walletBalanceCents(next, patient.id))}`,
+    },
+    now,
+  );
+}
+
+/** Fallback per-session labor fee when a clinic–practitioner pair has no agreed rate. */
+export const DEFAULT_SERVICE_FEE_CENTS = 15000;
+
+export interface CheckoutItemInput { itemID: string; qty: number; }
+export interface CheckoutClientInput {
+  patientID: string;
+  items: CheckoutItemInput[];
+  /** Settle the client invoice from the account balance — all-or-nothing. */
+  payFromWallet?: boolean;
+}
+
+// Check out a client (spec: client-checkout). The billing scenario derives from the
+// client's owner, never from operator choice:
+//   Scenario A — the operator's own silo owns the client: ONE client-sale invoice,
+//     issuer = the operator's own entity, priced from the operator's price list.
+//   Scenario B — clinic-owned client: the client-sale invoice issues from the CLINIC at
+//     clinic retail; a practitioner operator additionally gets a DRAFT service-fee
+//     invoice (practitioner → clinic, GST-exclusive + 10%) queued for review; both
+//     documents share a checkoutID. A clinic-admin operator earns no service fee.
+// Everything lands in one reducer pass, so the invoice pair + wallet drawdown are atomic.
+export function checkoutClient(state: DemoState, input: CheckoutClientInput, identity: Identity, now: number): DemoState {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  const access = patientAccessLevel(state, identity, patient);
+  if (access === "none") throw new BackendError("notPermitted");
+  if (input.items.length === 0) throw new BackendError("validationFailed");
+
+  // Scenario routing: the price list and client-facing issuer are the OWNING silo's.
+  const priceList = state.priceListByOwner[ownerKeyOf(patient.owner)] ?? [];
+  const lines = input.items.map(({ itemID, qty }) => {
+    const item = priceList.find((p) => p.id === itemID);
+    if (!item) throw new BackendError("validationFailed");
+    return { id: item.id, description: item.name, qty, unitCents: item.priceCents };
+  });
+  const computed = computeInclusiveTotals(lines);
+
+  const checkoutID = makeID("co");
+  const clientInvoice: Invoice = {
+    id: makeID("inv"),
+    doctorID: "", // matrix invoices leave the legacy doctor-centric fields inert
+    counterpartyID: patient.id,
+    counterpartyType: "client",
+    periodLabel: isoDay(now),
+    ...computed,
+    authorisationIDs: [],
+    createdAt: now,
+    paid: false,
+    kind: "client-sale",
+    issuerRef: patient.owner,
+    patientID: patient.id,
+    checkoutID,
+    issuer: issuerPartyFor(state, patient.owner),
+    billTo: clientBillTo(patient),
+  };
+
+  let invoices = [...state.invoices, clientInvoice];
+
+  // Scenario B labor fee: only a practitioner operating on a clinic-owned client earns
+  // one; checking out one's OWN client is the whole sale, not a session for hire.
+  const practitionerKind = identity.role === "doctor" ? "doctor" : identity.role === "nurse" ? "nurse" : null;
+  if (patient.owner.kind === "clinic" && practitionerKind) {
+    const clinicID = patient.owner.id;
+    const feeCents = state.serviceFeeCentsByPair[`${clinicID}_${identity.user.id}`] ?? DEFAULT_SERVICE_FEE_CENTS;
+    const gstCents = Math.round(feeCents * GST_RATE);
+    const feeInvoice: Invoice = {
+      id: makeID("inv"),
+      doctorID: "",
+      counterpartyID: clinicID,
+      counterpartyType: "clinic",
+      periodLabel: isoDay(now),
+      lines: [{
+        authorisationID: checkoutID,
+        dateISO: isoDay(now),
+        patientName: fullName(patient),
+        feeCents,
+        gstCents,
+        description: `Practitioner service fee — ${fullName(patient)} session`,
+        qty: 1,
+        unitCents: feeCents,
+      }],
+      subtotalCents: feeCents,
+      gstCents,
+      totalCents: feeCents + gstCents,
+      authorisationIDs: [],
+      createdAt: now,
+      paid: false,
+      kind: "service-fee",
+      draft: true,
+      issuerRef: { kind: practitionerKind, id: identity.user.id },
+      checkoutID,
+      issuer: invoicePartyFor(state, practitionerKind, identity.user.id),
+      billTo: invoicePartyFor(state, "clinic", clinicID),
+    };
+    invoices = [...invoices, feeInvoice];
+  }
+
+  let walletByPatientID = state.walletByPatientID;
+  let settled = clientInvoice;
+  if (input.payFromWallet) {
+    const balance = walletBalanceCents(state, patient.id);
+    if (balance < clientInvoice.totalCents) throw new BackendError("validationFailed");
+    const drawdown: WalletEntry = {
+      id: makeID("wal"),
+      kind: "drawdown",
+      amountCents: clientInvoice.totalCents,
+      invoiceID: clientInvoice.id,
+      by: identity.user.id,
+      at: now,
+    };
+    walletByPatientID = {
+      ...state.walletByPatientID,
+      [patient.id]: [...(state.walletByPatientID[patient.id] ?? []), drawdown],
+    };
+    settled = { ...clientInvoice, paid: true, paidAt: now, markedBy: "wallet" };
+    invoices = invoices.map((i) => (i.id === clientInvoice.id ? settled : i));
+  }
+
+  const next = { ...state, invoices, walletByPatientID };
+  const audited = appendAuditEntry(
+    next,
+    {
+      actor: identity,
+      action: "client_checkout",
+      targetType: "invoice",
+      targetID: clientInvoice.id,
+      summary: `checkout ${formatAUD(clientInvoice.totalCents)} · ${fullName(patient)}${input.payFromWallet ? " · paid from wallet" : ""}`,
+    },
+    now,
+  );
+  return audited;
+}
+
+// The practitioner reviews and finalizes their drafted service-fee invoice (spec:
+// client-checkout — "queued for drafting"). Issuer-only; idempotent on non-drafts.
+export function finalizeServiceFeeInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
+  const invoice = state.invoices.find((i) => i.id === invoiceID);
+  if (!invoice || invoice.kind !== "service-fee") throw new BackendError("notFound");
+  if (invoice.issuerRef?.id !== identity.user.id) throw new BackendError("notPermitted");
+  if (!invoice.draft) return state;
+  const invoices = state.invoices.map((i) => (i.id === invoiceID ? { ...i, draft: false } : i));
+  return appendAuditEntry(
+    { ...state, invoices },
+    {
+      actor: identity,
+      action: "service_fee_finalized",
+      targetType: "invoice",
+      targetID: invoiceID,
+      summary: `service fee finalized · ${formatAUD(invoice.totalCents)}`,
+    },
     now,
   );
 }

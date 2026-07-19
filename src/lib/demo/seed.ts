@@ -9,6 +9,7 @@ import {
   approveRequest,
   saveTreatmentNote,
   saveGeneralNote,
+  topUpWallet,
   isoDay,
 } from "./backend";
 
@@ -136,6 +137,32 @@ export function buildSeedState(): DemoState {
     "u-voss": { id: "u-voss", type: "independentDoctor", legalName: "Voss Aesthetics", abn: "51824753556", isActive: true },
   } };
 
+  // Billing matrix (change: multi-tenant-billing-matrix): per-silo fee schedules —
+  // independents price their own book, the clinic carries premium retail — plus the
+  // agreed per-session labor fee (手工费) for each clinic–practitioner pair. Prices are
+  // GST-inclusive retail cents; service fees are GST-exclusive cents.
+  state = { ...state, priceListByOwner: {
+    "nurse:u-sarah": [
+      { id: "pl-sarah-skinboost", kind: "service", name: "Skin booster session", priceCents: 45000 },
+      { id: "pl-sarah-profhilo", kind: "service", name: "Profhilo — two-session course", priceCents: 120000 },
+      { id: "pl-sarah-mask", kind: "product", name: "Post-treatment mask pack", priceCents: 6500 },
+    ],
+    "doctor:u-voss": [
+      { id: "pl-voss-consult", kind: "service", name: "Cosmetic consultation", priceCents: 15000 },
+      { id: "pl-voss-antiwrinkle", kind: "service", name: "Anti-wrinkle — per area", priceCents: 30000 },
+      { id: "pl-voss-serum", kind: "product", name: "Recovery serum", priceCents: 9500 },
+    ],
+    [`clinic:${LUMIERE.id}`]: [
+      { id: "pl-lum-antiwrinkle", kind: "service", name: "Anti-wrinkle — per area (retail)", priceCents: 45000 },
+      { id: "pl-lum-filler", kind: "service", name: "Dermal filler — per ml (retail)", priceCents: 79000 },
+      { id: "pl-lum-serum", kind: "product", name: "Clinic recovery serum", priceCents: 12000 },
+    ],
+  }, serviceFeeCentsByPair: {
+    [`${LUMIERE.id}_u-sarah`]: 15000,
+    [`${LUMIERE.id}_u-ruby`]: 12000,
+    [`${LUMIERE.id}_u-voss`]: 25000,
+  } };
+
   // Amara 'Mara' Boyd — clinic patient, full workflow + lignocaine alert.
   const amara = makePatient(
     "Amara", "Boyd", { year: 1991, month: 3, day: 12 }, "0401 223 871",
@@ -185,6 +212,11 @@ export function buildSeedState(): DemoState {
     "NKDA", "Perindopril 5mg", { kind: "doctor", id: "u-voss" },
   );
   state = { ...state, patients: { ...state.patients, [grace.id]: grace } };
+
+  // Billing matrix: a seeded promotional top-up so the wallet surfaces open with data —
+  // Amara holds $2,500 paid + $500 gift under the CLINIC silo (runs through the real
+  // reducer, so the ledger entry and the linked paid-only top-up invoice both exist).
+  state = topUpWallet(state, { patientID: amara.id, paidCents: 250000, giftCents: 50000 }, sarahClinic, SEED_NOW);
 
   // Seeded appointments for today (clinic + doctor calendars).
   const appts = [

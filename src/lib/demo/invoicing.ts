@@ -1,12 +1,27 @@
 // Per-script invoicing — money math in integer cents, ported verbatim from the
 // backend invoicing.ts so demo totals match server-computed totals.
-import type { Identity } from "./types";
+import type { Identity, PatientOwner } from "./types";
 
 export const DEFAULT_SCRIPT_PRICE_CENTS = 2500;
 export const GST_RATE = 0.1;
 
 export interface InvoiceAuthInput { id: string; dateISO: string; patientName: string; }
-export interface InvoiceLine { authorisationID: string; dateISO: string; patientName: string; feeCents: number; gstCents: number; }
+// `feeCents` is the line's NET (GST-exclusive) total; `gstCents` its GST portion — so
+// fee + gst is the amount payable for the line under both conventions (exclusive script
+// billing and GST-inclusive retail). Matrix lines additionally carry a free-text
+// description, quantity, and the GST-inclusive unit price for grid display; legacy
+// authorisation lines leave them unset (qty is always 1, description derives from
+// date + patient).
+export interface InvoiceLine {
+  authorisationID: string;
+  dateISO: string;
+  patientName: string;
+  feeCents: number;
+  gstCents: number;
+  description?: string;
+  qty?: number;
+  unitCents?: number;
+}
 export interface ComputedInvoice { lines: InvoiceLine[]; subtotalCents: number; gstCents: number; totalCents: number; }
 
 // Issuer / bill-to identity snapshotted onto an invoice at generation time (Tier 3 #4). The backend
@@ -23,11 +38,22 @@ export interface InvoiceParty {
   name?: string;
 }
 
+// The billing-matrix invoice streams (change: multi-tenant-billing-matrix). A stored
+// invoice without `kind` predates the matrix and is an authorisation invoice — resolve
+// through resolveInvoiceKind, never read `kind` raw.
+export type InvoiceKind = "authorisation" | "client-sale" | "service-fee" | "top-up";
+
+export function resolveInvoiceKind(invoice: Invoice): InvoiceKind {
+  return invoice.kind ?? "authorisation";
+}
+
 export interface Invoice {
   id: string;
   doctorID: string;
   counterpartyID: string;
-  counterpartyType: "nurse" | "clinic";
+  // "client" only on matrix invoices billed to a patient (counterpartyID = patient id);
+  // authorisation invoices stay "nurse" | "clinic".
+  counterpartyType: "nurse" | "clinic" | "client";
   periodLabel: string;
   lines: InvoiceLine[];
   subtotalCents: number;
@@ -44,6 +70,21 @@ export interface Invoice {
   // Tier 3 #4: the issuer (doctor) and bill-to (counterparty) identity as of generation (undefined on legacy invoices).
   issuer?: InvoiceParty;
   billTo?: InvoiceParty;
+  // --- Billing-matrix fields (undefined on authorisation invoices) ---
+  // Matrix invoices leave the legacy doctor-centric fields inert (doctorID = "") and
+  // describe their parties here + in the frozen issuer/billTo snapshots instead.
+  kind?: InvoiceKind;
+  /** The silo that issued a matrix invoice (practitioner uid or clinic id). */
+  issuerRef?: PatientOwner;
+  /** The client billed on a client-sale / top-up invoice. */
+  patientID?: string;
+  /** Service-fee invoices are queued as drafts for the practitioner to finalize. */
+  draft?: boolean;
+  /** Links the split-billing pair (and wallet entries) born from one checkout/top-up. */
+  checkoutID?: string;
+  /** Top-up invoices: the promotional (non-taxable) portion and the total wallet credit. */
+  giftCents?: number;
+  totalCreditCents?: number;
 }
 
 export function computeInvoice(input: {
@@ -60,6 +101,36 @@ export function computeInvoice(input: {
     feeCents: input.pricePerScriptCents,
     gstCents: Math.round(input.pricePerScriptCents * input.gstRate),
   }));
+  const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);
+  const gstCents = lines.reduce((s, l) => s + l.gstCents, 0);
+  return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
+}
+
+// --- GST-inclusive retail math (spec: client-checkout / patient-wallet) ---
+// B2C amounts (price-list retail, top-up paid amounts) are what the client actually
+// pays: GST component = round(inclusive/11) per line, net = inclusive − GST. This keeps
+// the template's "The total price includes GST" statement literally true for the
+// matrix streams, while script billing keeps its exclusive computeInvoice convention.
+export interface InclusiveLineInput { id: string; description: string; qty: number; unitCents: number; }
+
+export function computeInclusiveTotals(inputs: InclusiveLineInput[]): ComputedInvoice {
+  if (inputs.length === 0) throw new Error("an invoice needs at least one line");
+  const lines: InvoiceLine[] = inputs.map((l) => {
+    if (!Number.isInteger(l.qty) || l.qty <= 0) throw new Error("line quantity must be a positive integer");
+    if (!Number.isInteger(l.unitCents) || l.unitCents <= 0) throw new Error("line unit price must be a positive amount of cents");
+    const inclusive = l.qty * l.unitCents;
+    const gstCents = Math.round(inclusive / 11);
+    return {
+      authorisationID: l.id,
+      dateISO: "",
+      patientName: "",
+      feeCents: inclusive - gstCents,
+      gstCents,
+      description: l.description,
+      qty: l.qty,
+      unitCents: l.unitCents,
+    };
+  });
   const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);
   const gstCents = lines.reduce((s, l) => s + l.gstCents, 0);
   return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
@@ -135,14 +206,40 @@ export function formatAUD(cents: number): string {
 }
 
 // Invoices the identity may see (mirrors the backend invoices read rules).
-// Non-doctors see clinic-typed invoices for their clinic (clinicAdmin always acts in
-// clinic context here) or nurse-typed invoices addressed to their own user id.
+// Authorisation invoices keep the pre-matrix behavior exactly: doctors see what they
+// issued; non-doctors see clinic-typed invoices for their clinic (clinicAdmin always
+// acts in clinic context here) or nurse-typed invoices addressed to their own user id.
+// Matrix invoices are direction-scoped (delta spec: invoicing): visible to their ISSUER
+// silo — practitioner-issued documents follow the person (both identities), clinic-issued
+// documents follow clinic context — and, once no longer draft, to the BILL-TO
+// counterparty (a clinic receiving a service-fee invoice). Drafts stay issuer-only.
 export function invoicesFor(invoices: Invoice[], identity: Identity): Invoice[] {
-  if (identity.role === "doctor") return invoices.filter((i) => i.doctorID === identity.user.id);
   const clinicId = identity.context.kind === "clinic" ? identity.context.clinic.id : null;
-  return invoices.filter((i) =>
-    i.counterpartyType === "clinic"
-      ? clinicId !== null && i.counterpartyID === clinicId
-      : i.counterpartyType === "nurse" && i.counterpartyID === identity.user.id,
-  );
+  return invoices.filter((i) => {
+    if (resolveInvoiceKind(i) === "authorisation") {
+      if (identity.role === "doctor") return i.doctorID === identity.user.id;
+      return i.counterpartyType === "clinic"
+        ? clinicId !== null && i.counterpartyID === clinicId
+        : i.counterpartyType === "nurse" && i.counterpartyID === identity.user.id;
+    }
+    const issuer = i.issuerRef;
+    const kind = resolveInvoiceKind(i);
+    let isIssuer = false;
+    if (issuer !== undefined) {
+      if (issuer.kind === "clinic") {
+        isIssuer = issuer.id === clinicId;
+      } else if (issuer.id === identity.user.id) {
+        // Practitioner-issued documents: SERVICE FEES are the practitioner's own
+        // earnings from clinic work and follow the person across identities (a
+        // clinic-only nurse must see and finalize her drafts). CLIENT documents
+        // (sales/top-ups) belong to the silo that owns the client — the independent
+        // book — and carry client PII, so the same user's clinic identity is not the
+        // issuer (isolation doctrine, mirrors patientAccessLevel's owner check).
+        isIssuer = kind === "service-fee" || identity.context.kind === "independent";
+      }
+    }
+    if (isIssuer) return true;
+    if (i.draft) return false;
+    return i.counterpartyType === "clinic" && clinicId !== null && i.counterpartyID === clinicId;
+  });
 }

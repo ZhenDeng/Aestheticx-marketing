@@ -7,7 +7,7 @@
 // single-font writer (directionPdf.ts), so demo AND live export identically without a
 // server round-trip. Pure — no React/Firebase.
 import type { Invoice, InvoiceLine, InvoiceParty } from "./invoicing";
-import { formatAUD } from "./invoicing";
+import { formatAUD, resolveInvoiceKind } from "./invoicing";
 import { formatDocDate } from "./direction";
 import {
   BOTTOM_LIMIT,
@@ -58,17 +58,26 @@ export interface TaxInvoiceModel {
   sellerBusiness: string | null; // trading name when distinct from the lead, else null
   sellerDetails: string[]; // "ABN …" (em-dash fallback — ATO-required), address lines, email; absent lines omitted
   toName: string; // bill-to person name, else business name
+  /** Business detail rows under the bill-to name (a service-fee invoice stacks the
+   *  clinic's ABN); client bill-to blocks carry no ABN row at all — the em-dash
+   *  fallback is a SELLER requirement. Empty on legacy authorisation invoices. */
+  toDetails: string[];
   toAddressLines: string[]; // bill-to address, one line per comma group
-  lines: { description: string; unit: string; gst: string; total: string }[];
+  lines: { description: string; qty: string; unit: string; gst: string; total: string }[];
   subtotalText: string;
   gstText: string;
   totalText: string;
+  /** Non-taxable gift-credit note rendered as a final spanning grid row with dashed
+   *  numeric cells (spec: patient-wallet) — present only on top-up invoices with a gift. */
+  footnote?: string;
 }
 
 /** Pure assembly — resolved parties come from the invoice snapshot (the caller falls
  *  back to live business-entity/account data for legacy invoices without one). */
 export function buildTaxInvoiceModel(invoice: Invoice, issuer: InvoiceParty, billTo: InvoiceParty): TaxInvoiceModel {
   const sellerLead = issuer.name || issuer.businessName || "—";
+  const kind = resolveInvoiceKind(invoice);
+  const giftCents = kind === "top-up" ? invoice.giftCents ?? 0 : 0;
   return {
     number: invoiceNumber(invoice.id),
     issuedText: formatDocDate(invoice.createdAt),
@@ -83,16 +92,27 @@ export function buildTaxInvoiceModel(invoice: Invoice, issuer: InvoiceParty, bil
       ...(issuer.email ? [issuer.email] : []),
     ],
     toName: billTo.name || billTo.businessName || "—",
+    // B2B matrix bill-to (a clinic receiving a service fee) states the buyer's ABN;
+    // client bill-to blocks and legacy authorisation invoices carry no ABN row.
+    toDetails: kind === "service-fee" && billTo.abn ? [`ABN ${billTo.abn}`] : [],
     toAddressLines: addressLines(billTo.address),
     lines: invoice.lines.map((l) => ({
-      description: invoiceLineDescription(l),
-      unit: formatAUD(l.feeCents),
+      // Matrix lines carry their own description/qty/unit (GST-inclusive retail);
+      // authorisation lines keep the owner's date–patient phrasing with qty 1.
+      description: l.description ?? invoiceLineDescription(l),
+      qty: String(l.qty ?? 1),
+      unit: formatAUD(l.unitCents ?? l.feeCents),
       gst: formatAUD(l.gstCents),
       total: formatAUD(l.feeCents + l.gstCents),
     })),
     subtotalText: formatAUD(invoice.subtotalCents),
     gstText: formatAUD(invoice.gstCents),
     totalText: formatAUD(invoice.totalCents),
+    ...(giftCents > 0
+      ? {
+          footnote: `Promotional Gift Credit Applied: ${formatAUD(giftCents)} (Non-Taxable). Total Wallet Value Loaded: ${formatAUD(invoice.totalCreditCents ?? invoice.totalCents + giftCents)}.`,
+        }
+      : {}),
   };
 }
 
@@ -178,6 +198,7 @@ export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
   writer.text("TO", 8, GOLD, { charSpace: 1 });
   writer.moveDown(0.15);
   writer.text(model.toName, 11.5, INK);
+  for (const detail of model.toDetails) writer.text(detail, 10, SOFT);
   for (const line of model.toAddressLines) writer.text(line, 10, SOFT);
 
   // Items (requirement 5): bordered table, one row per authorisation — description
@@ -208,7 +229,7 @@ export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
     }
     writer.setY(rowTop + CELL_PAD_Y + (DESC_SIZE - NUM_SIZE) * 0.72); // share the description baseline
     const cells: { value: string; color: Rgb }[] = [
-      { value: "1", color: SOFT },
+      { value: line.qty, color: SOFT },
       { value: line.unit, color: SOFT },
       { value: line.gst, color: SOFT },
       { value: line.total, color: INK }, // AMOUNT carries the weight
@@ -221,6 +242,29 @@ export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
     }
     writer.setY(rowTop + rowH);
     writer.hline(MARGIN, MARGIN + CONTENT_WIDTH); // 0.5pt SOFT row rule
+  }
+  if (model.footnote) {
+    // Non-taxable gift note: a spanning row inside the grid — the text wraps in the
+    // description column and every numeric cell dashes out, so the framed totals
+    // visibly exclude it (spec: patient-wallet).
+    const noteLines = writer.cellLines(model.footnote, NUM_SIZE, COL_W[0] - CELL_PAD_X * 2);
+    const rowH = Math.max(noteLines.length * NUM_SIZE * LINE, NUM_SIZE * LINE) + CELL_PAD_Y * 2;
+    if (writer.currentY() + rowH > BOTTOM_LIMIT) {
+      closeTableFrame(writer, segTop, writer.currentY());
+      writer.newPage();
+      segTop = writer.currentY();
+      drawTableHeader(writer);
+    }
+    const rowTop = writer.currentY();
+    for (const [i, text] of noteLines.entries()) {
+      writer.setY(rowTop + CELL_PAD_Y + i * NUM_SIZE * LINE);
+      writer.textAt(text, NUM_SIZE, SOFT, COL_X[0] + CELL_PAD_X, { width: COL_W[0] - CELL_PAD_X * 2 });
+    }
+    writer.setY(rowTop + CELL_PAD_Y);
+    for (let i = 1; i < COLUMNS.length; i++) {
+      writer.textAt("\u2014", NUM_SIZE, SOFT, COL_X[i] + CELL_PAD_X, { width: COL_W[i] - CELL_PAD_X * 2, align: "right" });
+    }
+    writer.setY(rowTop + rowH);
   }
   closeTableFrame(writer, segTop, writer.currentY());
 

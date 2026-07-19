@@ -5,7 +5,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
 import { counterpartyMonthDetail, invoicePartiesFor, ownerDisplayLabel, isoDay } from "@/lib/demo/backend";
-import { formatAUD, computeInvoice, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
+import { formatAUD, computeInvoice, resolveInvoiceKind, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
 import { buildTaxInvoiceModel, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 
@@ -21,18 +21,20 @@ export default function BillingPage() {
 
   const me = identity;
   const isDoctor = me.role === "doctor";
-  // 15/07 feedback: the Invoice section is doctor-only. Nurses/clinics receive generated
-  // invoices by email; guard the route in case it's reached directly (the nav tab is hidden).
-  if (!isDoctor) {
+  // Billing matrix: the page opens to every clinical role — each sees only its own
+  // streams. Platform admin keeps the admin shell (no billing surface).
+  if (me.role === "superAdmin") {
     return (
       <div className="max-w-3xl">
         <h1 className="font-display text-3xl text-ink">Invoice</h1>
-        <p className="mt-2 text-ink-soft">Invoices are issued by your prescribing doctor and sent to you by email.</p>
+        <p className="mt-2 text-ink-soft">Billing lives with the clinical roles; the admin shell has no invoice stream.</p>
       </div>
     );
   }
   const summary = store.billingSummary(me);
-  const invoices = store.invoicesFor(me);
+  // The classic list below is the AUTHORISATION stream only — matrix documents render
+  // in their own kind-tagged sections (MatrixStreams), never mixed into it.
+  const invoices = store.invoicesFor(me).filter((i) => resolveInvoiceKind(i) === "authorisation");
   const heading = isDoctor ? "Authorisation requests you've approved" : "Approvals billed to you";
   const partyNoun = isDoctor ? "Counterparty" : "Prescribing doctor";
 
@@ -49,12 +51,14 @@ export default function BillingPage() {
   return (
     <div className="max-w-3xl">
       <h1 className="font-display text-3xl text-ink">Invoice</h1>
-      <p className="mt-1 text-ink-soft">{heading}</p>
+      {isDoctor && <p className="mt-1 text-ink-soft">{heading}</p>}
 
-      <div className="mt-5 rounded-card border border-line bg-card p-5 shadow-card">
-        <span className="micro">Total approved requests</span>
-        <p className="mt-1 font-display text-4xl text-ink">{summary.totalCount}</p>
-      </div>
+      {isDoctor && (
+        <div className="mt-5 rounded-card border border-line bg-card p-5 shadow-card">
+          <span className="micro">Total approved requests</span>
+          <p className="mt-1 font-display text-4xl text-ink">{summary.totalCount}</p>
+        </div>
+      )}
 
       {isDoctor && (
         <section className="mt-6">
@@ -74,7 +78,7 @@ export default function BillingPage() {
         </section>
       )}
 
-      {summary.months.length === 0 ? (
+      {!isDoctor ? null : summary.months.length === 0 ? (
         <p className="mt-6 text-sm text-ink-soft">No billable authorisations yet.</p>
       ) : (
         <div className="mt-6 flex flex-col gap-6">
@@ -121,9 +125,15 @@ export default function BillingPage() {
         </div>
       )}
 
-      <CustomTimeframeCard />
+      {/* Billing matrix streams: client invoices, service fees (drafts to finalize),
+          received service fees — kind-tagged, per role (design-ui.md §4). */}
+      <MatrixStreams />
+
+      {isDoctor && <CustomTimeframeCard />}
       <ClinicStatsSection />
 
+      {!isDoctor ? null : (
+      <>
       <h2 className="mt-10 font-display text-xl text-ink">Invoices</h2>
       {invoices.length === 0 ? (
         <p className="mt-2 text-sm text-ink-soft">No invoices yet.</p>
@@ -137,7 +147,7 @@ export default function BillingPage() {
             return (
             <li key={inv.id} className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3">
               <span className="text-sm text-ink">
-                {inv.periodLabel} · {ownerDisplayLabel(store.state, isDoctor ? { kind: inv.counterpartyType, id: inv.counterpartyID } : { kind: "doctor", id: inv.doctorID })}
+                {inv.periodLabel} · {ownerDisplayLabel(store.state, isDoctor && inv.counterpartyType !== "client" ? { kind: inv.counterpartyType, id: inv.counterpartyID } : { kind: "doctor", id: inv.doctorID })}
                 <span className="ml-2 font-medium">{formatAUD(inv.totalCents)}</span>
                 <span className="ml-2 rounded-btn px-2 py-0.5 text-xs" style={inv.paid
                   ? { background: "var(--color-tint)", color: "var(--color-card)" }
@@ -184,7 +194,153 @@ export default function BillingPage() {
           })}
         </ul>
       )}
+      </>
+      )}
     </div>
+  );
+}
+
+// ——— Billing matrix streams (change: multi-tenant-billing-matrix, design-ui.md §4) ———
+
+const KIND_LABEL: Record<string, string> = { "client-sale": "Client sale", "top-up": "Top-up", "service-fee": "Service fee" };
+
+function KindChip({ kind }: { kind: string }) {
+  return <span className="micro rounded-full border border-line px-2 py-0.5 text-ink-soft">{KIND_LABEL[kind] ?? kind}</span>;
+}
+
+function PaidChip({ paid }: { paid: boolean }) {
+  return (
+    <span className="rounded-btn px-2 py-0.5 text-xs" style={paid
+      ? { background: "var(--color-tint)", color: "var(--color-card)" }
+      : { border: "1px solid var(--color-line)", color: "var(--color-ink-soft)" }}>
+      {paid ? "Paid" : "Unpaid"}
+    </span>
+  );
+}
+
+function MatrixInvoiceRow({ invoice, action }: { invoice: Invoice; action?: React.ReactNode }) {
+  // Client docs read best under the CLIENT's name (the bill-to snapshot); B2B service
+  // fees under the other business's name from this viewer's side.
+  const kind = resolveInvoiceKind(invoice);
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
+      <span className="min-w-0 text-sm text-ink">
+        {invoice.periodLabel} · {invoice.billTo?.businessName || "—"}
+        <span className="ml-2 font-medium">{formatAUD(invoice.totalCents)}</span>
+        <span className="ml-2 inline-flex items-center gap-1.5">
+          <KindChip kind={kind} />
+          {invoice.draft ? (
+            <span className="micro rounded-full px-2 py-0.5" style={{ border: "1px solid var(--color-gold)", color: "var(--color-gold-deep)" }}>Draft</span>
+          ) : (
+            <PaidChip paid={invoice.paid} />
+          )}
+        </span>
+      </span>
+      <span className="flex flex-none flex-wrap items-center justify-end gap-3">
+        {action}
+        <InvoiceDownload invoice={invoice} />
+      </span>
+    </li>
+  );
+}
+
+/** The role's matrix streams: issued client documents, own service fees (drafts first),
+ *  and — for clinic-context viewers — received service fees. Sections hide when empty. */
+function MatrixStreams() {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  const me = identity!;
+  if (!store.matrixEnabled) return null;
+  const all = store.invoicesFor(me);
+  const clientDocs = all.filter((i) => {
+    const k = resolveInvoiceKind(i);
+    return k === "client-sale" || k === "top-up";
+  });
+  const feesIssued = all.filter((i) => resolveInvoiceKind(i) === "service-fee" && i.issuerRef?.id === me.user.id);
+  const feesReceived = all.filter((i) => resolveInvoiceKind(i) === "service-fee" && i.issuerRef?.id !== me.user.id);
+  const drafts = feesIssued.filter((i) => i.draft);
+  const issued = feesIssued.filter((i) => !i.draft);
+
+  return (
+    <>
+      {clientDocs.length > 0 && (
+        <section className="mt-10" data-testid="client-invoices">
+          <h2 className="font-display text-xl text-ink">Client invoices</h2>
+          <ul className="mt-3 flex flex-col gap-1.5">
+            {/* Client documents are only ever visible to their issuer silo (the bill-to
+                is a patient), so every viewer of this stream may settle them. */}
+            {clientDocs.map((inv) => (
+              <MatrixInvoiceRow key={inv.id} invoice={inv} action={
+                !inv.paid ? (
+                  <button type="button" onClick={() => store.markInvoicePaid(inv.id, me)}
+                    className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                    Mark paid
+                  </button>
+                ) : undefined
+              } />
+            ))}
+          </ul>
+        </section>
+      )}
+      {feesIssued.length > 0 && (
+        <section className="mt-10" data-testid="service-fees">
+          <h2 className="font-display text-xl text-ink">Service fees</h2>
+          {drafts.length > 0 && (
+            <>
+              <p className="micro mt-3">Awaiting your review</p>
+              <ul className="mt-1 flex flex-col gap-1.5">
+                {drafts.map((inv) => (
+                  <MatrixInvoiceRow key={inv.id} invoice={inv} action={
+                    <button type="button" onClick={() => store.finalizeServiceFee(inv.id, me)}
+                      className="rounded-btn px-3 py-1 text-xs font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                      Finalize &amp; send
+                    </button>
+                  } />
+                ))}
+              </ul>
+            </>
+          )}
+          {issued.length > 0 && (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {/* The practitioner (issuer) records the clinic's settlement of their fee. */}
+              {issued.map((inv) => (
+                <MatrixInvoiceRow key={inv.id} invoice={inv} action={
+                  !inv.paid ? (
+                    <button type="button" onClick={() => store.markInvoicePaid(inv.id, me)}
+                      className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                      Mark paid
+                    </button>
+                  ) : undefined
+                } />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+      {feesReceived.length > 0 && (
+        <section className="mt-10" data-testid="received-service-fees">
+          <h2 className="font-display text-xl text-ink">Received service fees</h2>
+          <ul className="mt-3 flex flex-col gap-1.5">
+            {feesReceived.map((inv) => (
+              // Received rows read best under the PRACTITIONER's name (the issuer snapshot).
+              <li key={inv.id} className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
+                <span className="min-w-0 text-sm text-ink">
+                  {inv.periodLabel} · {inv.issuer?.businessName || "—"}
+                  <span className="ml-2 font-medium">{formatAUD(inv.totalCents)}</span>
+                  <span className="ml-2 inline-flex items-center gap-1.5">
+                    <KindChip kind="service-fee" />
+                    <PaidChip paid={inv.paid} />
+                  </span>
+                </span>
+                <span className="flex flex-none items-center gap-3">
+                  <InvoiceDownload invoice={inv} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 

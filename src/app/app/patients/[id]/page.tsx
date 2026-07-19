@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions, notePreview, canSendAftercare, imageAttachments } from "@/lib/demo/backend";
+import { patientAccessLevel } from "@/lib/demo/isolation";
+import { PatientAccountSection } from "@/components/app/PatientAccount";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
@@ -73,10 +75,27 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const me = identity; // non-null, captured by the handlers below
 
   const patient = store.state.patients[id];
-  if (!patient || !patientPermissions(identity, patient).canView) {
+  // Clinical view OR commercial access (isolation guard) — a collaborating doctor reaches
+  // the clinic's client file to operate on it (spec: client-data-isolation).
+  if (!patient || !(patientPermissions(identity, patient).canView || patientAccessLevel(store.state, identity, patient) !== "none")) {
     return <p className="text-ink-soft">This patient is not in your view.</p>;
   }
   const perms = patientPermissions(identity, patient);
+  // Commercial access without clinical view (a collaborating doctor who is neither
+  // prescriber nor reviewer): the isolation guard admits them to OPERATE — checkout and
+  // wallet — but grants no clinical rights (spec: client-data-isolation). Render a
+  // reduced file: identity strip + Account section only; no demographics detail,
+  // allergies/medications, authorisations, notes, forms, or history.
+  if (!perms.canView) {
+    return (
+      <div className="max-w-3xl">
+        <Link href="/app/patients" className="text-sm text-ink-soft hover:text-ink">← All patients</Link>
+        <h1 className="mt-4 font-display text-3xl text-ink">{displayName(patient)}</h1>
+        <p className="mt-1 text-sm text-ink-soft">Clinic client — commercial access only. The clinical record stays with the clinic.</p>
+        <PatientAccountSection patient={patient} />
+      </div>
+    );
+  }
   const isAdminViewer = me.role === "superAdmin";
   // As this viewer sees it: a prescriber-only doctor gets treatment notes only.
   const notes = store.visibleNotesForPatient(id, identity);
@@ -279,6 +298,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           ))}
           {forms.length === 0 && <li className="text-sm text-ink-soft">No signed forms yet.</li>}
         </ul>
+
+        {/* Billing matrix: wallet balance + top-up + checkout, gated inside the component
+            by the isolation guard (renders nothing without commercial access). */}
+        <PatientAccountSection patient={patient} />
       </div>
 
       <aside>
