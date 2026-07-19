@@ -43,7 +43,8 @@ export function AftercareForm({
   }
 
   // Composed from the CURRENT textarea contents, so the practitioner's edits are what leaves.
-  const email = aftercareEmail(patient ? fullName(patient) : "", content);
+  // The selection also picks the subject: one category → its per-treatment line.
+  const email = aftercareEmail(patient ? fullName(patient) : "", content, selected);
   const href = mailtoHref(recipient, email.subject, email.body);
 
   const label = `Email${selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}`;
