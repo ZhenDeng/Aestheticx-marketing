@@ -6,7 +6,7 @@ import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 import { identityBadge, type AccountRecord, type CooperationRelationship, type CounterpartyType, type Identity, type Role, type ProductCategory, type ProductUnit, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
 import { categoryDisplayName, PRODUCT_CATEGORIES, type CatalogProduct } from "@/lib/demo/catalog";
-import type { SetCooperationRelationshipInput } from "@/lib/demo/backend";
+import type { ClinicOption, SetCooperationRelationshipInput } from "@/lib/demo/backend";
 import { validateNewUser, type NewPremiseInput, type NewUserInput } from "@/lib/demo/userAdmin";
 
 // The platform-admin management console (accounts + create user + cooperation relationships).
@@ -977,7 +977,7 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
 function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDone, onCancel }: {
   doctorOptions: { doctorId: string; doctorName: string }[];
   nurses: AccountRecord[];
-  clinics: { id: string; label: string }[];
+  clinics: ClinicOption[];
   identity: Identity;
   onDone: () => void;
   onCancel: () => void;
@@ -1003,21 +1003,43 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
 
   // The selected type's directory as uniform {id, label} options; empty ⇒ the picker cell
   // explains and Create disables, while the toggle stays usable to switch type.
-  const options = counterpartyType === "nurse"
+  const options: ClinicOption[] = counterpartyType === "nurse"
     ? nurses.map((n) => ({ id: n.id, label: n.name || n.email || n.id }))
     : clinics;
+
+  // Effective selections resolve against the CURRENT option lists, not the state captured
+  // at mount — directories load/refresh async, and a select rendering option A while state
+  // holds a stale "" or removed id is the select-substitution trap (18/07 defect class).
+  const effectiveDoctorID = doctorOptions.some((d) => d.doctorId === doctorID) ? doctorID : (doctorOptions[0]?.doctorId ?? "");
+  const effectiveCounterpartyID = options.some((o) => o.id === counterpartyID) ? counterpartyID : (options[0]?.id ?? "");
 
   function selectType(type: CounterpartyType) {
     setCounterpartyType(type);
     setError(null);
-    setCounterpartyID((type === "nurse" ? nurses.map((n) => n.id)[0] : clinics[0]?.id) ?? "");
+    setCounterpartyID((type === "nurse" ? nurses[0]?.id : clinics[0]?.id) ?? "");
   }
 
   function submit() {
     setError(null);
-    const doctor = doctorOptions.find((d) => d.doctorId === doctorID);
-    const counterparty = options.find((o) => o.id === counterpartyID);
+    const doctor = doctorOptions.find((d) => d.doctorId === effectiveDoctorID);
+    const counterparty = options.find((o) => o.id === effectiveCounterpartyID);
     if (!doctor || !counterparty) { setError(`Pick a doctor and a ${counterpartyType}.`); return; }
+    // A clinic with a blank name is listed but not linkable: submitting would freeze the
+    // synthetic "Unnamed clinic (…)" label into the stored relationship's counterpartyName
+    // (the Clause 68C party-name staleness class — durable records never carry placeholders).
+    if (counterparty.unnamed) {
+      setError("This clinic has no name yet — set the clinic's name before linking it.");
+      return;
+    }
+    // setCooperationRelationship is an UPSERT on the deterministic doctor+counterparty id:
+    // "creating" an existing pair would silently reactivate a removed relationship and
+    // overwrite its negotiated price/invoicing flags. Send the admin to the edit row instead.
+    const existing = store.cooperationRelationships().find((r) =>
+      r.doctorID === doctor.doctorId && r.counterpartyType === counterpartyType && r.counterpartyID === counterparty.id);
+    if (existing) {
+      setError(`${doctor.doctorName} and ${counterparty.label} already have a relationship${existing.status === "inactive" ? " (currently removed)" : ""} — edit it in the list above.`);
+      return;
+    }
     let priceCentsOverride: number | null = null;
     const trimmed = priceDollars.trim();
     if (trimmed) {
@@ -1068,7 +1090,7 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="micro">Doctor</span>
-          <select value={doctorID} onChange={(e) => setDoctorID(e.target.value)}
+          <select value={effectiveDoctorID} onChange={(e) => setDoctorID(e.target.value)}
             className="mt-1 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink">
             {doctorOptions.map((d) => <option key={d.doctorId} value={d.doctorId}>{d.doctorName}</option>)}
           </select>
@@ -1082,7 +1104,7 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
         ) : (
           <label className="block">
             <span className="micro">{counterpartyType === "nurse" ? "Nurse" : "Clinic"}</span>
-            <select value={counterpartyID} onChange={(e) => setCounterpartyID(e.target.value)}
+            <select value={effectiveCounterpartyID} onChange={(e) => setCounterpartyID(e.target.value)}
               className="mt-1 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink">
               {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>

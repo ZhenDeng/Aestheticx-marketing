@@ -1996,12 +1996,26 @@ export function cooperationRelationshipsList(state: DemoState): CooperationRelat
     .sort((a, b) => a.doctorName.localeCompare(b.doctorName) || a.counterpartyName.localeCompare(b.counterpartyName));
 }
 
+// A clinic entry in the admin console's pickers. `unnamed` marks a clinic whose doc has a
+// blank name: it is listed (never silently dropped) but callers must not persist its
+// synthetic label into durable records — the Clause 68C party-name staleness class.
+export interface ClinicOption {
+  id: string;
+  label: string;
+  unnamed?: boolean;
+}
+
 // The admin console's clinic picker (spec: cooperation-linking): every provisioned clinic,
 // sorted by name. An unnamed clinic gets an explicit fallback label — never dropped, and
 // never a bare id masquerading as a name (the raw-uid defect class, see identitiesFromClaims).
-export function clinicDirectoryList(state: DemoState): { id: string; label: string }[] {
+export function clinicDirectoryList(state: DemoState): ClinicOption[] {
   return Object.values(state.clinicsByID)
-    .map((c) => ({ id: c.id, label: c.name.trim() || `Unnamed clinic (${c.id.slice(0, 6)}…)` }))
+    .map((c) => {
+      const name = c.name.trim();
+      return name
+        ? { id: c.id, label: name }
+        : { id: c.id, label: `Unnamed clinic (${c.id.slice(0, 6)}…)`, unnamed: true };
+    })
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 

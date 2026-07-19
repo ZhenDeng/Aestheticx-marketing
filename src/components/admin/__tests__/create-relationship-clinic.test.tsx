@@ -10,7 +10,8 @@ import type { Identity } from "@/lib/demo/types";
 const admin: Identity = { user: { id: "u-admin", name: "Priya Nair" }, role: "superAdmin", context: { kind: "independent" } };
 
 const setCooperationRelationship = vi.fn();
-let clinicDirectory: { id: string; label: string }[] = [];
+let clinicDirectory: { id: string; label: string; unnamed?: boolean }[] = [];
+let existingRelationships: unknown[] = [];
 
 vi.mock("@/lib/demo/auth", () => ({
   useDemoAuth: () => ({ identity: admin, availableIdentities: [admin], selectIdentity: vi.fn(), signOut: vi.fn() }),
@@ -20,7 +21,7 @@ vi.mock("@/lib/demo/store", () => ({
     accounts: () => [
       { id: "u-nurse", name: "Yinghua Xu", email: "nurse@example.com", roles: ["nurse"], mustChangePassword: false },
     ],
-    cooperationRelationships: () => [],
+    cooperationRelationships: () => existingRelationships,
     clinics: () => clinicDirectory,
     listDoctors: () => Promise.resolve([{ doctorId: "u-voss", doctorName: "Dr Elias Voss" }]),
     catalogProducts: () => [],
@@ -45,8 +46,9 @@ async function openCreateForm() {
 }
 
 beforeEach(() => {
-  setCooperationRelationship.mockClear();
+  setCooperationRelationship.mockReset();
   clinicDirectory = [{ id: "clinic-lumiere", label: "Lumière Clinic" }];
+  existingRelationships = [];
 });
 
 describe("create-relationship counterparty types", () => {
@@ -90,6 +92,37 @@ describe("create-relationship counterparty types", () => {
       }),
       admin,
     );
+  });
+
+  it("refuses to re-create an existing pair — the upsert would silently resurrect a removed gate", async () => {
+    existingRelationships = [{
+      id: "u-voss_clinic_clinic-lumiere", doctorID: "u-voss", doctorName: "Dr Elias Voss",
+      counterpartyType: "clinic", counterpartyID: "clinic-lumiere", counterpartyName: "Lumière Clinic",
+      status: "inactive", authRequestsAllowed: true, invoiceApplies: true, priceCentsOverride: 30000,
+      createdAt: 1, updatedAt: 2,
+    }];
+    await openCreateForm();
+    await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
+    expect(setCooperationRelationship).not.toHaveBeenCalled();
+    expect(screen.getByText(/already have a relationship \(currently removed\)/)).toBeInTheDocument();
+  });
+
+  it("refuses to link an unnamed clinic — the synthetic label must never persist as counterpartyName", async () => {
+    clinicDirectory = [{ id: "xY3kf9", label: "Unnamed clinic (xY3kf9…)", unnamed: true }];
+    await openCreateForm();
+    await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
+    expect(setCooperationRelationship).not.toHaveBeenCalled();
+    expect(screen.getByText(/no name yet/i)).toBeInTheDocument();
+  });
+
+  it("surfaces a store rejection as an inline error for a clinic relationship", async () => {
+    setCooperationRelationship.mockImplementation(() => { throw new Error("relationship already exists"); });
+    await openCreateForm();
+    await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
+    expect(screen.getByText("relationship already exists")).toBeInTheDocument();
   });
 
   it("with no clinics provisioned, explains instead of offering an empty picker, and disables Create", async () => {

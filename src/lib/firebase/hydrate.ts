@@ -168,6 +168,18 @@ async function runQuerySafe(path: string, ...constraints: QueryConstraint[]): Pr
 const isPermissionDenied = (e: unknown): boolean =>
   e instanceof FirebaseError && e.code === "permission-denied";
 
+// Denial-only degradation: a read whose rule may lag a deploy degrades to "none" on
+// permission-denied, but a transient outage still rethrows — degrading is reserved for
+// provability gaps, never outages (unlike runQuerySafe's catch-all above).
+async function runQueryDeniedToEmpty(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
+  try {
+    return await runQuery(path, ...constraints);
+  } catch (e) {
+    if (isPermissionDenied(e)) return [];
+    throw e;
+  }
+}
+
 /**
  * A patient's notes, with a provably-safe fallback ("rules are not filters"). The unconstrained
  * list is provable only for full-note-access viewers (owner/clinic staff); for prescriber /
@@ -359,8 +371,10 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       businessEntities: await runQuerySafe("businessEntities"),
       // The clinic directory for the admin console's cooperation picker (rules: the
       // clinics collection is superAdmin- or member-readable; unconstrained list is
-      // provable for a super admin only). Best-effort like its sibling directories.
-      clinics: await runQuerySafe("clinics"),
+      // provable for a super admin only). Denial-only degradation — NOT runQuerySafe:
+      // a swallowed outage would render "No clinic accounts yet" and misinform the
+      // admin into provisioning a duplicate; a transient must fail the hydrate loudly.
+      clinics: await runQueryDeniedToEmpty("clinics"),
       currentUserID: uid,
     });
   }

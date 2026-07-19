@@ -246,4 +246,22 @@ describe("appointmentRowsForScopes (clinic-scope lockout hardening)", () => {
     };
     expect((await appointmentRowsForScopes("me", ["clinic-1"], q)).map((r) => r.id)).toEqual(["ap-own"]);
   });
+
+  it("a transient error on a bookedById query rethrows (tightened from runQuerySafe's swallow-all)", async () => {
+    const q = async (field: "ownerId" | "bookedById") => {
+      if (field === "bookedById") throw new FirebaseError("unavailable", "booked blip");
+      return [own];
+    };
+    await expect(appointmentRowsForScopes("me", ["clinic-1"], q)).rejects.toThrow("booked blip");
+  });
+
+  it("with no clinic memberships, only the own-calendar scopes run", async () => {
+    const calls: string[] = [];
+    const q = async (field: "ownerId" | "bookedById", owner: string) => {
+      calls.push(`${field}:${owner}`);
+      return field === "ownerId" ? [own] : [];
+    };
+    expect((await appointmentRowsForScopes("me", [], q)).map((r) => r.id)).toEqual(["ap-own"]);
+    expect(calls).toEqual(["ownerId:me", "bookedById:me"]);
+  });
 });
