@@ -22,10 +22,13 @@ function parseAmountInput(v: string): { cents: number; invalid: boolean } {
   return { cents: Math.round(parseFloat(cleaned) * 100), invalid: false };
 }
 
-/** The gold promotional-gift token (design-ui.md: never mixed into the cash figure). */
+/** The gold promotional-gift token (design-ui.md: never mixed into the cash figure).
+ *  Outlined, not filled: gold-deep on gold-soft sits just under WCAG AA (≈4.26:1) at
+ *  micro size, so the chip borrows the Draft chip's border treatment — gold frame,
+ *  gold-deep text on the card ground (≥4.5:1). */
 function GiftChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="micro rounded-full px-2 py-0.5" style={{ background: "var(--color-gold-soft)", color: "var(--color-gold-deep)" }}>
+    <span className="micro rounded-full px-2 py-0.5" style={{ border: "1px solid var(--color-gold)", color: "var(--color-gold-deep)" }}>
       {children}
     </span>
   );
