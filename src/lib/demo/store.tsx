@@ -250,7 +250,9 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           unsubscribeRequests = subscribeAuthRequests(
             // superAdmin: hydrate loaded the platform-wide request set, so the listener
             // must be unconstrained too — scoped queries would replace it with ~nothing.
-            { uid: identity.user.id, clinicIds: Object.keys(allClinics), superAdmin: allRoles.includes("superAdmin") },
+            // The full membership MAP goes through (not just ids): the listener only
+            // subscribes clinic scopes for "admin" memberships, mirroring the rules.
+            { uid: identity.user.id, clinics: allClinics, superAdmin: allRoles.includes("superAdmin") },
             {
               onRequests: (requests) => setState((s) => ({ ...s, requests })),
               hasPatient: (id) => !!patientsRef.current[id],
