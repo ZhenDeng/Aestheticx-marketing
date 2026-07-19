@@ -64,8 +64,8 @@ describe("AftercareForm", () => {
     const href = mailtoLink().getAttribute("href")!;
     expect(href.startsWith("mailto:amara@x.test?")).toBe(true);
     expect(decodeURIComponent(new URL(href).searchParams.get("subject") ?? ""))
-      .toBe("Your aftercare instructions");
-    expect(bodyOf(href)).toContain("Hi Amara Boyd,");
+      .toBe("Your Aftercare Guide");
+    expect(bodyOf(href)).toContain("Dear Amara Boyd,");
     expect(bodyOf(href)).toContain(AFTERCARE_CLOSING);
   });
 
@@ -113,13 +113,13 @@ describe("AftercareForm", () => {
     const user = userEvent.setup();
     render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: /^antiwrinkle$/i }));
+    await user.click(screen.getByRole("button", { name: /^anti-wrinkle$/i }));
     await user.click(mailtoLink());
     expect(sendAftercare).toHaveBeenCalledTimes(1);
     expect(sendAftercare.mock.calls[0][0]).toMatchObject({ categories: ["antiwrinkle"] });
 
     // Swap the category — the composed email is now different aftercare entirely.
-    await user.click(screen.getByRole("button", { name: /^antiwrinkle$/i }));
+    await user.click(screen.getByRole("button", { name: /^anti-wrinkle$/i }));
     await user.click(screen.getByRole("button", { name: /^ha filler$/i }));
     expect(screen.queryByText(/recorded on the patient file/i)).not.toBeInTheDocument();
 
@@ -151,7 +151,7 @@ describe("AftercareForm", () => {
     await user.click(mailtoLink());
     expect(screen.getByRole("status")).toHaveTextContent(/recorded on the patient file/i);
 
-    for (const name of [/^antiwrinkle$/i, /^skinbooster$/i, /^ha filler$/i, /^fat dissolve$/i, /^filler dissolve$/i]) {
+    for (const name of [/^anti-wrinkle$/i, /^skinbooster$/i, /^ha filler$/i, /^fat dissolve$/i, /^filler dissolve \(hylase\)$/i]) {
       await user.click(screen.getByRole("button", { name }));
     }
     expect(screen.getByRole("alert")).toHaveTextContent(/some email apps/i);
@@ -164,7 +164,7 @@ describe("AftercareForm", () => {
     render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
     expect(screen.queryByText(/some email apps/i)).not.toBeInTheDocument();
 
-    for (const name of [/^antiwrinkle$/i, /^skinbooster$/i, /^ha filler$/i, /^fat dissolve$/i, /^filler dissolve$/i]) {
+    for (const name of [/^anti-wrinkle$/i, /^skinbooster$/i, /^ha filler$/i, /^fat dissolve$/i, /^filler dissolve \(hylase\)$/i]) {
       await user.click(screen.getByRole("button", { name }));
     }
     expect(screen.getByText(/some email apps/i)).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe("AftercareForm", () => {
     const body = screen.getByRole("textbox") as HTMLTextAreaElement;
     const before = body.value;
 
-    await user.click(screen.getByRole("button", { name: /^antiwrinkle$/i }));
+    await user.click(screen.getByRole("button", { name: /^anti-wrinkle$/i }));
     expect(body.value).not.toBe(before); // template re-assembled from the selection
     expect(screen.getByRole("link", { name: /email · 1 category/i })).toBeInTheDocument();
 
@@ -204,14 +204,35 @@ describe("AftercareForm", () => {
     );
   });
 
-  it("keeps the urgent-symptom guidance intact in a filler send", async () => {
+  // 19/07 owner templates: a single selection also drives the per-treatment subject line.
+  it("sends the owner's filler template under its per-treatment subject", async () => {
     const user = userEvent.setup();
     render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: /^ha filler$/i }));
 
-    const sent = bodyOf(mailtoLink().getAttribute("href")!);
+    const href = mailtoLink().getAttribute("href")!;
+    expect(decodeURIComponent(new URL(href).searchParams.get("subject") ?? ""))
+      .toBe("Your Aftercare Guide for HA Dermal Filler Treatment");
+    const sent = bodyOf(href);
     expect(sent).toContain(aftercareTemplate("haFiller"));
-    expect(sent).toContain("URGENT");
+    expect(sent).toContain("Pain Management: Mild tenderness is expected.");
     expect(sent).not.toMatch(/do not reply/i);
+  });
+
+  it("offers the three 19/07 categories and reverts to the generic subject for several", async () => {
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /^prp \/ prf$/i }));
+    let href = mailtoLink().getAttribute("href")!;
+    expect(decodeURIComponent(new URL(href).searchParams.get("subject") ?? ""))
+      .toBe("Your Aftercare Guide for PRP / PRF Treatment");
+
+    await user.click(screen.getByRole("button", { name: /^biostimulator filler$/i }));
+    await user.click(screen.getByRole("button", { name: /^biostimulator rejuvenation$/i }));
+    href = mailtoLink().getAttribute("href")!;
+    expect(decodeURIComponent(new URL(href).searchParams.get("subject") ?? ""))
+      .toBe("Your Aftercare Guide");
+    expect(bodyOf(href)).toContain("— BIOSTIMULATOR REJUVENATION —");
   });
 });
