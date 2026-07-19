@@ -21,6 +21,9 @@ export function AftercareForm({
   const [selected, setSelected] = useState<AftercareCategory[]>([]);
   const [content, setContent] = useState(() => aftercareBody([]));
   const [includeMeds, setIncludeMeds] = useState(true);
+  // Whether this send has been written to the patient file. The hand-off stays re-clickable
+  // (a mail client that never opened is invisible to us), but must only ever record once.
+  const [recorded, setRecorded] = useState(false);
   // 15/07 bug: aftercare goes to the patient's address, and this was the one email path with no
   // empty-recipient guard. Still true under the mailto hand-off — a mailto with no address just
   // opens an unaddressed draft — so surface the recipient and block the hand-off without one.
@@ -40,13 +43,21 @@ export function AftercareForm({
   const email = aftercareEmail(patient ? fullName(patient) : "", content);
   const href = mailtoHref(recipient, email.subject, email.body);
 
+  const label = `Email${selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}`;
+  // Some desktop mail handlers truncate or refuse a mailto beyond ~2k characters, and with no
+  // delivery signal that would fail silently — so say so while the text is still on screen.
+  const mayTruncate = href.length > 2000;
+
   // The mail client sends it, not us — so this only records that aftercare was issued. There is
   // deliberately no delivery status: a mailto hand-off tells us nothing about what happened next.
-  const label = `Email${selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}`;
-
+  //
+  // Deliberately does NOT call onDone(): unmounting this panel from inside the anchor's own click
+  // handler detaches the element before the browser performs the mailto navigation, which can
+  // silently drop it. Staying open also leaves the composed text selectable if no client opened.
   function recordSend() {
+    if (!canSend || recorded) return; // the anchor only renders when canSend, but guard anyway
     store.sendAftercare({ patientID, content, medications: includeMeds ? lastMeds : [], categories: selected, identity });
-    onDone();
+    setRecorded(true);
   }
 
   return (
@@ -76,9 +87,23 @@ export function AftercareForm({
       )}
 
       {canSend ? (
-        <p className="mt-3 text-sm text-ink-soft">
-          Opens your email app with this message to {recipient}, ready for you to send.
-        </p>
+        <>
+          <p className="mt-3 text-sm text-ink-soft">
+            Opens your email app with this message to {recipient}, ready for you to send.
+          </p>
+          {mayTruncate && (
+            <p className="mt-2 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
+              This message is long — some email apps shorten it. Check it looks complete before
+              sending, or copy the text above into a new email instead.
+            </p>
+          )}
+          {recorded && (
+            <p className="mt-2 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-tint)", color: "var(--color-tint)" }}>
+              Recorded on the patient file. Send the email from your email app — if it didn&apos;t
+              open, use Email again or copy the text above.
+            </p>
+          )}
+        </>
       ) : (
         <p className="mt-3 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
           No email address on file for this patient — add one in the patient file before sending aftercare.
@@ -100,7 +125,9 @@ export function AftercareForm({
             {label}
           </button>
         )}
-        <button onClick={onDone} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">Cancel</button>
+        <button onClick={onDone} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">
+          {recorded ? "Done" : "Cancel"}
+        </button>
       </div>
     </div>
   );

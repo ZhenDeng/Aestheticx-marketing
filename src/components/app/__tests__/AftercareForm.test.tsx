@@ -70,16 +70,53 @@ describe("AftercareForm", () => {
   });
 
   it("records the send on the patient file when the practitioner hands off", async () => {
-    const onDone = vi.fn();
     const user = userEvent.setup();
-    render(<AftercareForm patientID="p1" identity={nurse} onDone={onDone} />);
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
 
     await user.click(mailtoLink());
 
     expect(sendAftercare).toHaveBeenCalledWith(
       expect.objectContaining({ patientID: "p1", categories: [], identity: nurse }),
     );
-    expect(onDone).toHaveBeenCalled();
+  });
+
+  // The panel must NOT unmount inside the anchor's own click handler: detaching the element
+  // before the browser performs the mailto navigation can silently drop it. Staying open also
+  // keeps the composed text on screen if the mail client never opened.
+  it("stays open after hand-off, confirming what was recorded", async () => {
+    const onDone = vi.fn();
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={onDone} />);
+
+    await user.click(mailtoLink());
+
+    expect(onDone).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();     // body still readable/copyable
+    expect(screen.getByText(/recorded on the patient file/i)).toBeInTheDocument();
+    expect(mailtoLink()).toBeInTheDocument();                     // re-clickable if mail never opened
+  });
+
+  it("records only once even if the practitioner re-opens their mail client", async () => {
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+
+    await user.click(mailtoLink());
+    await user.click(mailtoLink());
+
+    expect(sendAftercare).toHaveBeenCalledTimes(1);
+  });
+
+  // A mailto href beyond ~2k characters is truncated or refused by some desktop handlers, and
+  // with no delivery signal that would fail silently — so warn rather than let it fail unseen.
+  it("warns when the composed email is long enough to risk truncation", async () => {
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+    expect(screen.queryByText(/some email apps/i)).not.toBeInTheDocument();
+
+    for (const name of [/^antiwrinkle$/i, /^skinbooster$/i, /^ha filler$/i, /^fat dissolve$/i, /^filler dissolve$/i]) {
+      await user.click(screen.getByRole("button", { name }));
+    }
+    expect(screen.getByText(/some email apps/i)).toBeInTheDocument();
   });
 
   it("re-assembles the body and counts categories as they are toggled", async () => {
@@ -99,6 +136,7 @@ describe("AftercareForm", () => {
     expect(sendAftercare).toHaveBeenCalledWith(
       expect.objectContaining({ categories: ["antiwrinkle", "skinbooster"] }),
     );
+    expect(screen.getByText(/recorded on the patient file/i)).toBeInTheDocument();
   });
 
   it("sends the practitioner's edits, not the regenerated template", async () => {
