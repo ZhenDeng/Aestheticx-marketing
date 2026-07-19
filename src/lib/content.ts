@@ -161,7 +161,7 @@ export const ROLE_PAGES: Record<RoleSlug, RolePage> = {
       },
       {
         title: "Chart treatments and aftercare",
-        body: "Treatment notes consume repeats automatically; aftercare emails assemble from templates and report back whether they were delivered or failed.",
+        body: "Treatment notes consume repeats automatically; aftercare emails assemble from templates and open in your own email app, ready to review and send.",
       },
       {
         title: "Book the way your day works",
