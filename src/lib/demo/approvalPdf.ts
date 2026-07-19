@@ -14,10 +14,8 @@ import { DirectionWriter, GOLD, INK, SOFT, buildPdfFile, field } from "./directi
 /** Placeholder for a value that is absent — em dash, never fabricated data. */
 export const MISSING_VALUE = "—";
 
-const REPEATS_PER_AUTHORISATION = 5; // mirrors backend domain.ts
-
-/** Default timing wording — mirrors iOS `AuthorisationDocument.defaultTiming`. */
-export const DEFAULT_TIMING = "PRN monthly, max 6 treatments yearly (6 months in NSW)";
+/** Default timing wording — 19/07 owner feedback (diverges from iOS `defaultTiming`). */
+export const DEFAULT_TIMING = "PRN, max 5 treatments, expire after 6 months";
 
 const text = (v: string | undefined | null): string =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : MISSING_VALUE;
@@ -72,14 +70,12 @@ export interface ApprovalDocumentModel {
   patientDOB: string;
   allergies: string;
   rows: ApprovalRow[];
-  // Clause 68C direction block
+  // Prescriber contact (signature block) + premises of administration
   prescriberName: string;
   prescriberPhone: string;
   prescriberPrincipalPlace: string;
   prescriberNumber: string;
   premisesOfAdministration: string;
-  periodOfEffect: string;
-  administrations: string;
   emergencyReferences: { label: string; expiresText: string }[];
 }
 
@@ -142,8 +138,6 @@ export function buildApprovalDocumentModel(input: ApprovalModelInput): ApprovalD
     prescriberPrincipalPlace: text(input.prescriber.principalPlace),
     prescriberNumber: (input.prescriber.prescriberNumber ?? "").trim(),
     premisesOfAdministration: premises,
-    periodOfEffect: "6 months",
-    administrations: `Up to ${REPEATS_PER_AUTHORISATION} per item, intervals as directed`,
     emergencyReferences: input.emergencyRefs.map((ref) => ({
       label: emergencyKindLabel(ref.kind),
       expiresText: formatDay(ref.expiresAtMillis),
@@ -185,13 +179,7 @@ export function renderApprovalPdf(model: ApprovalDocumentModel): Uint8Array {
   }
 
   writer.moveDown(0.6);
-  writer.text("DIRECTION UNDER CLAUSE 68C — NSW POISONS AND THERAPEUTIC GOODS REGULATION 2008", 8.5, GOLD, { charSpace: 0.8 });
-  writer.moveDown(0.3);
-  field(writer, "Prescriber", `${model.prescriberName} · ${model.prescriberPhone}`);
-  field(writer, "Principal place of practice", model.prescriberPrincipalPlace);
   field(writer, "Premises of administration", model.premisesOfAdministration);
-  field(writer, "Period direction has effect", model.periodOfEffect);
-  field(writer, "Administrations", model.administrations);
 
   if (model.emergencyReferences.length > 0) {
     writer.moveDown(0.3);
@@ -201,15 +189,6 @@ export function renderApprovalPdf(model: ApprovalDocumentModel): Uint8Array {
       writer.text(`${ref.label} · expires ${ref.expiresText}`, 9.5, SOFT);
     }
   }
-
-  writer.moveDown(0.8);
-  writer.text("PER ADMINISTRATION — TO RECORD", 9, GOLD, { charSpace: 1 });
-  writer.moveDown(0.3);
-  writer.text(
-    "For each administration the nurse must record: name, date administered, batch number, " +
-      "substance, site, route, and quantity.",
-    8.5, SOFT, { width: 483 },
-  );
 
   writer.moveDown(0.8);
   writer.text(model.prescriberName, 11.5, INK);
