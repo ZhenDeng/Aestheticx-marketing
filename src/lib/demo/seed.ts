@@ -353,6 +353,9 @@ export function buildSeedState(): DemoState {
       name: user.name,
       email: "",
       roles: [...new Set(account.identities.map((i) => i.role))],
+      // Clinic memberships from the cast's clinic identity contexts — resolves the
+      // clinic-keyed business entity onto this account's row (20/07 feedback).
+      clinicIDs: [...new Set(account.identities.flatMap((i) => (i.context.kind === "clinic" ? [i.context.clinic.id] : [])))],
       mustChangePassword: false,
     };
   }

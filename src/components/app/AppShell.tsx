@@ -11,7 +11,7 @@ import { tintStyle } from "@/lib/demo/tint";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { identity, signOut } = useDemoAuth();
-  const { status, lastSyncError } = useDemoStore();
+  const { status, refreshing, lastSyncError } = useDemoStore();
   const pathname = usePathname();
   if (!identity) return null;
 
@@ -77,7 +77,29 @@ export function AppShell({ children }: { children: ReactNode }) {
           {lastSyncError}
         </div>
       )}
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:px-8">{children}</main>
+      {/* 20/07 feedback: an action-triggered refresh keeps the page mounted and overlays it
+          (blocking, so a second write can't race the in-flight rehydrate) instead of the old
+          full-page "Loading…" swap. First loads still use each page's loading early-return. */}
+      <main aria-busy={refreshing} className="relative mx-auto w-full max-w-6xl flex-1 px-5 py-8 sm:px-8">
+        {children}
+        {refreshing && (
+          <div
+            role="status"
+            aria-label="Syncing"
+            className="absolute inset-0 z-20 grid place-items-center"
+            style={{ background: "color-mix(in srgb, var(--color-card) 65%, transparent)" }}
+          >
+            <span className="flex items-center gap-3 rounded-full border border-line bg-card px-4 py-2 shadow-card">
+              <span
+                aria-hidden
+                className="h-4 w-4 animate-spin rounded-full border-2 border-line"
+                style={{ borderTopColor: "var(--color-tint)" }}
+              />
+              <span className="micro">Syncing</span>
+            </span>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

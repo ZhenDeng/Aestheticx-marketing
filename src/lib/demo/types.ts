@@ -409,6 +409,10 @@ export interface AccountRecord {
   name: string;
   email: string; // "" for demo-cast accounts (the demo has no sign-in emails)
   roles: Role[];
+  // Clinics this account belongs to (users doc `clinics` map keys in live; clinic identity
+  // contexts in the demo seed). Lets the console resolve a clinic-keyed business entity to
+  // the account that administers it (20/07 feedback: entities live on account rows).
+  clinicIDs?: string[];
   mustChangePassword: boolean;
 }
 

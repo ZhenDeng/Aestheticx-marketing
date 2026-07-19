@@ -11,21 +11,22 @@ const emptyRows: HydrationRows = {
 };
 
 describe("mapAccount", () => {
-  it("maps a full users/{uid} doc", () => {
+  it("maps a full users/{uid} doc, including clinic membership keys", () => {
     expect(mapAccount("u1", {
       name: "Janet Wang", email: "janet@example.com", roles: ["nurse"], mustChangePassword: true,
+      clinics: { "clinic-lumiere": "employee" },
     })).toEqual({
       id: "u1", name: "Janet Wang", email: "janet@example.com",
-      roles: ["nurse"], mustChangePassword: true,
+      roles: ["nurse"], clinicIDs: ["clinic-lumiere"], mustChangePassword: true,
     });
   });
 
   it("tolerates partial docs and filters unknown roles", () => {
     expect(mapAccount("u2", { roles: ["doctor", "wizard", 42] })).toEqual({
-      id: "u2", name: "", email: "", roles: ["doctor"], mustChangePassword: false,
+      id: "u2", name: "", email: "", roles: ["doctor"], clinicIDs: [], mustChangePassword: false,
     });
-    expect(mapAccount("u3", {})).toEqual({
-      id: "u3", name: "", email: "", roles: [], mustChangePassword: false,
+    expect(mapAccount("u3", { clinics: ["not-a-map"] })).toEqual({
+      id: "u3", name: "", email: "", roles: [], clinicIDs: [], mustChangePassword: false,
     });
   });
 });

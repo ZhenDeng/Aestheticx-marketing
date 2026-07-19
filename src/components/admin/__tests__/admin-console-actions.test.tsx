@@ -79,12 +79,14 @@ describe("AdminConsole per-account actions", () => {
     expect(deleteUserAccount).not.toHaveBeenCalled();
   });
 
-  it("renders the account, cooperation and business-entity sections — the catalog lives on its own Products tab", async () => {
+  it("renders the account and cooperation sections — catalog is on Products, entities live on account rows", async () => {
     await renderSettled();
-    for (const heading of ["Accounts", "Cooperation relationships", "Business entities"]) {
+    for (const heading of ["Accounts", "Cooperation relationships"]) {
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     }
     // 19/07 feedback: the product catalog moved to /app/admin/products (ProductCatalog.tsx).
     expect(screen.queryByRole("heading", { name: "Product catalog" })).not.toBeInTheDocument();
+    // 20/07 feedback: no standalone Business entities section — see AccountEntityLine.
+    expect(screen.queryByRole("heading", { name: "Business entities" })).not.toBeInTheDocument();
   });
 });

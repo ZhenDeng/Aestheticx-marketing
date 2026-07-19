@@ -6,9 +6,10 @@ import type { Identity } from "@/lib/demo/types";
 // the clinical shell. Driven by AppShell → navItemsFor(identity.role).
 
 let currentIdentity: Identity;
+let refreshing = false;
 vi.mock("next/navigation", () => ({ usePathname: () => "/app/admin" }));
 vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: currentIdentity, signOut: vi.fn() }) }));
-vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ status: "ready" as const, lastSyncError: null }) }));
+vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ status: "ready" as const, refreshing, lastSyncError: null }) }));
 
 import { AppShell } from "@/components/app/AppShell";
 
@@ -36,5 +37,22 @@ describe("AppShell navigation", () => {
     const labels = navLabels();
     expect(labels).toEqual(expect.arrayContaining(["Dashboard", "Patients", "Calendar", "Profile"]));
     expect(labels).not.toContain("Admin");
+  });
+});
+
+describe("AppShell refresh overlay (20/07 feedback)", () => {
+  it("keeps the page content mounted under a blocking Syncing overlay while refreshing", () => {
+    currentIdentity = admin;
+    refreshing = true;
+    render(<AppShell><div data-testid="page-content" /></AppShell>);
+    expect(screen.getByTestId("page-content")).toBeInTheDocument(); // not unmounted
+    expect(screen.getByRole("status", { name: "Syncing" })).toBeInTheDocument();
+    refreshing = false;
+  });
+
+  it("renders no overlay when not refreshing", () => {
+    currentIdentity = admin;
+    render(<AppShell><div /></AppShell>);
+    expect(screen.queryByRole("status", { name: "Syncing" })).not.toBeInTheDocument();
   });
 });
