@@ -90,6 +90,17 @@ describe("assembleState", () => {
     });
   });
 
+  it("maps clinics rows into clinicsByID (empty when the directory wasn't read)", () => {
+    const withClinics: HydrationRows = {
+      ...rows,
+      clinics: [{ id: "clinic-lumiere", data: { name: "Lumière Clinic", address: "12 Harbour Lane" } }],
+    };
+    expect(assembleState(withClinics).clinicsByID).toEqual({
+      "clinic-lumiere": { id: "clinic-lumiere", name: "Lumière Clinic", address: "12 Harbour Lane" },
+    });
+    expect(assembleState(rows).clinicsByID).toEqual({});
+  });
+
   it("maps businessEntities rows into businessEntitiesByID (empty when the collection wasn't read) (Tier 3 #4)", () => {
     expect(assembleState(rows).businessEntitiesByID).toEqual({});
     const state = assembleState({

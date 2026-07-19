@@ -7,6 +7,7 @@ import {
   mapAuditLogEntry,
   mapProduct,
   mapBusinessEntity,
+  mapClinic,
   mapInvoice,
   mapAuthRequest,
   mapAppointment,
@@ -554,5 +555,18 @@ describe("mapInvoice issuer/billTo snapshot (Tier 3 #4)", () => {
     });
     expect(inv.issuer).toBeUndefined();
     expect(inv.billTo).toBeUndefined();
+  });
+});
+
+describe("mapClinic (clinic directory)", () => {
+  it("decodes a clinics/{id} doc into a ClinicRef, keeping the doc id", () => {
+    const c = mapClinic("clinic-lumiere", { name: "Lumière Clinic", address: "12 Harbour Lane, Sydney NSW", abn: "82601443218" });
+    expect(c).toEqual({ id: "clinic-lumiere", name: "Lumière Clinic", address: "12 Harbour Lane, Sydney NSW" });
+  });
+  it("coerces missing name/address: blank name, address omitted", () => {
+    const c = mapClinic("c1", {});
+    expect(c.id).toBe("c1");
+    expect(c.name).toBe("");
+    expect(c.address).toBeUndefined();
   });
 });

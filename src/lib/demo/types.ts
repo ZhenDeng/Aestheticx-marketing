@@ -610,6 +610,10 @@ export interface DemoState {
   // Invoices carry their own issuer/billTo snapshot, so this map feeds the admin editor + identity
   // display rather than invoice rendering.
   businessEntitiesByID: Record<string, BusinessEntity>;
+  // Clinic directory (spec: cooperation-linking), keyed by clinic id. Live: super-admin
+  // hydration reads the `clinics` collection (rules: member or superAdmin) for the admin
+  // console's clinic pickers; empty for everyone else. Demo: seeds Lumière.
+  clinicsByID: Record<string, ClinicRef>;
   // Billing matrix (change: multi-tenant-billing-matrix). Demo-mode-first — live mode
   // gates these features off until the backend repo ships collections + callables.
   /** Per-silo fee schedule / retail price list, keyed by ownerKeyOf(owner). */

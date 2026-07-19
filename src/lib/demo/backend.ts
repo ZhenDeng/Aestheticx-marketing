@@ -98,6 +98,7 @@ export function emptyState(): DemoState {
     auditLogByID: {},
     productsByID: {}, // Tier 3 #5B: live hydrates the catalog; empty → selection falls back to PRODUCT_CATALOG.
     businessEntitiesByID: {}, // Tier 3 #4: live hydrates entities; empty → invoice snapshots / legacy fallback cover display.
+    clinicsByID: {}, // Clinic directory: super-admin live hydration / demo seed fill it.
     priceListByOwner: {},
     serviceFeeCentsByPair: {},
     walletByPatientID: {},
@@ -1993,6 +1994,15 @@ export function cooperatingDoctors(state: DemoState, identity: Identity): { doct
 export function cooperationRelationshipsList(state: DemoState): CooperationRelationship[] {
   return Object.values(state.cooperationRelationshipsByID)
     .sort((a, b) => a.doctorName.localeCompare(b.doctorName) || a.counterpartyName.localeCompare(b.counterpartyName));
+}
+
+// The admin console's clinic picker (spec: cooperation-linking): every provisioned clinic,
+// sorted by name. An unnamed clinic gets an explicit fallback label — never dropped, and
+// never a bare id masquerading as a name (the raw-uid defect class, see identitiesFromClaims).
+export function clinicDirectoryList(state: DemoState): { id: string; label: string }[] {
+  return Object.values(state.clinicsByID)
+    .map((c) => ({ id: c.id, label: c.name.trim() || `Unnamed clinic (${c.id.slice(0, 6)}…)` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export function relationshipAuditForRelationship(state: DemoState, relationshipID: string): RelationshipAuditEntry[] {

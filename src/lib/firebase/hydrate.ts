@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity, mapPremise } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity, mapClinic, mapPremise } from "./mappers";
 import type { AppointmentReminderLead, DemoState, FollowUpSettings, Premise, UserProfile } from "@/lib/demo/types";
 import { readFollowUpSettings } from "@/lib/demo/backend";
 import type { DemoClaims } from "./identity";
@@ -43,6 +43,8 @@ export interface HydrationRows {
   products?: Row[];
   /** businessEntities rows — first-class entity + ABN (Tier 3 #4), readable by any signed-in user. */
   businessEntities?: Row[];
+  /** clinics rows — the clinic directory for admin pickers; super-admin hydration only. */
+  clinics?: Row[];
   currentUserID: string;
 }
 
@@ -133,12 +135,17 @@ export function assembleState(rows: HydrationRows): DemoState {
   const businessEntitiesByID: DemoState["businessEntitiesByID"] = {};
   for (const r of rows.businessEntities ?? []) businessEntitiesByID[r.id] = mapBusinessEntity(r.id, r.data);
 
+  // Clinic directory (spec: cooperation-linking): super-admin hydration only — {} for
+  // everyone else, and the admin console's clinic pickers are the sole consumer.
+  const clinicsByID: DemoState["clinicsByID"] = {};
+  for (const r of rows.clinics ?? []) clinicsByID[r.id] = mapClinic(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
   // Billing matrix (price lists / service fees / wallets): no Firestore schema yet — the
   // feature is demo-mode-first (live UI gates it off), so hydrate empty slices.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {} };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, clinicsByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -350,6 +357,10 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       auditLog: await runQuerySafe("auditLog"),
       products: await runQuerySafe("products"),
       businessEntities: await runQuerySafe("businessEntities"),
+      // The clinic directory for the admin console's cooperation picker (rules: the
+      // clinics collection is superAdmin- or member-readable; unconstrained list is
+      // provable for a super admin only). Best-effort like its sibling directories.
+      clinics: await runQuerySafe("clinics"),
       currentUserID: uid,
     });
   }

@@ -81,6 +81,9 @@ interface StoreValue {
   // request from — a sync selector over hydrated state (works in demo + live).
   cooperatingDoctors: (identity: Identity) => ReturnType<typeof backend.cooperatingDoctors>;
   cooperationRelationships: () => ReturnType<typeof backend.cooperationRelationshipsList>;
+  /** Clinic directory for the admin console's cooperation picker (live: super-admin
+   *  hydration of the clinics collection; demo: the seeded clinic). */
+  clinics: () => ReturnType<typeof backend.clinicDirectoryList>;
   relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
   setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
   removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
@@ -767,6 +770,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       accounts: () => backend.accountsInventory(state),
       cooperatingDoctors: (identity) => backend.cooperatingDoctors(state, identity),
       cooperationRelationships: () => backend.cooperationRelationshipsList(state),
+      clinics: () => backend.clinicDirectoryList(state),
       relationshipAuditFor: (relationshipID) => backend.relationshipAuditForRelationship(state, relationshipID),
       setCooperationRelationship: (input, actor) => {
         // Eager-validate (throws before the async live branch); relationships are demo-writable.

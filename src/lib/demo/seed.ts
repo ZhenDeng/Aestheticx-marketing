@@ -129,6 +129,10 @@ export function buildSeedState(): DemoState {
     },
   } };
 
+  // Clinic directory (spec: cooperation-linking): the demo's one clinic, so the admin
+  // console's clinic picker mirrors live (which hydrates the clinics collection).
+  state = { ...state, clinicsByID: { [LUMIERE.id]: LUMIERE } };
+
   // Tier 3 #4: seed demo business entities so the admin editor has a real dataset (live hydrates
   // businessEntitiesByID from Firestore). The clinic starts with a BLANK ABN — the exact gap the
   // editor fills (a clinic-billed tax invoice needs the clinic's ABN); the doctor issuer has one.
