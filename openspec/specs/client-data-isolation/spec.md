@@ -1,6 +1,10 @@
-# client-data-isolation — Delta Spec
+# client-data-isolation Specification
 
-## ADDED Requirements
+## Purpose
+
+Ownership-based access boundaries for client records: who may view, manage, and invoice a client based on its owning silo (doctor / nurse / clinic) and active collaboration. Commercial access is deliberately separate from the clinical permissions matrix.
+
+## Requirements
 
 ### Requirement: Ownership-scoped client visibility
 The client book SHALL be scoped by `PatientOwner`. A doctor-owned client SHALL be visible only to the owning doctor. A nurse-owned client SHALL be visible only to the owning nurse. A clinic-owned client SHALL be visible to users whose active identity context is that clinic and to doctors holding an active cooperation relationship with that clinic. Existing clinical grants (a patient's `prescribingDoctorIDs` and open reviewer access) SHALL continue to allow authorisation review, but SHALL NOT grant commercial access (checkout, wallet, invoicing). Platform-admin oversight routes SHALL be unaffected.

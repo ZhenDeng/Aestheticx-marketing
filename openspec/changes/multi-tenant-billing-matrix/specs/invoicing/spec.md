@@ -18,7 +18,7 @@ Every invoice kind introduced by the billing matrix (`client-sale`, `service-fee
 - **THEN** the TO block shows the client's name and address lines with no ABN row
 
 ### Requirement: Invoice access by direction and kind
-Invoice read scoping SHALL extend to the new kinds: a user SHALL see an invoice when their active identity is the issuer silo or the bill-to counterparty. Doctors SHALL keep their authorisation invoices unchanged and additionally see their own client-sale and service-fee documents; nurses SHALL see documents they issued; clinic-context users SHALL see clinic-issued client invoices and service-fee invoices billed to the clinic. The Invoice navigation entry SHALL be available to doctors, nurses, and clinic admins, with each role's page showing only its streams. Existing authorisation-invoice visibility SHALL be unchanged.
+Invoice read scoping SHALL extend to the new kinds: a user SHALL see an invoice when their active identity is the issuer silo or the bill-to counterparty. Doctors SHALL keep their authorisation invoices unchanged and additionally see their own client-sale and service-fee documents; nurses SHALL see documents they issued; clinic-context users SHALL see clinic-issued client invoices and service-fee invoices billed to the clinic. Practitioner-issued CLIENT documents (sales/top-ups) belong to the independent identity's book — the same user's clinic identity SHALL NOT see them; service-fee invoices are the practitioner's own earnings and SHALL follow the person across identities. The Invoice navigation entry SHALL be available to doctors, nurses, and clinic admins, with each role's page showing only its streams. Existing authorisation-invoice visibility SHALL be unchanged.
 
 #### Scenario: Clinic admin sees both sides of a split checkout
 - **WHEN** a split-billing checkout completes and the clinic admin opens billing
@@ -31,3 +31,18 @@ Invoice read scoping SHALL extend to the new kinds: a user SHALL see an invoice 
 #### Scenario: Doctor's authorisation stream unchanged
 - **WHEN** a doctor opens billing after this change with no checkouts performed
 - **THEN** the authorisation invoicing view (summary, generate panel, invoice list) is identical to the pre-change behavior
+
+#### Scenario: Client documents stay in the independent book
+- **WHEN** an independent nurse who also holds a clinic identity issues a client sale, then switches to her clinic identity
+- **THEN** the clinic identity's billing page shows her service fees but not her independent client sales or top-ups
+
+### Requirement: Matrix invoice settlement lifecycle
+Matrix invoices SHALL be settled by their ISSUER silo: the issuing practitioner (any identity) or, for clinic-issued documents, any clinic-context member may mark them paid. Draft service-fee invoices SHALL NOT be markable as paid before finalizing. Matrix invoices SHALL NOT be deletable — top-up and wallet-settled invoices are cross-linked from the append-only wallet ledger, so deletion would orphan ledger entries. Top-up invoices are born paid (settled at the counter); wallet-settled checkouts are marked paid by the wallet at generation.
+
+#### Scenario: Issuer marks a client invoice paid
+- **WHEN** the issuing nurse (or a clinic admin for a clinic-issued invoice) clicks Mark paid on an unpaid client invoice
+- **THEN** the invoice records paid with timestamp and actor; outsiders attempting the same are rejected
+
+#### Scenario: Drafts cannot settle
+- **WHEN** anyone attempts to mark a draft service-fee invoice paid
+- **THEN** the action is rejected until the practitioner finalizes it

@@ -35,5 +35,5 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Full suite green: `npm test`, `tsc --noEmit`, `npm run lint`, `npm run build`
-- [ ] 6.2 Regression pass on existing flows: authorisation invoicing tests, direction/68C tests, selective-invoicing UI tests all untouched-green
+- [x] 6.1 Full suite green: `npm test`, `tsc --noEmit`, `npm run lint`, `npm run build`
+- [x] 6.2 Regression pass on existing flows: authorisation invoicing tests, direction/68C tests, selective-invoicing UI tests all untouched-green
