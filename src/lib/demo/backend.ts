@@ -10,7 +10,6 @@ import type {
   AuthorisationRequest,
   DateOfBirth,
   DaySchedule,
-  DeliveryStatus,
   DemoState,
   DoctorStatus,
   Identity,
@@ -1611,32 +1610,9 @@ export function recordAftercareSend(
     authorBadge: identityBadge(input.identity),
     consumedAuthorisationIDs: [],
     medications: input.medications,
-    deliveryStatus: "queued",
     aftercareCategories: input.categories,
   };
   return appendNote(state, note);
-}
-
-// Update the delivery status of an aftercare send-record note (mirror-back / demo retry).
-export function setNoteDeliveryStatus(
-  state: DemoState, patientID: string, noteID: string, status: DeliveryStatus, identity: Identity,
-): DemoState {
-  const patient = state.patients[patientID];
-  if (!patient) throw new BackendError("notFound");
-  // Mirror recordAftercareSend's gate exactly — only a sender (nurse/doctor) with note-write
-  // access may change an aftercare record's delivery status. A read-only reviewer cannot.
-  if (!canSendAftercare(identity) || !canWriteAnyNote(patientPermissions(identity, patient))) {
-    throw new BackendError("notPermitted");
-  }
-  const list = state.notesByPatient[patientID] ?? [];
-  const idx = list.findIndex((n) => n.id === noteID);
-  if (idx < 0) throw new BackendError("notFound");
-  const next = [...list];
-  // Parity with the backend's mirrorToNote, which deletes failureReason on a successful
-  // re-delivery: only a still-failed note carries a reason.
-  const { failureReason, ...note } = next[idx];
-  next[idx] = status === "failed" ? { ...note, deliveryStatus: status, failureReason } : { ...note, deliveryStatus: status };
-  return { ...state, notesByPatient: { ...state.notesByPatient, [patientID]: next } };
 }
 
 // Spec (clinical-notes): photos are the image/* attachments; they thumbnail inline and in

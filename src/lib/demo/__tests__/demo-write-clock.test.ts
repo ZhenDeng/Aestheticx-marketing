@@ -42,16 +42,16 @@ describe("demo write clock — ordering against seeded data", () => {
   it("puts a freshly sent aftercare note above the seeded failed one", () => {
     const clock = createDemoWriteClock();
     const seeded = buildSeedState();
-    // p-1 is Amara, who carries the seeded failed-aftercare record.
+    // p-1 is Amara, who already carries a seeded aftercare record.
     const before = notesForPatient(seeded, "p-1");
-    expect(before.some((n) => n.deliveryStatus === "failed")).toBe(true);
+    expect(before.some((n) => n.kind === "aftercareRecord")).toBe(true);
 
     const { state } = recordAftercareSend(
       seeded, { patientID: "p-1", content: "Fresh send", medications: [], categories: [], identity: voss }, clock(),
     );
     const after = notesForPatient(state, "p-1");
     expect(after[0].body).toBe("Fresh send");
-    expect(after[0].deliveryStatus).toBe("queued");
+    expect(after[0].kind).toBe("aftercareRecord");
   });
 
   it("would regress if writes reused SEED_NOW — the seeded note wins the tie", () => {

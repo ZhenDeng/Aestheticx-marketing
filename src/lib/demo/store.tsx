@@ -38,10 +38,6 @@ interface StoreValue {
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
-  /** Resolves once the re-send has been attempted, so callers can disable their control
-   *  while it is in flight — a live retry sends a REAL email, so a double-click would
-   *  deliver the patient two copies. */
-  retryAftercare: (patientID: string, noteID: string, identity: Identity) => Promise<void>;
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
   saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
   deleteNoteTemplate: (id: string, identity: Identity) => void;
@@ -449,40 +445,13 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         );
       },
       sendAftercare: (input) => {
-        // Demo records the aftercareRecord note locally. Live calls the deployed
-        // sendAftercare callable — it queues the email AND writes the note server-side,
-        // so we must NOT also write locally here; rehydrate to pull the new note.
-        if (!live) {
-          setState((s) => backend.recordAftercareSend(s, input, writeNow()).state);
-          return;
-        }
-        void (async () => {
-          try {
-            const m = await import("@/lib/firebase/mirror");
-            await m.mirrorSendAftercare({
-              patientID: input.patientID, content: input.content, medications: input.medications,
-            });
-            setRefreshTick((t) => t + 1);
-          } catch (e) {
-            setLastSyncError(syncErrorMessage(e));
-          }
-        })();
-      },
-      retryAftercare: async (patientID, noteID, identity) => {
-        // Demo: a successful re-attempt flips the record to delivered. Live calls the deployed
-        // retryAftercare callable, which re-delivers and mirrors the fresh status onto the note
-        // server-side — so, as with sendAftercare, we must NOT write locally; rehydrate instead.
-        if (!live) {
-          setState((s) => backend.setNoteDeliveryStatus(s, patientID, noteID, "delivered", identity));
-          return;
-        }
-        try {
-          const m = await import("@/lib/firebase/mirror");
-          await m.mirrorRetryAftercare(patientID, noteID);
-          setRefreshTick((t) => t + 1);
-        } catch (e) {
-          setLastSyncError(syncErrorMessage(e));
-        }
+        // The practitioner's mail client sends the email (AftercareForm opens a mailto), so this
+        // only records that aftercare was issued. Nothing calls the sendAftercare callable any
+        // more — the web writes the note itself, exactly like saveGeneralNote. (iOS still uses
+        // the callable; the backend is unchanged.) Id minted eagerly so the local copy and the
+        // mirrored doc agree under Strict Mode's double-invoked updater.
+        const { state: next, note } = backend.recordAftercareSend(state, input, writeNow());
+        applyAndMirror(() => next, (m) => m.mirrorCreateNote(input.patientID, note));
       },
       noteTemplatesForOwner: (ownerID) => backend.noteTemplatesForOwner(state, ownerID),
       saveNoteTemplate: (template, identity) =>

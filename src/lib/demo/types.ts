@@ -202,8 +202,6 @@ export interface Authorisation {
 
 export type NoteKind = "general" | "treatment" | "aftercareRecord";
 
-export type DeliveryStatus = "queued" | "delivered" | "failed";
-
 export interface TreatmentMedication {
   name: string;
   batch?: string;
@@ -234,11 +232,6 @@ export interface Note {
   consumedAuthorisationIDs: string[];
   medications: TreatmentMedication[];
   attachments?: NoteAttachment[];        // absent on legacy/aftercare notes
-  deliveryStatus?: DeliveryStatus;       // aftercare records only
-  /** Why delivery failed, mirrored onto the note by the backend's mailDelivery trigger
-   *  (e.g. the verbatim provider rejection). Only ever set alongside deliveryStatus
-   *  "failed" — the trigger deletes it when a retry succeeds. */
-  failureReason?: string;
   aftercareCategories?: AftercareCategory[]; // audit trail of an aftercare send
 }
 

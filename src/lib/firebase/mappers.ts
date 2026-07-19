@@ -5,7 +5,7 @@ import type {
   ExternalBusyCalendar, ExternalBusyEvent,
   MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, Premise, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
-  NoteTemplate, FollowUpTask, FollowUpStatus, DeliveryStatus, AvailabilityWindow,
+  NoteTemplate, FollowUpTask, FollowUpStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
   CooperationRelationship, CounterpartyType, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
   AuditLogEntry, AuditAction, BusinessEntity, BusinessEntityType,
@@ -118,13 +118,6 @@ export function mapNote(id: string, patientID: string, data: Doc): Note {
       name: str(m.name), batch: str(m.batch), expiry: str(m.expiry), dosage: str(m.dosage),
     })),
     attachments: mapAttachments(data.attachments),
-    deliveryStatus: ((): DeliveryStatus | undefined => {
-      const s = str(data.deliveryStatus);
-      return s === "queued" || s === "delivered" || s === "failed" ? s : undefined;
-    })(),
-    // Not str(): an absent reason must stay undefined so the UI can distinguish "no reason
-    // recorded" from an empty one, rather than rendering a blank explanation line.
-    failureReason: typeof data.failureReason === "string" && data.failureReason !== "" ? data.failureReason : undefined,
     aftercareCategories: strArray(data.aftercareCategories)
       .filter((c): c is AftercareCategory => (AFTERCARE_CATEGORIES as readonly string[]).includes(c)),
   };
@@ -449,8 +442,6 @@ export function encodeNote(n: Note): Doc {
     // Always written (iOS parity); the demo-only dataUrl never reaches Firestore.
     attachments: (n.attachments ?? []).map((a) => ({ fileId: a.fileID, displayName: a.displayName, mimeType: a.mimeType })),
     // Aftercare-only fields — omitted on general/treatment notes (iOS parity, no schema noise).
-    ...(n.deliveryStatus !== undefined && { deliveryStatus: n.deliveryStatus }),
-    ...(n.failureReason !== undefined && { failureReason: n.failureReason }),
     ...(n.aftercareCategories !== undefined && { aftercareCategories: n.aftercareCategories }),
   };
 }

@@ -159,29 +159,6 @@ export async function mirrorConsumeRepeats(input: ConsumeRepeatsInput): Promise<
   });
 }
 
-// sendAftercare queues the email AND writes the aftercareRecord note server-side,
-// so callers must NOT also create the note locally in live mode — rehydrate after.
-export async function mirrorSendAftercare(input: {
-  patientID: string;
-  content: string;
-  medications: TreatmentMedication[];
-}): Promise<void> {
-  await httpsCallable(functions(), "sendAftercare")({
-    patientId: input.patientID,
-    content: input.content,
-    medications: input.medications.map((m) => ({
-      name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "",
-    })),
-  });
-}
-
-// Re-attempt a failed aftercare email. mailOutbox is Function-only, so the deployed
-// callable takes the patient note we DO hold and resolves the linked outbox doc itself,
-// re-delivering and mirroring the fresh status (+ cleared failureReason) back onto the note.
-export async function mirrorRetryAftercare(patientID: string, noteID: string): Promise<void> {
-  await httpsCallable(functions(), "retryAftercare")({ patientId: patientID, noteId: noteID });
-}
-
 export async function mirrorCreatePatient(p: Patient): Promise<void> {
   await setDoc(doc(firestore(), "patients", p.id), encodePatientForCreate(p));
 }
