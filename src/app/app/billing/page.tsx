@@ -267,7 +267,18 @@ function MatrixStreams() {
         <section className="mt-10" data-testid="client-invoices">
           <h2 className="font-display text-xl text-ink">Client invoices</h2>
           <ul className="mt-3 flex flex-col gap-1.5">
-            {clientDocs.map((inv) => <MatrixInvoiceRow key={inv.id} invoice={inv} />)}
+            {/* Client documents are only ever visible to their issuer silo (the bill-to
+                is a patient), so every viewer of this stream may settle them. */}
+            {clientDocs.map((inv) => (
+              <MatrixInvoiceRow key={inv.id} invoice={inv} action={
+                !inv.paid ? (
+                  <button type="button" onClick={() => store.markInvoicePaid(inv.id, me)}
+                    className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                    Mark paid
+                  </button>
+                ) : undefined
+              } />
+            ))}
           </ul>
         </section>
       )}
@@ -291,7 +302,17 @@ function MatrixStreams() {
           )}
           {issued.length > 0 && (
             <ul className="mt-3 flex flex-col gap-1.5">
-              {issued.map((inv) => <MatrixInvoiceRow key={inv.id} invoice={inv} />)}
+              {/* The practitioner (issuer) records the clinic's settlement of their fee. */}
+              {issued.map((inv) => (
+                <MatrixInvoiceRow key={inv.id} invoice={inv} action={
+                  !inv.paid ? (
+                    <button type="button" onClick={() => store.markInvoicePaid(inv.id, me)}
+                      className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                      Mark paid
+                    </button>
+                  ) : undefined
+                } />
+              ))}
             </ul>
           )}
         </section>

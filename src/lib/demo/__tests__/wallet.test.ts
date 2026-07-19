@@ -102,6 +102,20 @@ describe("topUpWallet", () => {
     expect(entry.invoiceID).toBe("");
   });
 
+  it("mergePatients carries the removed duplicate's wallet ledger onto the kept file", async () => {
+    const { mergePatients } = await import("../backend");
+    let state = buildSeedState();
+    const amara = findPatient(state, "Amara Boyd");
+    // A duplicate clinic record holding credit.
+    const dup: Patient = { ...amara, id: "p-dup", lastName: "Boyd-Dup", prescribingDoctorIDs: [] };
+    state = { ...state, patients: { ...state.patients, [dup.id]: dup } };
+    state = topUpWallet(state, { patientID: dup.id, paidCents: 50000, giftCents: 0 }, ava, SEED_NOW);
+    const keepBefore = walletBalanceCents(state, amara.id);
+    state = mergePatients(state, amara.id, dup.id, ava);
+    expect(walletBalanceCents(state, amara.id)).toBe(keepBefore + 50000);
+    expect(state.walletByPatientID[dup.id]).toBeUndefined();
+  });
+
   it("writes a wallet_topup audit entry", () => {
     const state = buildSeedState();
     const claire = findPatient(state, "Claire Donovan");

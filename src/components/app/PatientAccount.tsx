@@ -12,9 +12,14 @@ import { computeInclusiveTotals, formatAUD } from "@/lib/demo/invoicing";
 import { invoiceNumber } from "@/lib/demo/invoicePdf";
 import type { Identity, Patient, PriceListItem, WalletEntry } from "@/lib/demo/types";
 
-function centsFromInput(v: string): number {
-  const cents = Math.round((parseFloat(v) || 0) * 100);
-  return cents > 0 ? cents : 0;
+// Currency entry tolerant of display formatting ("4,000", "$450.00") — bare parseFloat
+// would silently read "4,000" as 4 dollars. Anything else non-numeric is INVALID, never
+// coerced to zero: this field moves real money, so a typo must surface, not vanish.
+function parseAmountInput(v: string): { cents: number; invalid: boolean } {
+  const cleaned = v.replace(/[,$\s]/g, "");
+  if (cleaned === "") return { cents: 0, invalid: false };
+  if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return { cents: 0, invalid: true };
+  return { cents: Math.round(parseFloat(cleaned) * 100), invalid: false };
 }
 
 /** The gold promotional-gift token (design-ui.md: never mixed into the cash figure). */
@@ -76,12 +81,15 @@ function TopUpPanel({ patient, identity, onDone }: { patient: Patient; identity:
   const store = useDemoStore();
   const [paidInput, setPaidInput] = useState("");
   const [giftInput, setGiftInput] = useState("");
-  const paidCents = centsFromInput(paidInput);
-  const giftCents = centsFromInput(giftInput);
+  const paid = parseAmountInput(paidInput);
+  const gift = parseAmountInput(giftInput);
+  const paidCents = paid.cents;
+  const giftCents = gift.cents;
+  const invalid = paid.invalid || gift.invalid;
   const totalCents = paidCents + giftCents;
 
   function confirm() {
-    if (totalCents <= 0) return;
+    if (invalid || totalCents <= 0) return;
     store.topUpWallet({ patientID: patient.id, paidCents, giftCents }, identity);
     onDone();
   }
@@ -107,6 +115,11 @@ function TopUpPanel({ patient, identity, onDone }: { patient: Patient; identity:
           <span className="font-display text-2xl text-ink">{formatAUD(totalCents)}</span>
         </span>
       </div>
+      {invalid && (
+        <p className="mt-1 text-xs" style={{ color: "var(--color-rose)" }}>
+          Enter a valid amount — digits only, e.g. 4000 or 4,000.00.
+        </p>
+      )}
       {/* GST note: the tax invoice charges only the PAID amount; the gift is a non-taxable footnote. */}
       {giftCents > 0 && paidCents > 0 && (
         <p className="mt-1 text-xs text-ink-soft">
@@ -114,7 +127,7 @@ function TopUpPanel({ patient, identity, onDone }: { patient: Patient; identity:
         </p>
       )}
       <div className="mt-3">
-        <button type="button" onClick={confirm} disabled={totalCents <= 0}
+        <button type="button" onClick={confirm} disabled={invalid || totalCents <= 0}
           className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-50" style={{ background: "var(--color-tint)" }}>
           Top up &amp; issue invoice
         </button>
@@ -161,7 +174,10 @@ function CheckoutPanel({ patient, identity, balance, onDone }: {
     store.checkoutClient({
       patientID: patient.id,
       items: selected.map((i) => ({ itemID: i.id, qty: qtyByItem[i.id] })),
-      payFromWallet,
+      // Re-derive at submit: a tick made while the balance still covered the total must
+      // not survive a later qty bump past it — stale true would make the reducer throw
+      // instead of recording the checkout unpaid.
+      payFromWallet: payFromWallet && walletCovers,
     }, identity);
     onDone();
   }

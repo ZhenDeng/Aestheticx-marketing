@@ -1886,11 +1886,19 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   const patients = { ...state.patients, [keepId]: mergedKeep };
   delete patients[removeId];
 
+  // The wallet ledger follows the merge too — a duplicate's account credit must land
+  // on the kept file, never orphan under a deleted patient id (billing matrix).
+  const walletByPatientID = { ...state.walletByPatientID };
+  if (walletByPatientID[removeId]?.length) {
+    walletByPatientID[keepId] = [...(walletByPatientID[keepId] ?? []), ...walletByPatientID[removeId]];
+  }
+  delete walletByPatientID[removeId];
+
   // Recompute the kept file's reviewer set from the re-pointed request set (mirror of the
   // backend trigger) rather than unioning the two stale arrays — this drops any reviewer
   // whose request didn't actually move, keeping the invariant true.
   return syncReviewerAccess(
-    { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests },
+    { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests, walletByPatientID },
     keepId,
   );
 }
@@ -2400,6 +2408,10 @@ export function generateInvoice(
 export function deleteInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
   const invoice = state.invoices.find((i) => i.id === invoiceID);
   if (!invoice) throw new BackendError("notFound");
+  // Matrix invoices are deliberately NOT deletable in this change: top-up and
+  // wallet-settled invoices are cross-linked from the append-only wallet ledger, so
+  // deletion would orphan ledger entries. The doctorID gate below is "" on matrix
+  // invoices and therefore fails closed for everyone.
   if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
   const memberIDs = new Set(invoice.authorisationIDs);
   const authorisations = { ...state.authorisations };
@@ -2424,7 +2436,18 @@ export function deleteInvoice(state: DemoState, invoiceID: string, identity: Ide
 export function markInvoicePaid(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
   const invoice = state.invoices.find((i) => i.id === invoiceID);
   if (!invoice) throw new BackendError("notFound");
-  if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
+  if (invoice.kind) {
+    // Matrix invoices (doctorID is inert ""): the ISSUER silo settles them — the
+    // issuing practitioner, or any clinic-context member for clinic-issued documents.
+    // Drafts can't be settled; finalize first (queued-for-review semantics).
+    const issuer = invoice.issuerRef;
+    const isIssuer = issuer !== undefined && (issuer.kind === "clinic"
+      ? contextClinicID(identity) === issuer.id
+      : issuer.id === identity.user.id);
+    if (!isIssuer || invoice.draft) throw new BackendError("notPermitted");
+  } else if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) {
+    throw new BackendError("notPermitted");
+  }
   if (invoice.paid) return state; // already paid — no-op (idempotent, matches the backend)
   const invoices = state.invoices.map((i) =>
     i.id === invoiceID ? { ...i, paid: true, paidAt: now, markedBy: identity.user.id } : i,

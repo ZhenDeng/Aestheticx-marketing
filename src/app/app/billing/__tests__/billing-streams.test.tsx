@@ -36,6 +36,7 @@ const legacyDoctorInvoice = inv({ doctorID: "u-voss", counterpartyID: "u-sarah",
 let currentIdentity: Identity = sarahClinic;
 let invoices: Invoice[] = [];
 const finalizeServiceFee = vi.fn();
+let storeOverrides: Record<string, unknown> = {};
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/demo/auth", () => ({
@@ -58,6 +59,7 @@ vi.mock("@/lib/demo/store", () => ({
     finalizeServiceFee,
     customTimeframeCount: () => 0,
     clinicBusinessStats: () => null,
+    ...storeOverrides,
   }),
 }));
 
@@ -65,17 +67,19 @@ import BillingPage from "@/app/app/billing/page";
 
 beforeEach(() => {
   finalizeServiceFee.mockReset();
+  storeOverrides = {};
   currentIdentity = sarahClinic;
   invoices = [sarahTopUp, clinicSale, sarahFeeDraft, sarahFeeFinal, legacyDoctorInvoice];
 });
 
 describe("nurse streams", () => {
-  it("lists issued client documents with kind chips", () => {
+  it("lists issued client documents with kind chips, scoped to the ACTIVE identity's silo", () => {
     render(<BillingPage />);
     const section = screen.getByTestId("client-invoices");
-    // Clinic-context Sarah sees both her personal top-up and the clinic-issued sale.
-    expect(within(section).getAllByText(/claire donovan/i)).toHaveLength(2);
-    expect(within(section).getByText(/top-up/i)).toBeInTheDocument();
+    // Clinic-context Sarah sees the clinic-issued sale but NOT her independent-book
+    // top-up (client documents stay in the silo that owns the client).
+    expect(within(section).getAllByText(/claire donovan/i)).toHaveLength(1);
+    expect(within(section).queryByText(/top-up/i)).not.toBeInTheDocument();
     expect(within(section).getByText(/client sale/i)).toBeInTheDocument();
   });
 
@@ -85,6 +89,18 @@ describe("nurse streams", () => {
     expect(within(section).getByText(/draft/i)).toBeInTheDocument();
     await userEvent.click(within(section).getByRole("button", { name: /finalize/i }));
     expect(finalizeServiceFee).toHaveBeenCalledWith(sarahFeeDraft.id, sarahClinic);
+  });
+});
+
+describe("matrix mark-paid affordance", () => {
+  it("shows Mark paid on an unpaid client invoice for the issuer and calls the store", async () => {
+    const markInvoicePaid = vi.fn();
+    storeOverrides = { markInvoicePaid };
+    currentIdentity = ava;
+    render(<BillingPage />);
+    const section = screen.getByTestId("client-invoices");
+    await userEvent.click(within(section).getByRole("button", { name: /mark paid/i }));
+    expect(markInvoicePaid).toHaveBeenCalledWith(clinicSale.id, ava);
   });
 });
 

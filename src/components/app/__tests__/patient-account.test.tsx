@@ -155,6 +155,40 @@ describe("PatientAccountSection — checkout (spec: client-checkout)", () => {
     expect(within(history).getByText(/−\$450\.00/)).toBeInTheDocument();
   });
 
+  it("parses thousands-separated currency input correctly ('4,000' is $4,000, not $4)", async () => {
+    render(<PatientAccountSection patient={seedPatient("Claire Donovan")} />);
+    await userEvent.click(screen.getByRole("button", { name: /top up/i }));
+    await userEvent.type(screen.getByLabelText(/paid amount/i), "4,000");
+    expect(screen.getByText("$4,000.00")).toBeInTheDocument();
+  });
+
+  it("flags unparseable amounts instead of silently treating them as zero", async () => {
+    render(<PatientAccountSection patient={seedPatient("Claire Donovan")} />);
+    await userEvent.click(screen.getByRole("button", { name: /top up/i }));
+    await userEvent.type(screen.getByLabelText(/paid amount/i), "4o00");
+    expect(screen.getByText(/enter a valid amount/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /top up & issue invoice/i })).toBeDisabled();
+  });
+
+  it("drops a stale wallet tick when the total grows past the balance (checkout succeeds unpaid, no crash)", async () => {
+    render(<PatientAccountSection patient={seedPatient("Claire Donovan")} />);
+    await userEvent.click(screen.getByRole("button", { name: /top up/i }));
+    await userEvent.type(screen.getByLabelText(/paid amount/i), "800");
+    await userEvent.click(screen.getByRole("button", { name: /top up & issue invoice/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^checkout$/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /skin booster session/i })); // $450 ≤ $800
+    await userEvent.click(screen.getByRole("checkbox", { name: /pay from account balance/i }));
+    // Grow the selection past the balance: 3 × $450 = $1,350 > $800.
+    await userEvent.click(screen.getByRole("button", { name: /increase skin booster session quantity/i }));
+    await userEvent.click(screen.getByRole("button", { name: /increase skin booster session quantity/i }));
+    await userEvent.click(screen.getByRole("button", { name: /confirm checkout/i }));
+    // The stale tick must not throw or draw down — balance intact, checkout recorded unpaid.
+    expect(await screen.findByText("$800.00")).toBeInTheDocument();
+    const history = screen.getByTestId("wallet-history");
+    expect(within(history).queryByText(/−/)).not.toBeInTheDocument();
+  });
+
   it("offers no wallet payment when the balance is short", async () => {
     render(<PatientAccountSection patient={seedPatient("Claire Donovan")} />);
     await userEvent.click(screen.getByRole("button", { name: /^checkout$/i }));

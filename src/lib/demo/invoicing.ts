@@ -223,7 +223,21 @@ export function invoicesFor(invoices: Invoice[], identity: Identity): Invoice[] 
         : i.counterpartyType === "nurse" && i.counterpartyID === identity.user.id;
     }
     const issuer = i.issuerRef;
-    const isIssuer = issuer !== undefined && (issuer.kind === "clinic" ? issuer.id === clinicId : issuer.id === identity.user.id);
+    const kind = resolveInvoiceKind(i);
+    let isIssuer = false;
+    if (issuer !== undefined) {
+      if (issuer.kind === "clinic") {
+        isIssuer = issuer.id === clinicId;
+      } else if (issuer.id === identity.user.id) {
+        // Practitioner-issued documents: SERVICE FEES are the practitioner's own
+        // earnings from clinic work and follow the person across identities (a
+        // clinic-only nurse must see and finalize her drafts). CLIENT documents
+        // (sales/top-ups) belong to the silo that owns the client — the independent
+        // book — and carry client PII, so the same user's clinic identity is not the
+        // issuer (isolation doctrine, mirrors patientAccessLevel's owner check).
+        isIssuer = kind === "service-fee" || identity.context.kind === "independent";
+      }
+    }
     if (isIssuer) return true;
     if (i.draft) return false;
     return i.counterpartyType === "clinic" && clinicId !== null && i.counterpartyID === clinicId;

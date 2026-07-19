@@ -202,6 +202,43 @@ describe("checkoutClient — isolation & coexistence", () => {
   });
 });
 
+describe("matrix invoice lifecycle — mark paid", () => {
+  it("the issuing practitioner can mark their unpaid client-sale invoice paid; outsiders cannot", async () => {
+    const { markInvoicePaid } = await import("../backend");
+    const state = buildSeedState();
+    const claire = findPatient(state, "Claire Donovan");
+    const item = state.priceListByOwner["nurse:u-sarah"][0];
+    const withSale = checkoutClient(state, { patientID: claire.id, items: [{ itemID: item.id, qty: 1 }] }, sarahIndependent, SEED_NOW);
+    const invoice = withSale.invoices[withSale.invoices.length - 1];
+    expect(invoice.paid).toBe(false);
+    expect(() => markInvoicePaid(withSale, invoice.id, ruby, SEED_NOW)).toThrow(BackendError);
+    const done = markInvoicePaid(withSale, invoice.id, sarahIndependent, SEED_NOW);
+    expect(done.invoices.find((i) => i.id === invoice.id)!.paid).toBe(true);
+  });
+
+  it("clinic-context staff can mark a clinic-issued client invoice paid", async () => {
+    const { markInvoicePaid } = await import("../backend");
+    const state = buildSeedState();
+    const amara = findPatient(state, "Amara Boyd");
+    const item = state.priceListByOwner[`clinic:${LUMIERE.id}`][0];
+    const withSale = checkoutClient(state, { patientID: amara.id, items: [{ itemID: item.id, qty: 1 }] }, ava, SEED_NOW);
+    const invoice = withSale.invoices.find((i) => resolveInvoiceKind(i) === "client-sale")!;
+    expect(() => markInvoicePaid(withSale, invoice.id, sarahIndependent, SEED_NOW)).toThrow(BackendError);
+    const done = markInvoicePaid(withSale, invoice.id, ava, SEED_NOW);
+    expect(done.invoices.find((i) => i.id === invoice.id)!.paid).toBe(true);
+  });
+
+  it("a draft service-fee invoice cannot be marked paid before finalizing", async () => {
+    const { markInvoicePaid } = await import("../backend");
+    const state = buildSeedState();
+    const amara = findPatient(state, "Amara Boyd");
+    const item = state.priceListByOwner[`clinic:${LUMIERE.id}`][0];
+    const withDraft = checkoutClient(state, { patientID: amara.id, items: [{ itemID: item.id, qty: 1 }] }, sarahClinic, SEED_NOW);
+    const draft = withDraft.invoices.find((i) => resolveInvoiceKind(i) === "service-fee")!;
+    expect(() => markInvoicePaid(withDraft, draft.id, sarahClinic, SEED_NOW)).toThrow(BackendError);
+  });
+});
+
 describe("ownerKeyOf", () => {
   it("keys a silo as kind:id", () => {
     expect(ownerKeyOf({ kind: "clinic", id: LUMIERE.id })).toBe(`clinic:${LUMIERE.id}`);

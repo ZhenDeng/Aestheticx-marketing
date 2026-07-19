@@ -53,4 +53,16 @@ describe("invoicesFor — matrix scoping", () => {
     expect(ids(invoicesFor(all, ava))).not.toContain(sarahFeeDraft.id);
     expect(ids(invoicesFor(all, sarahClinic))).toContain(sarahFeeDraft.id);
   });
+
+  it("client documents stay in the independent book: Sarah's clinic identity sees her service fees but NOT her independent client sales/top-ups", () => {
+    // Client-sale/top-up documents belong to the silo that owns the client — the
+    // independent book — and carry client PII; the same user's clinic identity has no
+    // access (isolation doctrine). Service fees are the practitioner's own earnings
+    // from clinic work and follow the person across identities.
+    const clinicView = ids(invoicesFor(all, sarahClinic));
+    expect(clinicView).not.toContain(sarahSale.id);
+    expect(clinicView).not.toContain(sarahTopUp.id);
+    expect(clinicView).toContain(sarahFeeDraft.id);
+    expect(clinicView).toContain(sarahFeeFinal.id);
+  });
 });
