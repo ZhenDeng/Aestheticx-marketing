@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
-import { AFTERCARE_CATEGORIES, aftercareDisplayName, assembleAftercare, type AftercareCategory } from "@/lib/demo/aftercare";
-import type { Identity } from "@/lib/demo/types";
-
-const DEFAULT_CONTENT =
-  "Thank you for visiting. Avoid touching the treated area for 4 hours, no strenuous exercise for 24 hours, and contact us with any concerns.";
-const CLOSING = "\n\nContact us with any concerns — we're here to help.";
+import {
+  AFTERCARE_CATEGORIES, aftercareBody, aftercareDisplayName, aftercareEmail, type AftercareCategory,
+} from "@/lib/demo/aftercare";
+import { mailtoHref } from "@/lib/demo/remoteSigning";
+import { fullName, type Identity } from "@/lib/demo/types";
 
 export function AftercareForm({
   patientID, identity, onDone,
@@ -20,12 +19,13 @@ export function AftercareForm({
   // and captured into send() at click.
   const lastMeds = store.visibleNotesForPatient(patientID, identity).find((n) => n.kind === "treatment")?.medications ?? [];
   const [selected, setSelected] = useState<AftercareCategory[]>([]);
-  const [content, setContent] = useState(DEFAULT_CONTENT);
+  const [content, setContent] = useState(() => aftercareBody([]));
   const [includeMeds, setIncludeMeds] = useState(true);
-  // 15/07 bug: aftercare is emailed to the patient's address. It's the one email path with no
-  // empty-recipient guard, so a blank email silently queued a doomed send. Surface the recipient
-  // and block sending when there's nothing to send to, rather than fail invisibly.
-  const recipient = store.state.patients[patientID]?.email?.trim() ?? "";
+  // 15/07 bug: aftercare goes to the patient's address, and this was the one email path with no
+  // empty-recipient guard. Still true under the mailto hand-off — a mailto with no address just
+  // opens an unaddressed draft — so surface the recipient and block the hand-off without one.
+  const patient = store.state.patients[patientID];
+  const recipient = patient?.email?.trim() ?? "";
   const canSend = recipient.length > 0;
 
   // Each toggle re-assembles the editable body (matching iOS — manual edits persist
@@ -33,11 +33,18 @@ export function AftercareForm({
   function toggle(c: AftercareCategory) {
     const next = selected.includes(c) ? selected.filter((x) => x !== c) : [...selected, c];
     setSelected(next);
-    setContent(next.length ? assembleAftercare(next) + CLOSING : DEFAULT_CONTENT);
+    setContent(aftercareBody(next));
   }
 
-  function send() {
-    if (!canSend) return; // no recipient — the button is disabled, but guard the handler too
+  // Composed from the CURRENT textarea contents, so the practitioner's edits are what leaves.
+  const email = aftercareEmail(patient ? fullName(patient) : "", content);
+  const href = mailtoHref(recipient, email.subject, email.body);
+
+  // The mail client sends it, not us — so this only records that aftercare was issued. There is
+  // deliberately no delivery status: a mailto hand-off tells us nothing about what happened next.
+  const label = `Email${selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}`;
+
+  function recordSend() {
     store.sendAftercare({ patientID, content, medications: includeMeds ? lastMeds : [], categories: selected, identity });
     onDone();
   }
@@ -69,7 +76,9 @@ export function AftercareForm({
       )}
 
       {canSend ? (
-        <p className="mt-3 text-sm text-ink-soft">Will be emailed to {recipient}.</p>
+        <p className="mt-3 text-sm text-ink-soft">
+          Opens your email app with this message to {recipient}, ready for you to send.
+        </p>
       ) : (
         <p className="mt-3 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
           No email address on file for this patient — add one in the patient file before sending aftercare.
@@ -77,10 +86,20 @@ export function AftercareForm({
       )}
 
       <div className="mt-3 flex gap-2">
-        <button onClick={send} disabled={!canSend}
-                className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
-          Send{selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}
-        </button>
+        {/* An anchor, not a button: the mail client is opened by the browser following the
+            mailto, exactly as "Send a consent to sign" does. onClick only records the send.
+            Without a recipient there is nothing to address, so it degrades to a disabled button. */}
+        {canSend ? (
+          <a href={href} onClick={recordSend}
+             className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+            {label}
+          </a>
+        ) : (
+          <button disabled
+                  className="rounded-btn px-4 py-2 text-sm font-medium text-card opacity-40" style={{ background: "var(--color-tint)" }}>
+            {label}
+          </button>
+        )}
         <button onClick={onDone} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft">Cancel</button>
       </div>
     </div>
