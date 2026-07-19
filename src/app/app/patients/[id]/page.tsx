@@ -54,7 +54,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showTreatment, setShowTreatment] = useState(false);
   const [showAftercare, setShowAftercare] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
+  // iOS AuthorisationCard's Direction button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   // Note id of an in-flight aftercare retry. A live retry sends a REAL email and the note
   // keeps showing "failed" until the rehydrate lands, so without this a double-click would
@@ -329,10 +329,15 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               <li key={a.id}>
                 <p className="flex items-baseline justify-between gap-2">
                   <span className="font-medium text-ink">{a.medication.name}</span>
-                  {/* iOS AuthorisationCard: quiet "68C" affordance opens the Clause 68C direction capture. */}
+                  {/* iOS AuthorisationCard's direction affordance. Labelled for the document it
+                      produces, not the regulation clause — "68C" alone read as jargon (18/07
+                      feedback). The citation stays on hover, in the accessible name, and in the
+                      dialog heading. Resting colour is ink-soft rather than tint: the word is
+                      wider than "68C" was, and must not out-shout the medication name beside it. */}
                   <button type="button" onClick={() => setDirectionFor(a.id)} aria-label="Clause 68C direction"
-                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-tint)" }}>
-                    68C
+                          title="Clause 68C direction"
+                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-ink-soft)" }}>
+                    Direction
                   </button>
                 </p>
                 <p className="text-sm text-ink-soft">{a.medication.areas.join(", ")}</p>
@@ -341,7 +346,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                   {a.medication.dosage} {unitSuffix(a.medication.unit)}
                   {routeLabel(a.medication.route) ? ` · ${routeLabel(a.medication.route)}` : ""}
                 </p>
-                <p className="mt-1 flex gap-1" aria-label={`${a.repeatsRemaining} repeats remaining`}>
+                {/* role="img": the dots are a graphic, and ARIA prohibits aria-label on a bare
+                    <p>, so without a role the count was silently dropped for screen readers. */}
+                <p className="mt-1 flex gap-1" role="img" aria-label={`${a.repeatsRemaining} repeats remaining`}>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <span key={i} className="h-2 w-2 rounded-full" style={{ background: i < a.repeatsRemaining ? "var(--color-tint)" : "var(--color-line)" }} />
                   ))}

@@ -55,3 +55,22 @@ test("a11y — authenticated dashboard (nurse)", async ({ page }) => {
   const violations = await scan(page);
   expect(violations, JSON.stringify(violations.map((v) => v.id), null, 2)).toEqual([]);
 });
+
+// The Clause 68C capture dialog, scanned in its UNRESOLVED state — the one that carries the
+// aria-invalid / aria-describedby marking and the danger-tinted explanation. Scanning it filled
+// would miss exactly the markup this check exists for.
+test("a11y — direction capture dialog with an unresolved field", async ({ page }) => {
+  await loginAsDemo(page, DEMO.nurse2);
+
+  await page.getByRole("navigation").getByRole("link", { name: /patients/i }).first().click();
+  await page.waitForURL(/\/app\/patients/);
+  await page.locator('a[href^="/app/patients/"]').filter({ hasText: /Boyd/i }).first().click();
+  await page.getByRole("button", { name: "Clause 68C direction" }).first().click();
+
+  const premises = page.getByLabel(/premises of administration/i);
+  await premises.fill("");
+  await expect(premises).toHaveAttribute("aria-invalid", "true");
+
+  const violations = await scan(page);
+  expect(violations, JSON.stringify(violations.map((v) => v.id), null, 2)).toEqual([]);
+});
