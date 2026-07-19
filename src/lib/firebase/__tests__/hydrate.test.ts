@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FirebaseError } from "firebase/app";
-import { assembleState, notesRowsForPatient, shouldQueryReviewerPatients, type HydrationRows } from "@/lib/firebase/hydrate";
+import { appointmentRowsForScopes, assembleState, notesRowsForPatient, shouldQueryReviewerPatients, type HydrationRows } from "@/lib/firebase/hydrate";
 
 const rows: HydrationRows = {
   patients: [
@@ -88,6 +88,17 @@ describe("assembleState", () => {
     expect(state.productsByID["hafiller-juvederm-voluma"]).toEqual({
       id: "hafiller-juvederm-voluma", category: "haFiller", brand: "Juvederm", name: "Voluma", unit: "millilitres", isActive: true,
     });
+  });
+
+  it("maps clinics rows into clinicsByID (empty when the directory wasn't read)", () => {
+    const withClinics: HydrationRows = {
+      ...rows,
+      clinics: [{ id: "clinic-lumiere", data: { name: "Lumière Clinic", address: "12 Harbour Lane" } }],
+    };
+    expect(assembleState(withClinics).clinicsByID).toEqual({
+      "clinic-lumiere": { id: "clinic-lumiere", name: "Lumière Clinic", address: "12 Harbour Lane" },
+    });
+    expect(assembleState(rows).clinicsByID).toEqual({});
   });
 
   it("maps businessEntities rows into businessEntitiesByID (empty when the collection wasn't read) (Tier 3 #4)", () => {
@@ -183,5 +194,74 @@ describe("notesRowsForPatient (rules-are-not-filters fallback)", () => {
       throw new FirebaseError("unavailable", "treatment blip");
     };
     await expect(notesRowsForPatient("patients/p1/notes", "me", q)).rejects.toThrow("treatment blip");
+  });
+});
+
+describe("appointmentRowsForScopes (clinic-scope lockout hardening)", () => {
+  const denied = new FirebaseError("permission-denied", "Missing or insufficient permissions.");
+  const own = { id: "ap-own", data: { ownerId: "me" } };
+  const clinicOwned = { id: "ap-clinic", data: { ownerId: "clinic-1" } };
+  const booked = { id: "ap-booked", data: { ownerId: "dr-1", bookedById: "clinic-1" } };
+
+  it("unions own-calendar, clinic-calendar, and booked scopes (deduped by id)", async () => {
+    const q = async (field: "ownerId" | "bookedById", owner: string) => {
+      if (field === "ownerId" && owner === "me") return [own];
+      if (field === "ownerId" && owner === "clinic-1") return [clinicOwned, booked];
+      if (field === "bookedById" && owner === "clinic-1") return [booked];
+      return [];
+    };
+    const rows = await appointmentRowsForScopes("me", ["clinic-1"], q);
+    expect(rows.map((r) => r.id).sort()).toEqual(["ap-booked", "ap-clinic", "ap-own"]);
+  });
+
+  it("a denied clinic-calendar query degrades to an empty scope instead of aborting login (19/07 bug 1)", async () => {
+    const q = async (field: "ownerId" | "bookedById", owner: string) => {
+      if (field === "ownerId" && owner === "me") return [own];
+      if (field === "ownerId" && owner === "clinic-1") throw denied; // rules arm not deployed yet
+      return [];
+    };
+    expect((await appointmentRowsForScopes("me", ["clinic-1"], q)).map((r) => r.id)).toEqual(["ap-own"]);
+  });
+
+  it("a denied own-calendar query still fails loud (real outage, not a deploy-order gap)", async () => {
+    const q = async (field: "ownerId" | "bookedById", owner: string) => {
+      if (field === "ownerId" && owner === "me") throw denied;
+      return [];
+    };
+    await expect(appointmentRowsForScopes("me", ["clinic-1"], q)).rejects.toThrow(denied.message);
+  });
+
+  it("a transient error on a clinic-calendar query rethrows (degrade only on denial)", async () => {
+    const q = async (field: "ownerId" | "bookedById", owner: string) => {
+      if (field === "ownerId" && owner === "clinic-1") throw new FirebaseError("unavailable", "clinic blip");
+      return [];
+    };
+    await expect(appointmentRowsForScopes("me", ["clinic-1"], q)).rejects.toThrow("clinic blip");
+  });
+
+  it("a denied bookedById query degrades for any scope (grant ships in its own deploy)", async () => {
+    const q = async (field: "ownerId" | "bookedById") => {
+      if (field === "bookedById") throw denied;
+      return [own];
+    };
+    expect((await appointmentRowsForScopes("me", ["clinic-1"], q)).map((r) => r.id)).toEqual(["ap-own"]);
+  });
+
+  it("a transient error on a bookedById query rethrows (tightened from runQuerySafe's swallow-all)", async () => {
+    const q = async (field: "ownerId" | "bookedById") => {
+      if (field === "bookedById") throw new FirebaseError("unavailable", "booked blip");
+      return [own];
+    };
+    await expect(appointmentRowsForScopes("me", ["clinic-1"], q)).rejects.toThrow("booked blip");
+  });
+
+  it("with no clinic memberships, only the own-calendar scopes run", async () => {
+    const calls: string[] = [];
+    const q = async (field: "ownerId" | "bookedById", owner: string) => {
+      calls.push(`${field}:${owner}`);
+      return field === "ownerId" ? [own] : [];
+    };
+    expect((await appointmentRowsForScopes("me", [], q)).map((r) => r.id)).toEqual(["ap-own"]);
+    expect(calls).toEqual(["ownerId:me", "bookedById:me"]);
   });
 });

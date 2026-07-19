@@ -8,7 +8,7 @@ import type {
   NoteTemplate, FollowUpTask, FollowUpStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
   CooperationRelationship, CounterpartyType, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
-  AuditLogEntry, AuditAction, BusinessEntity, BusinessEntityType,
+  AuditLogEntry, AuditAction, BusinessEntity, BusinessEntityType, ClinicRef,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
@@ -223,6 +223,13 @@ export function mapBusinessEntity(id: string, data: Doc): BusinessEntity {
   const type = (BUSINESS_ENTITY_TYPE_SET.includes(str(data.type)) ? str(data.type) : "clinic") as BusinessEntityType;
   const tradingName = typeof data.tradingName === "string" && data.tradingName.length > 0 ? data.tradingName : undefined;
   return { id, type, legalName: str(data.legalName), tradingName, abn: str(data.abn), isActive: data.isActive !== false };
+}
+
+// Clinic directory entry (spec: cooperation-linking). Decodes a `clinics/{id}` doc into the
+// ClinicRef shape — name + street address only (abn stays server-side for billing fallback).
+export function mapClinic(id: string, data: Doc): ClinicRef {
+  const address = str(data.address);
+  return { id, name: str(data.name), ...(address ? { address } : {}) };
 }
 
 export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEntry {

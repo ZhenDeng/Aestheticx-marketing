@@ -5,7 +5,7 @@ import {
 } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
 import { firestore } from "./client";
-import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity, mapPremise } from "./mappers";
+import { mapPatient, mapNote, mapAuthorisation, mapAuthRequest, mapAppointment, mapForm, mapInvoice, mapNoteTemplate, mapFollowUpTask, mapAvailabilityWindow, mapTreatmentAvailability, mapExternalBusy, mapAccount, mapEmergencyAuthorisation, mapCooperationRelationship, mapRelationshipAudit, mapAuditLogEntry, mapProduct, mapBusinessEntity, mapClinic, mapPremise } from "./mappers";
 import type { AppointmentReminderLead, DemoState, FollowUpSettings, Premise, UserProfile } from "@/lib/demo/types";
 import { readFollowUpSettings } from "@/lib/demo/backend";
 import type { DemoClaims } from "./identity";
@@ -43,6 +43,8 @@ export interface HydrationRows {
   products?: Row[];
   /** businessEntities rows — first-class entity + ABN (Tier 3 #4), readable by any signed-in user. */
   businessEntities?: Row[];
+  /** clinics rows — the clinic directory for admin pickers; super-admin hydration only. */
+  clinics?: Row[];
   currentUserID: string;
 }
 
@@ -133,12 +135,17 @@ export function assembleState(rows: HydrationRows): DemoState {
   const businessEntitiesByID: DemoState["businessEntitiesByID"] = {};
   for (const r of rows.businessEntities ?? []) businessEntitiesByID[r.id] = mapBusinessEntity(r.id, r.data);
 
+  // Clinic directory (spec: cooperation-linking): super-admin hydration only — {} for
+  // everyone else, and the admin console's clinic pickers are the sole consumer.
+  const clinicsByID: DemoState["clinicsByID"] = {};
+  for (const r of rows.clinics ?? []) clinicsByID[r.id] = mapClinic(r.id, r.data);
+
   // addressByIdentity: per-identity address overrides have no Firestore schema yet (owner
   // feedback #2, live tracked separately) — hydrate empty so live falls back to the per-user
   // address in profileByUser.
   // Billing matrix (price lists / service fees / wallets): no Firestore schema yet — the
   // feature is demo-mode-first (live UI gates it off), so hydrate empty slices.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {} };
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, clinicsByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {} };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
@@ -160,6 +167,18 @@ async function runQuerySafe(path: string, ...constraints: QueryConstraint[]): Pr
 
 const isPermissionDenied = (e: unknown): boolean =>
   e instanceof FirebaseError && e.code === "permission-denied";
+
+// Denial-only degradation: a read whose rule may lag a deploy degrades to "none" on
+// permission-denied, but a transient outage still rethrows — degrading is reserved for
+// provability gaps, never outages (unlike runQuerySafe's catch-all above).
+async function runQueryDeniedToEmpty(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {
+  try {
+    return await runQuery(path, ...constraints);
+  } catch (e) {
+    if (isPermissionDenied(e)) return [];
+    throw e;
+  }
+}
 
 /**
  * A patient's notes, with a provably-safe fallback ("rules are not filters"). The unconstrained
@@ -192,6 +211,42 @@ export async function notesRowsForPatient(
   }
   const byId = new Map(treatment.map((r) => [r.id, r] as const));
   for (const r of own) byId.set(r.id, r);
+  return [...byId.values()];
+}
+
+/**
+ * Appointments for the caller's calendar scopes, deduped by id. The OWN-calendar query
+ * (ownerId == uid) stays hard so a real outage fails loudly for everyone. The clinic-calendar
+ * queries (ownerId == clinicId) degrade on permission-denied ONLY: their read grant
+ * (inClinic(ownerId)) ships in its own rules deploy, and before it lands the denial is
+ * wholesale ("rules are not filters") — a hard query here aborted the entire hydrate and
+ * locked every clinic account out at login (19/07 bug 1). bookedById queries keep their
+ * existing best-effort contract (grant deployed separately). Transient errors rethrow on
+ * every scope — degrading is reserved for provability gaps, never outages.
+ *
+ * Exported for testing. `q` mirrors runQuery for one equality constraint and must throw a
+ * permission-denied FirebaseError when rules reject the read.
+ */
+export async function appointmentRowsForScopes(
+  uid: string,
+  clinicIds: string[],
+  q: (field: "ownerId" | "bookedById", owner: string) => Promise<Row[]>,
+): Promise<Row[]> {
+  const deniedToEmpty = async (field: "ownerId" | "bookedById", owner: string): Promise<Row[]> => {
+    try {
+      return await q(field, owner);
+    } catch (e) {
+      if (isPermissionDenied(e)) return [];
+      throw e;
+    }
+  };
+  const byId = new Map<string, Row>();
+  for (const row of await q("ownerId", uid)) byId.set(row.id, row);
+  for (const row of await deniedToEmpty("bookedById", uid)) byId.set(row.id, row);
+  for (const cid of clinicIds) {
+    for (const row of await deniedToEmpty("ownerId", cid)) byId.set(row.id, row);
+    for (const row of await deniedToEmpty("bookedById", cid)) byId.set(row.id, row);
+  }
   return [...byId.values()];
 }
 
@@ -314,6 +369,12 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       auditLog: await runQuerySafe("auditLog"),
       products: await runQuerySafe("products"),
       businessEntities: await runQuerySafe("businessEntities"),
+      // The clinic directory for the admin console's cooperation picker (rules: the
+      // clinics collection is superAdmin- or member-readable; unconstrained list is
+      // provable for a super admin only). Denial-only degradation — NOT runQuerySafe:
+      // a swallowed outage would render "No clinic accounts yet" and misinform the
+      // admin into provisioning a duplicate; a transient must fail the hydrate loudly.
+      clinics: await runQueryDeniedToEmpty("clinics"),
       currentUserID: uid,
     });
   }
@@ -370,15 +431,11 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   }
 
   // Appointments owned by the user or their clinics, plus auth slots they (or their clinic) booked
-  // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`. The
-  // bookedById query is best-effort (runQuerySafe): it degrades to empty until the backend's
-  // appointments read rule for bookedById deploys, so the web side is safe to deploy first.
-  const apptOwners = [uid, ...clinicIds];
-  const apptsById = new Map<string, Row>();
-  for (const owner of apptOwners) {
-    for (const row of await runQuery("appointments", where("ownerId", "==", owner))) apptsById.set(row.id, row);
-    for (const row of await runQuerySafe("appointments", where("bookedById", "==", owner))) apptsById.set(row.id, row);
-  }
+  // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`.
+  // Scope hardness lives in appointmentRowsForScopes: own calendar loud, clinic calendar +
+  // bookedById degrade on denial so a rules/web deploy skew can't lock a clinic account out.
+  const appointments = await appointmentRowsForScopes(uid, clinicIds, (field, owner) =>
+    runQuery("appointments", where(field, "==", owner)));
 
   // Invoices scoped to this user (rules: doctor, counterparty nurse, or clinic member);
   // scriptPricing is doctor-readable.
@@ -413,7 +470,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     emergencyAuthorisations: [...emergencyById.values()],
     cooperationRelationships: [...coopById.values()],
     requests: [...reqsById.values()],
-    appointments: [...apptsById.values()],
+    appointments,
     formsByPatient,
     invoices: [...invoicesById.values()],
     scriptPricing: scriptPricingRows,
