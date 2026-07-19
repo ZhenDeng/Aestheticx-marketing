@@ -37,3 +37,40 @@ export function assembleAftercare(categories: AftercareCategory[]): string {
     .map((c) => `— ${aftercareDisplayName(c).toUpperCase()} —\n${aftercareTemplate(c)}`)
     .join("\n\n");
 }
+
+// --- Email composition -------------------------------------------------------
+// Aftercare leaves through the practitioner's own mail client (same hand-off as
+// "Send a consent to sign"), so these build a prefill — nothing here sends.
+
+export const AFTERCARE_DEFAULT_BODY =
+  "Thank you for visiting. Avoid touching the treated area for 4 hours, no strenuous exercise for 24 hours, and contact us with any concerns.";
+
+/**
+ * Closing line for every aftercare email (19/07 owner feedback).
+ *
+ * Deliberately NOT "this is an automated system email, do not reply": the mail is composed and
+ * sent from the practitioner's own address, so a reply reaches them — and several templates end
+ * with urgent-symptom instructions ("URGENT: contact us immediately for … changes in vision"),
+ * which a "do not reply" line sitting beneath could delay someone acting on.
+ */
+export const AFTERCARE_CLOSING =
+  "If you have any questions or concerns about your treatment, please contact your practitioner directly.";
+
+/**
+ * The email body: the ticked categories' templates (or the default text when none are ticked),
+ * always closed by AFTERCARE_CLOSING exactly once — the closing lives here rather than in each
+ * template so a multi-category send doesn't repeat it per section.
+ */
+export function aftercareBody(categories: AftercareCategory[]): string {
+  const main = categories.length ? assembleAftercare(categories) : AFTERCARE_DEFAULT_BODY;
+  return `${main}\n\n${AFTERCARE_CLOSING}`;
+}
+
+/** Subject + body for the mailto prefill, mirroring remoteSigning's consentEmail. */
+export function aftercareEmail(patientName: string, body: string): { subject: string; body: string } {
+  const name = patientName.trim();
+  return {
+    subject: "Your aftercare instructions",
+    body: [name ? `Hi ${name},` : "Hi,", "", body].join("\n"),
+  };
+}
