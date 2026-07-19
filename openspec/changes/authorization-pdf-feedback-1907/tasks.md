@@ -30,5 +30,5 @@
 - [x] 3.1 Engineer review (code-reviewer) on both diffs; fix CRITICAL/HIGH; re-run tests.
 - [x] 3.2 Full web suite + lint/build green; full backend suite green.
 - [x] 3.3 Sync delta spec into main specs (`openspec-sync-specs`).
-- [ ] 3.4 Open both PRs (web `/create-pr`; backend PR referencing the web PR; note the
+- [x] 3.4 Open both PRs (web `/create-pr`; backend PR referencing the web PR; note the
       Functions deploy requirement in the backend PR body).
