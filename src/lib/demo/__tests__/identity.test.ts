@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
-import type { Identity } from "@/lib/demo/types";
+import type { CooperationRelationship, Identity } from "@/lib/demo/types";
 
 const doctor: Identity = { user: { id: "u-1", name: "Dr A" }, role: "doctor", context: { kind: "independent" } };
 const clinicAdmin: Identity = {
@@ -40,5 +40,28 @@ describe("heldIdentities", () => {
   it("falls back to just the active identity for an unknown account", () => {
     const stranger: Identity = { user: { id: "u-unknown", name: "X" }, role: "doctor", context: { kind: "independent" } };
     expect(heldIdentities(stranger, [])).toEqual([stranger]);
+  });
+
+  it("adds a clinic identity for a demo doctor with an active clinic relationship", () => {
+    const relationship: CooperationRelationship = {
+      id: "u-1_clinic_c1",
+      doctorID: "u-1",
+      doctorName: "Dr A",
+      counterpartyType: "clinic",
+      counterpartyID: "c1",
+      counterpartyName: "C1",
+      status: "active",
+      authRequestsAllowed: true,
+      invoiceApplies: true,
+      priceCentsOverride: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    expect(heldIdentities(doctor, [], [relationship])).toEqual([
+      doctor,
+      { user: doctor.user, role: "doctor", context: { kind: "clinic", clinic: { id: "c1", name: "C1" } } },
+    ]);
+    expect(heldIdentities(doctor, [], [{ ...relationship, status: "inactive" }])).toEqual([doctor]);
   });
 });

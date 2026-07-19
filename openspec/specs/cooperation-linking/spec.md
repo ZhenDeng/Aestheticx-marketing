@@ -7,11 +7,15 @@ Platform-admin management of doctor ↔ (nurse|clinic) cooperation relationships
 ## Requirements
 
 ### Requirement: Super admin can create a cooperation relationship for either counterparty type
-The platform admin console SHALL let a super admin create a doctor ↔ counterparty cooperation relationship where the counterparty is a nurse **or a clinic**. The create form SHALL offer a counterparty-type choice; choosing Clinic SHALL present a directory of clinics (id + display name) to pick from, and submission SHALL persist a relationship with `counterpartyType: 'clinic'`, the picked clinic's id as `counterpartyID`, and the clinic's name as `counterpartyName`. The created relationship SHALL gate authorisation requests exactly as nurse relationships do: an active, request-allowed clinic relationship makes that doctor requestable by the clinic's members acting in clinic context. Because persistence is an upsert on the deterministic doctor+counterparty id, the create form SHALL refuse to submit a pair that already has a relationship (directing the admin to the edit row) rather than silently reactivating a removed relationship or overwriting its negotiated pricing.
+The platform admin console SHALL let a super admin create a doctor ↔ counterparty cooperation relationship where the counterparty is a nurse **or a clinic**. The create form SHALL offer a counterparty-type choice; choosing Clinic SHALL present a directory of clinics (id + display name) to pick from, and submission SHALL persist a relationship with `counterpartyType: 'clinic'`, the picked clinic's id as `counterpartyID`, and the clinic's name as `counterpartyName`. The created relationship SHALL gate authorisation requests exactly as nurse relationships do: an active, request-allowed clinic relationship makes that doctor requestable by the clinic's members acting in clinic context. An active doctor ↔ clinic relationship SHALL also grant the doctor an employee membership of that clinic, update the user's membership claims, and expose the corresponding clinic identity under "Practise as" on the doctor's profile. Inactivating or removing the relationship SHALL revoke only a membership created by that relationship; an independently granted admin, employee, or contractor membership MUST be preserved. Because persistence is an upsert on the deterministic doctor+counterparty id, the create form SHALL refuse to submit a pair that already has a relationship (directing the admin to the edit row) rather than silently reactivating a removed relationship or overwriting its negotiated pricing.
 
 #### Scenario: Linking a clinic to a doctor
 - **WHEN** a super admin opens "Add cooperation relationship", selects counterparty type Clinic, picks a doctor and a clinic, and submits
-- **THEN** the relationship list shows the clinic (by name, not raw id) under that doctor, and the clinic's members can raise authorisation requests to that doctor
+- **THEN** the relationship list shows the clinic (by name, not raw id) under that doctor, the doctor sees a clinic identity on their profile, and the clinic's members can raise authorisation requests to that doctor
+
+#### Scenario: Removing a clinic relationship preserves unrelated access
+- **WHEN** a super admin removes a doctor ↔ clinic relationship
+- **THEN** a clinic membership created by that relationship is revoked, while any membership granted independently of the relationship remains unchanged
 
 #### Scenario: Nurse creation is unchanged
 - **WHEN** a super admin creates a relationship with counterparty type Nurse

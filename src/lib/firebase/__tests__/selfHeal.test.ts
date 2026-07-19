@@ -48,6 +48,37 @@ describe("resolveClaimsWithSelfHeal", () => {
     expect(result.userDoc).toEqual({ name: "Yinghua Xu", roles: ["nurse"] });
   });
 
+  it("repairs stale clinic claims and returns the new clinic identity source", async () => {
+    const readTokenClaims = vi
+      .fn()
+      .mockResolvedValueOnce(tokenClaims(["doctor"], {}))
+      .mockResolvedValueOnce(tokenClaims(["doctor"], { c1: "employee" }));
+    const repairOwnClaims = vi.fn().mockResolvedValue(undefined);
+    const result = await resolveClaimsWithSelfHeal("u-voss", {
+      readTokenClaims,
+      readUserDoc: async () => ({ name: "Dr Voss", roles: ["doctor"], clinics: { c1: "employee" } }),
+      repairOwnClaims,
+    });
+    expect(repairOwnClaims).toHaveBeenCalledTimes(1);
+    expect(readTokenClaims).toHaveBeenNthCalledWith(2, true);
+    expect(result.claims.clinics).toEqual({ c1: "employee" });
+  });
+
+  it("repairs a stale token after a clinic membership is revoked", async () => {
+    const readTokenClaims = vi
+      .fn()
+      .mockResolvedValueOnce(tokenClaims(["doctor"], { c1: "employee" }))
+      .mockResolvedValueOnce(tokenClaims(["doctor"], {}));
+    const repairOwnClaims = vi.fn().mockResolvedValue(undefined);
+    const result = await resolveClaimsWithSelfHeal("u-voss", {
+      readTokenClaims,
+      readUserDoc: async () => ({ roles: ["doctor"], clinics: {} }),
+      repairOwnClaims,
+    });
+    expect(repairOwnClaims).toHaveBeenCalledTimes(1);
+    expect(result.claims.clinics).toEqual({});
+  });
+
   it("makes no repair call for a healthy token", async () => {
     const repairOwnClaims = vi.fn();
     const readTokenClaims = vi.fn().mockResolvedValue(tokenClaims(["doctor"], { c1: "admin" }));
@@ -121,23 +152,50 @@ describe("resolveClaimsWithSelfHeal", () => {
     expect(result.claims.roles).toEqual(["nurse"]);
   });
 
-  it("attempts the heal at most once per uid when given an attempt latch", async () => {
-    // Bounds the claims-propagation-lag edge: a refreshed token that does not yet
-    // carry the repaired claims re-fires the token watcher; without the latch each
-    // cycle would call the repair callable again.
-    const attempted = new Set<string>();
-    const repairOwnClaims = vi.fn().mockResolvedValue(undefined);
+  it("deduplicates an in-flight heal but allows a later retry for the same uid", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const healGuard = new Map<string, number>();
+    let releaseRepair!: () => void;
+    const repairGate = new Promise<void>((resolve) => { releaseRepair = resolve; });
+    const repairOwnClaims = vi.fn(async () => repairGate);
     const deps = {
       readTokenClaims: vi.fn().mockResolvedValue(tokenClaims([])), // stays wiped
       readUserDoc: async () => ({ roles: ["nurse"] }),
       repairOwnClaims,
     };
-    await resolveClaimsWithSelfHeal("u-yinghua", deps, attempted);
-    await resolveClaimsWithSelfHeal("u-yinghua", deps, attempted);
+    const first = resolveClaimsWithSelfHeal("u-yinghua", deps, healGuard);
+    await vi.waitFor(() => expect(repairOwnClaims).toHaveBeenCalledTimes(1));
+    const overlapping = resolveClaimsWithSelfHeal("u-yinghua", deps, healGuard);
+    releaseRepair();
+    await Promise.all([first, overlapping]);
     expect(repairOwnClaims).toHaveBeenCalledTimes(1);
-    // A different account is unaffected by the first account's latch entry.
-    await resolveClaimsWithSelfHeal("u-other", deps, attempted);
+
+    // Immediate watcher re-entry is cooled down to bound propagation lag.
+    await resolveClaimsWithSelfHeal("u-yinghua", deps, healGuard);
+    expect(repairOwnClaims).toHaveBeenCalledTimes(1);
+
+    // A later clinic change can retry without reloading the page.
+    now.mockReturnValue(6_001);
+    await resolveClaimsWithSelfHeal("u-yinghua", deps, healGuard);
     expect(repairOwnClaims).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it("releases the guard immediately after a transient heal failure", async () => {
+    const healGuard = new Map<string, number>();
+    const repairOwnClaims = vi.fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(undefined);
+    const deps = {
+      readTokenClaims: vi.fn().mockResolvedValue(tokenClaims([])),
+      readUserDoc: async () => ({ roles: ["nurse"] }),
+      repairOwnClaims,
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await resolveClaimsWithSelfHeal("u-yinghua", deps, healGuard);
+    await resolveClaimsWithSelfHeal("u-yinghua", deps, healGuard);
+    expect(repairOwnClaims).toHaveBeenCalledTimes(2);
+    errorSpy.mockRestore();
   });
 
   it("logs a heal failure instead of failing fully silently", async () => {
