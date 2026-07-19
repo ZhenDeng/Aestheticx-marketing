@@ -71,6 +71,9 @@ describe("display helpers", () => {
     // 22:00 UTC is the next Sydney day.
     expect(formatDay(Date.UTC(2026, 5, 17, 22, 0))).toBe("18/06/2026");
   });
+  it("uses the 19/07 owner wording for the default timing", () => {
+    expect(DEFAULT_TIMING).toBe("PRN, max 5 treatments, expire after 6 months");
+  });
 });
 
 describe("approvalRows", () => {
@@ -132,12 +135,29 @@ describe("renderApprovalPdf", () => {
     for (const needle of [
       "TREATMENT AUTHORISATION", "REQ-7", "AUTHORISATION TO TREAT",
       "Juvederm Voluma", "2 mls", "Supra-periosteal",
-      "DIRECTION UNDER CLAUSE 68C", "Sarah Chen Aesthetics, 12 Hall St, Bondi Beach NSW 2026",
+      "PREMISES OF ADMINISTRATION", "Sarah Chen Aesthetics, 12 Hall St, Bondi Beach NSW 2026",
       "STANDING EMERGENCY AUTHORISATIONS", "Electronically authorised on 13/07/2026",
       "Prescriber Number MED0001",
     ]) {
       expect(file).toContain(needle);
     }
+  });
+  it("no longer prints the removed sections and fields (19/07 feedback)", () => {
+    const bytes = renderApprovalPdf(buildApprovalDocumentModel(modelInput()));
+    const file = new TextDecoder("latin1").decode(bytes);
+    for (const gone of [
+      "PER ADMINISTRATION",           // recording section heading + instruction
+      "DIRECTION UNDER CLAUSE 68C",   // Clause 68C section heading
+      "PRESCRIBER)",                  // the PRESCRIBER field label (paren-delimited in the stream)
+      "PRINCIPAL PLACE OF PRACTICE",
+      "PERIOD DIRECTION HAS EFFECT",
+      "ADMINISTRATIONS",              // the Administrations field label
+    ]) {
+      expect(file).not.toContain(gone);
+    }
+    // The signature block still carries the prescriber contact lines.
+    expect(file).toContain("p: 02 9388 4410");
+    expect(file).toContain("a: 88 Oxford St");
   });
 });
 
