@@ -26,8 +26,10 @@ const CLINICAL_NAV: NavItem[] = [
 
 // Platform Admin's daily nav — management modules only, no Calendar/Notes/Bookings/Invoice or
 // a clinical patient list (§16). Patient access is the audit-oriented "Patient lookup".
+// 19/07 feedback: the product catalog is its own Products tab, not a section of Admin.
 const ADMIN_NAV: NavItem[] = [
   { href: "/app/admin", label: "Admin" },
+  { href: "/app/admin/products", label: "Products" },
   { href: "/app/admin/patients", label: "Patient lookup" },
   { href: "/app/admin/audit", label: "Audit" },
   { href: "/app/profile", label: "Profile" },

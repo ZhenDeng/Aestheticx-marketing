@@ -61,7 +61,7 @@ describe("create-relationship counterparty types", () => {
     expect(screen.getByLabelText("Nurse", { selector: "select" })).toBeInTheDocument();
   });
 
-  it("links a clinic to a doctor: picks from the directory and submits counterpartyType clinic", async () => {
+  it("links a clinic to a doctor: picks from the directory and submits counterpartyType clinic (kind employee by default)", async () => {
     await openCreateForm();
     await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
     const clinicSelect = screen.getByLabelText("Clinic", { selector: "select" });
@@ -73,6 +73,7 @@ describe("create-relationship counterparty types", () => {
         counterpartyType: "clinic",
         counterpartyID: "clinic-lumiere",
         counterpartyName: "Lumière Clinic",
+        relationshipKind: "employee",
         status: "active",
         authRequestsAllowed: true,
         invoiceApplies: true,
@@ -81,7 +82,22 @@ describe("create-relationship counterparty types", () => {
     );
   });
 
-  it("still creates nurse relationships exactly as before", async () => {
+  it("offers the Employee/Prescriber kind only for clinic counterparties and submits the choice", async () => {
+    await openCreateForm();
+    // Nurse counterparty: no kind choice.
+    expect(screen.queryByRole("button", { name: "Prescriber" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
+    expect(screen.getByRole("button", { name: "Employee" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Prescriber" }));
+    expect(screen.getByText(/gains no clinic identity/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
+    expect(setCooperationRelationship).toHaveBeenCalledWith(
+      expect.objectContaining({ counterpartyType: "clinic", relationshipKind: "prescriber" }),
+      admin,
+    );
+  });
+
+  it("still creates nurse relationships exactly as before, with no kind", async () => {
     await openCreateForm();
     await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
     expect(setCooperationRelationship).toHaveBeenCalledWith(
@@ -89,6 +105,7 @@ describe("create-relationship counterparty types", () => {
         counterpartyType: "nurse",
         counterpartyID: "u-nurse",
         counterpartyName: "Yinghua Xu",
+        relationshipKind: undefined,
       }),
       admin,
     );

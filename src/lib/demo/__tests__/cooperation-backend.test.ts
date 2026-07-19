@@ -48,6 +48,21 @@ describe("setCooperationRelationship", () => {
   it("rejects a non-positive price override", () => {
     expect(() => setCooperationRelationship(emptyState(), baseInput({ priceCentsOverride: 0 }), admin, NOW)).toThrow();
   });
+  it("stores the clinic relationship kind, defaulting to employee, and notes it in the audit summary", () => {
+    const clinicInput = (over: Record<string, unknown> = {}) =>
+      baseInput({ counterpartyType: "clinic" as const, counterpartyID: "c1", counterpartyName: "C1", ...over });
+    const clinicID = "u-voss_clinic_c1";
+    const employee = setCooperationRelationship(emptyState(), clinicInput(), admin, NOW);
+    expect(employee.cooperationRelationshipsByID[clinicID].relationshipKind).toBe("employee");
+    const prescriber = setCooperationRelationship(emptyState(), clinicInput({ relationshipKind: "prescriber" }), admin, NOW);
+    expect(prescriber.cooperationRelationshipsByID[clinicID].relationshipKind).toBe("prescriber");
+    expect(relationshipAuditForRelationship(prescriber, clinicID)[0].summary).toContain("prescriber");
+  });
+  it("keeps nurse relationships kind-free and rejects a kind supplied for a nurse", () => {
+    const s = setCooperationRelationship(emptyState(), baseInput(), admin, NOW);
+    expect(s.cooperationRelationshipsByID[ID].relationshipKind).toBeUndefined();
+    expect(() => setCooperationRelationship(emptyState(), baseInput({ relationshipKind: "employee" }), admin, NOW)).toThrow();
+  });
 });
 
 describe("removeCooperationRelationship", () => {

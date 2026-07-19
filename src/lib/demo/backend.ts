@@ -41,6 +41,7 @@ import type {
   UserProfileEdit,
   CooperationRelationship,
   CounterpartyType,
+  RelationshipKind,
   RelationshipStatus,
   RelationshipAuditEntry,
   RelationshipAction,
@@ -51,7 +52,7 @@ import type {
 } from "./types";
 import { LUMIERE, ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
-import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf } from "./types";
+import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf, effectiveRelationshipKind } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, computeInclusiveTotals, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
@@ -2031,6 +2032,7 @@ export interface SetCooperationRelationshipInput {
   counterpartyType: CounterpartyType;
   counterpartyID: string;
   counterpartyName: string;
+  relationshipKind?: RelationshipKind; // clinic only; absent ⇒ employee (pre-kind semantics)
   status: RelationshipStatus;
   authRequestsAllowed: boolean;
   invoiceApplies: boolean;
@@ -2039,7 +2041,8 @@ export interface SetCooperationRelationshipInput {
 
 function relationshipSummary(r: CooperationRelationship): string {
   const price = r.priceCentsOverride == null ? "default" : `$${(r.priceCentsOverride / 100).toFixed(2)}`;
-  return `${r.status}${r.authRequestsAllowed ? "" : " · requests paused"} · price ${price} · invoicing ${r.invoiceApplies ? "on" : "off"}`;
+  const kind = effectiveRelationshipKind(r);
+  return `${kind ? `${kind} · ` : ""}${r.status}${r.authRequestsAllowed ? "" : " · requests paused"} · price ${price} · invoicing ${r.invoiceApplies ? "on" : "off"}`;
 }
 
 function relationshipAudit(action: RelationshipAction, rel: CooperationRelationship, actor: Identity, now: number): RelationshipAuditEntry {
@@ -2060,6 +2063,10 @@ export function setCooperationRelationship(state: DemoState, input: SetCooperati
   if (input.priceCentsOverride != null && (!Number.isInteger(input.priceCentsOverride) || input.priceCentsOverride <= 0)) {
     throw new BackendError("validationFailed");
   }
+  // Kind is a clinic-only attribute (mirrors the callable's validation).
+  if (input.relationshipKind != null && input.counterpartyType !== "clinic") {
+    throw new BackendError("validationFailed");
+  }
   const id = cooperationDocId(input.doctorID, input.counterpartyType, input.counterpartyID);
   const prior = state.cooperationRelationshipsByID[id];
   const rel: CooperationRelationship = {
@@ -2069,6 +2076,7 @@ export function setCooperationRelationship(state: DemoState, input: SetCooperati
     counterpartyType: input.counterpartyType,
     counterpartyID: input.counterpartyID,
     counterpartyName: input.counterpartyName,
+    ...(input.counterpartyType === "clinic" ? { relationshipKind: input.relationshipKind ?? "employee" } : {}),
     status: input.status,
     authRequestsAllowed: input.authRequestsAllowed,
     invoiceApplies: input.invoiceApplies,

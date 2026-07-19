@@ -7,7 +7,7 @@ const labels = (role: Role) => navItemsFor(role).map((i) => i.label);
 describe("navItemsFor", () => {
   it("gives Platform Admin the admin modules, not the clinical daily tabs", () => {
     const admin = labels("superAdmin");
-    expect(admin).toEqual(["Admin", "Patient lookup", "Audit", "Profile"]);
+    expect(admin).toEqual(["Admin", "Products", "Patient lookup", "Audit", "Profile"]);
     expect(admin).not.toContain("Calendar");
     expect(admin).not.toContain("Patients");
     expect(admin).not.toContain("Authorisations");
@@ -42,6 +42,7 @@ describe("activeNavHref", () => {
   it("uses the longest matching prefix so a parent tab doesn't stay lit on a child route", () => {
     expect(activeNavHref(admin, "/app/admin/audit")).toBe("/app/admin/audit");
     expect(activeNavHref(admin, "/app/admin/patients")).toBe("/app/admin/patients");
+    expect(activeNavHref(admin, "/app/admin/products")).toBe("/app/admin/products");
     expect(activeNavHref(admin, "/app/admin")).toBe("/app/admin");
   });
 

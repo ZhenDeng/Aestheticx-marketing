@@ -7,7 +7,7 @@ import type {
   ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
   NoteTemplate, FollowUpTask, FollowUpStatus, AvailabilityWindow,
   TreatmentAvailability, DaySchedule, TreatmentBlock, EmergencyAuthorisation, EmergencyKind,
-  CooperationRelationship, CounterpartyType, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
+  CooperationRelationship, CounterpartyType, RelationshipKind, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
   AuditLogEntry, AuditAction, BusinessEntity, BusinessEntityType, ClinicRef,
 } from "@/lib/demo/types";
 import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
@@ -193,6 +193,11 @@ export function mapCooperationRelationship(id: string, data: Doc): CooperationRe
     counterpartyType,
     counterpartyID: str(data.counterpartyId),
     counterpartyName: str(data.counterpartyName),
+    // Kind is clinic-only; pre-kind docs (field absent) behave as employee — every one was
+    // created under grant-membership semantics, so the default must not revoke anything.
+    ...(counterpartyType === "clinic"
+      ? { relationshipKind: (data.relationshipKind === "prescriber" ? "prescriber" : "employee") as RelationshipKind }
+      : {}),
     status,
     authRequestsAllowed: data.authRequestsAllowed !== false, // default true when absent
     invoiceApplies: data.invoiceApplies !== false,           // default true when absent

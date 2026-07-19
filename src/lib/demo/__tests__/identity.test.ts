@@ -64,4 +64,28 @@ describe("heldIdentities", () => {
     ]);
     expect(heldIdentities(doctor, [], [{ ...relationship, status: "inactive" }])).toEqual([doctor]);
   });
+
+  it("grants the clinic identity for kind employee but not prescriber; a pre-kind doc defaults to employee", () => {
+    const relationship: CooperationRelationship = {
+      id: "u-1_clinic_c1",
+      doctorID: "u-1",
+      doctorName: "Dr A",
+      counterpartyType: "clinic",
+      counterpartyID: "c1",
+      counterpartyName: "C1",
+      status: "active",
+      authRequestsAllowed: true,
+      invoiceApplies: true,
+      priceCentsOverride: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const clinicIdentity = { user: doctor.user, role: "doctor", context: { kind: "clinic", clinic: { id: "c1", name: "C1" } } };
+
+    expect(heldIdentities(doctor, [], [{ ...relationship, relationshipKind: "employee" }])).toEqual([doctor, clinicIdentity]);
+    // A prescriber cooperates externally — no clinic membership, no "Practise as" identity.
+    expect(heldIdentities(doctor, [], [{ ...relationship, relationshipKind: "prescriber" }])).toEqual([doctor]);
+    // Absent kind (every relationship created before kinds existed) keeps employee behaviour.
+    expect(heldIdentities(doctor, [], [relationship])).toEqual([doctor, clinicIdentity]);
+  });
 });

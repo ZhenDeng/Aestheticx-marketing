@@ -442,6 +442,10 @@ export interface SignedFormRecord {
 
 export type CounterpartyType = "nurse" | "clinic";
 export type RelationshipStatus = "active" | "inactive";
+// Doctor↔clinic relationships come in two kinds (19/07 feedback): an employee works at the
+// clinic (relationship grants clinic membership + identity); a prescriber only authorises for
+// it externally (gate + pricing, no membership). Nurse relationships carry no kind.
+export type RelationshipKind = "employee" | "prescriber";
 
 // A doctor ↔ (nurse|clinic) cooperation relationship (spec 2026-07-08 cooperation-relationships,
 // constitution §17). Gates which doctors a nurse/clinic may request authorisation from
@@ -454,12 +458,22 @@ export interface CooperationRelationship {
   counterpartyType: CounterpartyType;
   counterpartyID: string;     // nurse uid or clinic id
   counterpartyName: string;   // denormalised
+  relationshipKind?: RelationshipKind; // clinic counterparties only; absent ⇒ employee (pre-kind docs)
   status: RelationshipStatus;
   authRequestsAllowed: boolean;
   invoiceApplies: boolean;
   priceCentsOverride: number | null; // null ⇒ DEFAULT_SCRIPT_PRICE_CENTS
   createdAt: number;
   updatedAt: number;
+}
+
+// The kind a relationship effectively has: clinic relationships default to employee (every
+// pre-kind doc was created under grant-membership semantics); nurse relationships have none.
+export function effectiveRelationshipKind(
+  rel: Pick<CooperationRelationship, "counterpartyType" | "relationshipKind">,
+): RelationshipKind | null {
+  if (rel.counterpartyType !== "clinic") return null;
+  return rel.relationshipKind ?? "employee";
 }
 
 export type RelationshipAction = "created" | "updated" | "removed";
