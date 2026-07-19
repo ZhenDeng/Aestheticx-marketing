@@ -266,8 +266,20 @@ function ProfileFields({ me, profile, showsAhpra, showsPrincipalPlace, showsAddr
 }
 
 const blank = (v: string) => v.trim() === "";
-/** Ties the refused-save message to whichever required field is empty. */
+/** Ties the refused-save message to every required field that is empty. */
 const REFUSAL_ID = "profile-required-field-refusal";
+
+/** The profile fields provisioning requires and the Clause 68C direction prints. */
+type RequiredContactField = "phone" | "principalPlace";
+const REQUIRED_FIELD_LABEL: Record<RequiredContactField, string> = {
+  phone: "a phone number",
+  principalPlace: "a principal place of practice",
+};
+/** "A phone number and a principal place of practice" — sentence-leading, so capitalised. */
+const listFields = (fields: RequiredContactField[]): string => {
+  const joined = fields.map((f) => REQUIRED_FIELD_LABEL[f]).join(" and ");
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
+};
 
 function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPrincipalPlace, showsAddress, store }: {
   me: Identity; profile: UserProfile; identityAddress: string; showsAhpra: boolean; showsPrincipalPlace: boolean; showsAddress: boolean; store: ReturnType<typeof useDemoStore>;
@@ -288,23 +300,29 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
   // for the Clause 68C direction. Editing let a doctor take them straight back out: from then on
   // their approvals stamp nothing, and every direction drawn from one is permanently blocked for
   // the nurse holding it — while the doctor who caused it sees nothing at all. Refuse instead.
-  function blockedReason(): string | null {
-    if (blank(phone)) {
-      return "A phone number is required — it prints on every Clause 68C direction, so directions from your approvals would be blocked without it.";
-    }
-    if (showsPrincipalPlace && blank(principalPlace)) {
-      return "A principal place of practice is required — it prints on every Clause 68C direction, so directions from your approvals would be blocked without it.";
-    }
-    return null;
+  //
+  // Every blocked field is reported at once, like the direction dialog's own missing-field
+  // marking. Reporting only the first would send a doctor with a fresh profile round the loop
+  // twice: fix phone, save, meet a brand-new error about a field that was blank all along.
+  function blockedFields(): RequiredContactField[] {
+    const blocked: RequiredContactField[] = [];
+    if (blank(phone)) blocked.push("phone");
+    if (showsPrincipalPlace && blank(principalPlace)) blocked.push("principalPlace");
+    return blocked;
   }
 
-  const refusal = attempted ? blockedReason() : null;
+  const blocked = attempted ? blockedFields() : [];
+  const isBlocked = (field: RequiredContactField) => blocked.includes(field);
+  const refusal = blocked.length === 0 ? null
+    : `${listFields(blocked)} ${blocked.length === 1 ? "is" : "are"} required — `
+      + `${blocked.length === 1 ? "it prints" : "they print"} on every Clause 68C direction, so `
+      + `directions from your approvals would be blocked without ${blocked.length === 1 ? "it" : "them"}.`;
 
   function save() {
     // A refused save applies NOTHING, including unrelated fields edited alongside: a partial save
     // would leave the form showing values that were never stored.
     setAttempted(true);
-    if (blockedReason()) return;
+    if (blockedFields().length > 0) return;
 
     if (ahpra !== profile.ahpra || phone !== profile.phone || principalPlace !== profile.principalPlace) {
       store.updateProfile({
@@ -335,10 +353,10 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
       <label className={row}>
         <span className="micro">Phone</span>
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={FIELD_PLACEHOLDER.phone}
-          aria-invalid={refusal !== null && blank(phone)}
-          aria-describedby={refusal !== null && blank(phone) ? REFUSAL_ID : undefined}
+          aria-invalid={isBlocked("phone")}
+          aria-describedby={isBlocked("phone") ? REFUSAL_ID : undefined}
           className={input}
-          style={refusal !== null && blank(phone) ? { borderColor: "var(--color-danger)" } : undefined} />
+          style={isBlocked("phone") ? { borderColor: "var(--color-danger)" } : undefined} />
       </label>
       {/* Round 6: prints in the Clause 68C direction body and the PDF signature block. */}
       {showsPrincipalPlace && (
@@ -349,10 +367,10 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
             onChange={(e) => setPrincipalPlace(e.target.value)}
             placeholder="Practice name, street address"
             rows={2}
-            aria-invalid={refusal !== null && !blank(phone) && blank(principalPlace)}
-            aria-describedby={refusal !== null && !blank(phone) && blank(principalPlace) ? REFUSAL_ID : undefined}
+            aria-invalid={isBlocked("principalPlace")}
+            aria-describedby={isBlocked("principalPlace") ? REFUSAL_ID : undefined}
             className="mt-1.5 w-full resize-none rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
-            style={refusal !== null && !blank(phone) && blank(principalPlace) ? { borderColor: "var(--color-danger)" } : undefined}
+            style={isBlocked("principalPlace") ? { borderColor: "var(--color-danger)" } : undefined}
           />
         </label>
       )}

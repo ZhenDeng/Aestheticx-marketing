@@ -112,6 +112,27 @@ describe("A required contact field cannot be cleared", () => {
     expect(phoneField()).toHaveAttribute("aria-invalid", "false");
   });
 
+  // Reporting only the first blocked field would send a doctor with a fresh profile round the
+  // loop twice: fix phone, save, meet a brand-new error about a field that was blank all along.
+  // The direction dialog marks every missing field at once; this matches it.
+  it("marks every blocked field at once, not just the first", async () => {
+    const user = userEvent.setup();
+    render(<ProfilePage />);
+
+    await user.clear(phoneField());
+    await user.clear(screen.getByLabelText(/principal place of practice/i));
+    await user.click(save());
+
+    expect(phoneField()).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText(/principal place of practice/i)).toHaveAttribute("aria-invalid", "true");
+
+    const message = screen.getByRole("alert").textContent ?? "";
+    expect(message).toMatch(/phone number/i);
+    expect(message).toMatch(/principal place of practice/i);
+    // Plural agreement, since two fields are named.
+    expect(message).toMatch(/are required/i);
+  });
+
   it("still saves a valid change, showing no refusal", async () => {
     const user = userEvent.setup();
     render(<ProfilePage />);
