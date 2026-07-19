@@ -2,9 +2,9 @@
 
 ### Requirement: A required profile field cannot be cleared once provisioned
 
-Provisioning requires a phone of every account and a principal place of practice of every doctor,
-because both print on the Clause 68C direction and are stamped onto each authorisation at
-approval. The profile editor SHALL NOT allow either to be saved blank.
+The profile editor SHALL NOT allow a phone (every account) or a principal place of practice (every
+doctor) to be saved blank. Provisioning already requires both, because they print on the Clause
+68C direction and are stamped onto each authorisation at approval.
 
 An attempt to clear one SHALL be refused with an explanation of what it would break — the field is
 not merely invalid, it silently disables every direction drawn from that doctor's future
