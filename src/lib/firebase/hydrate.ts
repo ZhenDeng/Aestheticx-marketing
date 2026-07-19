@@ -250,6 +250,86 @@ export async function appointmentRowsForScopes(
   return [...byId.values()];
 }
 
+/** Clinic ids whose membership kind is "admin". The authRequests + invoices clinic-scope
+ * LIST rules are `isClinicAdmin`, so only these memberships may issue those queries — an
+ * employee/contractor membership (a doctor linked to a clinic by a cooperation
+ * relationship) is denied WHOLESALE ("rules are not filters"), and issuing the query
+ * anyway locked every linked doctor out at login (19/07 platform-admin bug). */
+const adminClinicIdsOf = (clinics: Record<string, string>): string[] =>
+  Object.entries(clinics).filter(([, kind]) => kind === "admin").map(([id]) => id);
+
+type PartyField = "nurseId" | "doctorId" | "clinicId";
+
+// Shared scope walk for the party-owned collections (authorisations/authRequests shape):
+// the own-uid scopes stay hard so a real outage fails loudly, while every clinic scope
+// degrades on permission-denied ONLY — a rules/claims skew (stale token vs the Function-
+// maintained users/{uid}.clinics authority) must never abort the whole hydrate and lock
+// the account out at login. Transient errors rethrow on every scope.
+async function partyRowsForScopes(
+  uid: string,
+  clinicIds: string[],
+  q: (field: PartyField, value: string) => Promise<Row[]>,
+): Promise<Row[]> {
+  const byId = new Map<string, Row>();
+  for (const row of await q("nurseId", uid)) byId.set(row.id, row);
+  for (const row of await q("doctorId", uid)) byId.set(row.id, row);
+  for (const cid of clinicIds) {
+    try {
+      for (const row of await q("clinicId", cid)) byId.set(row.id, row);
+    } catch (e) {
+      if (!isPermissionDenied(e)) throw e;
+    }
+  }
+  return [...byId.values()];
+}
+
+/** Authorisations for the caller's scopes. The clinic-scope read rule is `inClinic`
+ * (member-wide), so EVERY membership queries its clinic scope. Exported for testing;
+ * `q` mirrors runQuery for one equality constraint and must throw a permission-denied
+ * FirebaseError when rules reject the read. */
+export async function authorisationRowsForScopes(
+  uid: string,
+  clinics: Record<string, string>,
+  q: (field: PartyField, value: string) => Promise<Row[]>,
+): Promise<Row[]> {
+  return partyRowsForScopes(uid, Object.keys(clinics), q);
+}
+
+/** authRequests for the caller's scopes. The clinic-scope read rule is `isClinicAdmin`,
+ * so ONLY admin memberships issue the clinic query (see adminClinicIdsOf) — non-admin
+ * members still see requests they raised (nurseId) or review (doctorId). Exported for
+ * testing; same `q` contract as authorisationRowsForScopes. */
+export async function requestRowsForScopes(
+  uid: string,
+  clinics: Record<string, string>,
+  q: (field: PartyField, value: string) => Promise<Row[]>,
+): Promise<Row[]> {
+  return partyRowsForScopes(uid, adminClinicIdsOf(clinics), q);
+}
+
+/** Invoices for the caller's scopes: their own doctor-side invoices, invoices naming them
+ * as the nurse counterparty, and — for admin memberships only (the clinic-counterparty
+ * read rule is `isClinicAdmin`) — each clinic's. Own scopes hard, clinic scopes degrade
+ * on denial, transients rethrow (same contract as partyRowsForScopes). Exported for
+ * testing. */
+export async function invoiceRowsForScopes(
+  uid: string,
+  clinics: Record<string, string>,
+  q: (scope: "doctorId" | "nurseCounterparty" | "clinicCounterparty", id: string) => Promise<Row[]>,
+): Promise<Row[]> {
+  const byId = new Map<string, Row>();
+  for (const row of await q("doctorId", uid)) byId.set(row.id, row);
+  for (const row of await q("nurseCounterparty", uid)) byId.set(row.id, row);
+  for (const cid of adminClinicIdsOf(clinics)) {
+    try {
+      for (const row of await q("clinicCounterparty", cid)) byId.set(row.id, row);
+    } catch (e) {
+      if (!isPermissionDenied(e)) throw e;
+    }
+  }
+  return [...byId.values()];
+}
+
 // availability/{ownerId} is a single doc per calendar owner (publicly readable). Read the
 // caller's own + any clinics they belong to; a missing doc means "not configured" → the
 // default schedule applies client-side. Doc id == ownerId, matching mapTreatmentAvailability.
@@ -262,12 +342,26 @@ async function readAvailability(ownerIds: string[]): Promise<Row[]> {
 }
 
 // externalBusy/{ownerId}: one doc per calendar owner (rules: owner or clinic member reads).
-// A missing doc simply means no linked external calendar.
-async function readExternalBusy(ownerIds: string[]): Promise<Row[]> {
-  const rows = await Promise.all(ownerIds.map(async (ownerId) => {
+// A missing doc simply means no linked external calendar. The caller's own doc read stays
+// hard; a CLINIC doc read degrades on permission-denied only — its rule is the hybrid
+// `inClinic` gate (claim + users/{uid}.clinics), so a skew between the two must cost the
+// clinic's busy times, never the whole hydrate (19/07 platform-admin lockout class).
+async function readExternalBusy(uid: string, clinicIds: string[]): Promise<Row[]> {
+  const readOne = async (ownerId: string): Promise<Row | null> => {
     const snap = await getDoc(doc(firestore(), "externalBusy", ownerId));
     return snap.exists() ? { id: ownerId, data: snap.data() as Record<string, unknown> } : null;
-  }));
+  };
+  const rows = await Promise.all([
+    readOne(uid),
+    ...clinicIds.map(async (cid) => {
+      try {
+        return await readOne(cid);
+      } catch (e) {
+        if (isPermissionDenied(e)) return null;
+        throw e;
+      }
+    }),
+  ]);
   return rows.filter((r): r is Row => r !== null);
 }
 
@@ -358,7 +452,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       profile: profile.profile,
       slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
       treatmentAvailability: await readAvailability([uid]),
-      externalBusy: await readExternalBusy([uid]),
+      externalBusy: await readExternalBusy(uid, []),
       // The admin console's account inventory (rules: users list is superAdmin-only).
       accounts: await runQuery("users"),
       emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
@@ -379,8 +473,12 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     });
   }
 
-  // Patients: union the visibility-edge queries by id (rules are "not filters").
-  const patientQueries: QueryConstraint[][] = [
+  // Patients: union the visibility-edge queries by id (rules are "not filters"). The
+  // caller's OWN edges stay hard (a real outage fails loudly); the clinic-owner queries
+  // degrade on permission-denied only — their rule (`inClinic`) couples the token claim
+  // to the Function-maintained users/{uid}.clinics map, so a skew between the two must
+  // shrink the clinic slice, never abort the whole hydrate (19/07 platform-admin bug).
+  const ownPatientQueries: QueryConstraint[][] = [
     [where("ownerType", "==", "nurse"), where("ownerId", "==", uid)],
     [where("ownerType", "==", "doctor"), where("ownerId", "==", uid)],
     [where("ownerType", "==", "nurse"), where("prescribingDoctorIds", "array-contains", uid)],
@@ -390,11 +488,14 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     ...(shouldQueryReviewerPatients(claims.roles)
       ? [[where("openReviewerDoctorIds", "array-contains", uid)]]
       : []),
-    ...clinicIds.map((cid) => [where("ownerType", "==", "clinic"), where("ownerId", "==", cid)]),
   ];
   const patientsById = new Map<string, Row>();
-  for (const constraints of patientQueries) {
+  for (const constraints of ownPatientQueries) {
     for (const row of await runQuery("patients", ...constraints)) patientsById.set(row.id, row);
+  }
+  for (const cid of clinicIds) {
+    const rows = await runQueryDeniedToEmpty("patients", where("ownerType", "==", "clinic"), where("ownerId", "==", cid));
+    for (const row of rows) patientsById.set(row.id, row);
   }
   const patients = [...patientsById.values()];
 
@@ -413,22 +514,22 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const formsByPatient: Record<string, Row[]> = {};
   await Promise.all(patients.map(async (p) => { formsByPatient[p.id] = await runQuery(`patients/${p.id}/forms`); }));
 
-  // Authorisations + requests scoped to this user (nurse-owned or clinic-shared).
-  const authConstraints: QueryConstraint[][] = [
-    [where("nurseId", "==", uid)],
-    ...clinicIds.map((cid) => [where("clinicId", "==", cid)]),
-    [where("doctorId", "==", uid)],
-  ];
-  const authsById = new Map<string, Row>();
-  const reqsById = new Map<string, Row>();
-  const emergencyById = new Map<string, Row>();
-  for (const constraints of authConstraints) {
-    for (const row of await runQuery("authorisations", ...constraints)) authsById.set(row.id, row);
-    for (const row of await runQuery("authRequests", ...constraints)) reqsById.set(row.id, row);
-    // Emergency authorisations carry the same nurseId/doctorId/clinicId ownership fields.
-    // Best-effort: its read rule ships in a separate backend deploy (see runQuerySafe).
-    for (const row of await runQuerySafe("emergencyAuthorisations", ...constraints)) emergencyById.set(row.id, row);
-  }
+  // Authorisations + requests scoped to this user (nurse-owned or clinic-shared). The
+  // two collections have DIFFERENT clinic-scope rules: authorisations reads are member-
+  // wide (`inClinic`), while authRequests clinic reads are admin-only (`isClinicAdmin`)
+  // — so requestRowsForScopes only issues the clinic query for admin memberships.
+  // Issuing it for an employee/contractor membership (a doctor linked to a clinic by a
+  // cooperation relationship) was rejected wholesale and locked the account out at
+  // login (19/07 platform-admin bug).
+  const authorisationRows = await authorisationRowsForScopes(uid, claims.clinics, (field, value) =>
+    runQuery("authorisations", where(field, "==", value)));
+  const requestRows = await requestRowsForScopes(uid, claims.clinics, (field, value) =>
+    runQuery("authRequests", where(field, "==", value)));
+  // Emergency authorisations carry the same nurseId/doctorId/clinicId ownership fields
+  // and the member-wide read audience of /authorisations. Best-effort: its read rule
+  // ships in a separate backend deploy (see runQuerySafe).
+  const emergencyRows = await authorisationRowsForScopes(uid, claims.clinics, (field, value) =>
+    runQuerySafe("emergencyAuthorisations", where(field, "==", value)));
 
   // Appointments owned by the user or their clinics, plus auth slots they (or their clinic) booked
   // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`.
@@ -437,17 +538,15 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const appointments = await appointmentRowsForScopes(uid, clinicIds, (field, owner) =>
     runQuery("appointments", where(field, "==", owner)));
 
-  // Invoices scoped to this user (rules: doctor, counterparty nurse, or clinic member);
-  // scriptPricing is doctor-readable.
-  const invoiceConstraints: QueryConstraint[][] = [
-    [where("doctorId", "==", uid)],
-    [where("counterpartyType", "==", "nurse"), where("counterpartyId", "==", uid)],
-    ...clinicIds.map((cid) => [where("counterpartyType", "==", "clinic"), where("counterpartyId", "==", cid)]),
-  ];
-  const invoicesById = new Map<string, Row>();
-  for (const constraints of invoiceConstraints) {
-    for (const row of await runQuery("invoices", ...constraints)) invoicesById.set(row.id, row);
-  }
+  // Invoices scoped to this user. The clinic-counterparty read rule is `isClinicAdmin`,
+  // so invoiceRowsForScopes only issues that query for admin memberships (same lockout
+  // class as authRequests above). scriptPricing is doctor-readable.
+  const invoiceRows = await invoiceRowsForScopes(uid, claims.clinics, (scope, id) =>
+    scope === "doctorId"
+      ? runQuery("invoices", where("doctorId", "==", id))
+      : runQuery("invoices",
+          where("counterpartyType", "==", scope === "nurseCounterparty" ? "nurse" : "clinic"),
+          where("counterpartyId", "==", id)));
   const scriptPricingRows = await runQuery("scriptPricing", where("doctorId", "==", uid));
 
   // Cooperation relationships this user is party to (doctor side or nurse/clinic counterparty),
@@ -466,13 +565,13 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   return assembleState({
     patients,
     notesByPatient,
-    authorisations: [...authsById.values()],
-    emergencyAuthorisations: [...emergencyById.values()],
+    authorisations: authorisationRows,
+    emergencyAuthorisations: emergencyRows,
     cooperationRelationships: [...coopById.values()],
-    requests: [...reqsById.values()],
+    requests: requestRows,
     appointments,
     formsByPatient,
-    invoices: [...invoicesById.values()],
+    invoices: invoiceRows,
     scriptPricing: scriptPricingRows,
     noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
     followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
@@ -484,7 +583,7 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     profile: profile.profile,
     slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
     treatmentAvailability: await readAvailability([uid, ...clinicIds]),
-    externalBusy: await readExternalBusy([uid, ...clinicIds]),
+    externalBusy: await readExternalBusy(uid, clinicIds),
     products: await runQuerySafe("products"),
     businessEntities: await runQuerySafe("businessEntities"),
     currentUserID: uid,

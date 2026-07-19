@@ -5,7 +5,8 @@
 // module keeps `state.requests` current with one onSnapshot listener per readable scope,
 // mirroring hydrate's queries exactly (rules are not filters, so each must be provable
 // alone): the caller's own raised requests, requests addressed to them as doctor, and each
-// clinic's — or, for a super admin, ONE unconstrained listener, because hydrate loads the
+// ADMIN clinic's (the clinic-scope rule is isClinicAdmin) — or, for a super admin, ONE
+// unconstrained listener, because hydrate loads the
 // platform-wide set and scoped queries would silently replace it with near-nothing.
 import { collection, query, where, onSnapshot, doc, getDoc, type QueryConstraint } from "firebase/firestore";
 import { firestore } from "./client";
@@ -43,13 +44,20 @@ export interface RequestScope {
   constraint: QueryConstraint | null;
 }
 
-/** The listener scopes for a user, matching hydrate's authRequests queries one-for-one. */
-export function requestScopesFor(opts: { uid: string; clinicIds: string[]; superAdmin: boolean }): RequestScope[] {
+/** The listener scopes for a user, matching hydrate's authRequests queries one-for-one.
+ * `clinics` is the membership map from claims (clinicId -> "admin" | "employee" |
+ * "contractor"): the authRequests clinic-scope rule is `isClinicAdmin`, so only ADMIN
+ * memberships subscribe a clinic scope. A non-admin membership's listener would never
+ * deliver — it errors on attach ("rules are not filters") and raised a misleading
+ * staleness banner for every doctor linked to a clinic (19/07 platform-admin bug). */
+export function requestScopesFor(opts: { uid: string; clinics: Record<string, string>; superAdmin: boolean }): RequestScope[] {
   if (opts.superAdmin) return [{ key: "all", constraint: null }];
   return [
     { key: "nurse", constraint: where("nurseId", "==", opts.uid) },
     { key: "doctor", constraint: where("doctorId", "==", opts.uid) },
-    ...opts.clinicIds.map((cid): RequestScope => ({ key: `clinic:${cid}`, constraint: where("clinicId", "==", cid) })),
+    ...Object.entries(opts.clinics)
+      .filter(([, kind]) => kind === "admin")
+      .map(([cid]): RequestScope => ({ key: `clinic:${cid}`, constraint: where("clinicId", "==", cid) })),
   ];
 }
 
@@ -71,7 +79,7 @@ export interface SubscribeAuthRequestsHandlers {
  * report once so a partial union never clobbers the hydrated snapshot; an erroring scope
  * reports too (keeping its last known rows) so one broken scope can't silence the rest. */
 export function subscribeAuthRequests(
-  opts: { uid: string; clinicIds: string[]; superAdmin: boolean },
+  opts: { uid: string; clinics: Record<string, string>; superAdmin: boolean },
   handlers: SubscribeAuthRequestsHandlers,
 ): () => void {
   const scopes = requestScopesFor(opts);

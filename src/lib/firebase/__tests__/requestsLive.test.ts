@@ -50,14 +50,19 @@ describe("mergeRequestRows", () => {
 });
 
 describe("requestScopesFor", () => {
-  it("builds nurse + doctor + per-clinic scopes for clinical users", () => {
-    const scopes = requestScopesFor({ uid: "u1", clinicIds: ["c1", "c2"], superAdmin: false });
+  it("builds nurse + doctor + per-ADMIN-clinic scopes for clinical users", () => {
+    const scopes = requestScopesFor({ uid: "u1", clinics: { c1: "admin", c2: "admin" }, superAdmin: false });
     expect(scopes.map((s) => s.key)).toEqual(["nurse", "doctor", "clinic:c1", "clinic:c2"]);
     expect(scopes.every((s) => s.constraint !== null)).toBe(true);
   });
 
+  it("never subscribes a clinic scope for an employee/contractor membership (the authRequests rule is isClinicAdmin — the listener would only error, 19/07 platform-admin bug)", () => {
+    const scopes = requestScopesFor({ uid: "u1", clinics: { c1: "employee", c2: "contractor", c3: "admin" }, superAdmin: false });
+    expect(scopes.map((s) => s.key)).toEqual(["nurse", "doctor", "clinic:c3"]);
+  });
+
   it("uses one unconstrained scope for a super admin (hydrate parity — scoped queries would wipe the platform-wide set)", () => {
-    const scopes = requestScopesFor({ uid: "admin", clinicIds: [], superAdmin: true });
+    const scopes = requestScopesFor({ uid: "admin", clinics: {}, superAdmin: true });
     expect(scopes).toEqual([{ key: "all", constraint: null }]);
   });
 });

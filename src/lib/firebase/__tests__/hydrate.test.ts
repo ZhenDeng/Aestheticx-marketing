@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FirebaseError } from "firebase/app";
-import { appointmentRowsForScopes, assembleState, notesRowsForPatient, shouldQueryReviewerPatients, type HydrationRows } from "@/lib/firebase/hydrate";
+import { appointmentRowsForScopes, assembleState, authorisationRowsForScopes, invoiceRowsForScopes, notesRowsForPatient, requestRowsForScopes, shouldQueryReviewerPatients, type HydrationRows } from "@/lib/firebase/hydrate";
 
 const rows: HydrationRows = {
   patients: [
@@ -194,6 +194,120 @@ describe("notesRowsForPatient (rules-are-not-filters fallback)", () => {
       throw new FirebaseError("unavailable", "treatment blip");
     };
     await expect(notesRowsForPatient("patients/p1/notes", "me", q)).rejects.toThrow("treatment blip");
+  });
+});
+
+// authRequests + invoices clinic-scope LIST rules require isClinicAdmin, so an
+// employee/contractor membership — a doctor linked to a clinic by a cooperation
+// relationship — must never issue those clinic queries: rules are not filters, the
+// denial is wholesale, and a hard query there locked every linked doctor out at
+// login (19/07 platform-admin bug). Authorisations use the member-wide inClinic
+// rule, so every membership queries — but a denied clinic scope still degrades.
+describe("requestRowsForScopes (admin-gated clinic scopes)", () => {
+  const denied = new FirebaseError("permission-denied", "Missing or insufficient permissions.");
+  const mine = { id: "r-mine", data: { nurseId: "me" } };
+  const addressed = { id: "r-doc", data: { doctorId: "me" } };
+  const clinicReq = { id: "r-clinic", data: { clinicId: "c-admin" } };
+
+  it("queries clinicId only for admin memberships (employee/contractor scopes are never issued)", async () => {
+    const calls: string[] = [];
+    const q = async (field: string, value: string) => {
+      calls.push(`${field}:${value}`);
+      if (field === "nurseId") return [mine];
+      if (field === "doctorId") return [addressed];
+      return [clinicReq];
+    };
+    const rows = await requestRowsForScopes("me", { "c-admin": "admin", "c-emp": "employee", "c-con": "contractor" }, q);
+    expect(rows.map((r) => r.id).sort()).toEqual(["r-clinic", "r-doc", "r-mine"]);
+    expect(calls).toEqual(["nurseId:me", "doctorId:me", "clinicId:c-admin"]);
+  });
+
+  it("a denied admin-clinic scope degrades to empty instead of aborting login (rules/claims skew)", async () => {
+    const q = async (field: string) => {
+      if (field === "clinicId") throw denied;
+      return field === "nurseId" ? [mine] : [];
+    };
+    expect((await requestRowsForScopes("me", { "c-admin": "admin" }, q)).map((r) => r.id)).toEqual(["r-mine"]);
+  });
+
+  it("a denied own scope still fails loud (real outage, not a provability gap)", async () => {
+    const q = async (field: string) => { if (field === "nurseId") throw denied; return []; };
+    await expect(requestRowsForScopes("me", {}, q)).rejects.toThrow(denied.message);
+  });
+
+  it("a transient error on a clinic scope rethrows (degrade only on denial)", async () => {
+    const q = async (field: string) => {
+      if (field === "clinicId") throw new FirebaseError("unavailable", "clinic blip");
+      return [];
+    };
+    await expect(requestRowsForScopes("me", { "c-admin": "admin" }, q)).rejects.toThrow("clinic blip");
+  });
+});
+
+describe("authorisationRowsForScopes (member-wide clinic scopes)", () => {
+  const denied = new FirebaseError("permission-denied", "Missing or insufficient permissions.");
+  const mine = { id: "a-mine", data: { nurseId: "me" } };
+  const clinicAuth = { id: "a-clinic", data: { clinicId: "c-emp" } };
+
+  it("queries every membership's clinic scope (the authorisations rule is inClinic, not admin-gated)", async () => {
+    const calls: string[] = [];
+    const q = async (field: string, value: string) => {
+      calls.push(`${field}:${value}`);
+      if (field === "nurseId") return [mine];
+      if (field === "clinicId") return [clinicAuth];
+      return [];
+    };
+    const rows = await authorisationRowsForScopes("me", { "c-emp": "employee", "c-admin": "admin" }, q);
+    expect(rows.map((r) => r.id).sort()).toEqual(["a-clinic", "a-mine"]);
+    expect(calls).toEqual(["nurseId:me", "doctorId:me", "clinicId:c-emp", "clinicId:c-admin"]);
+  });
+
+  it("a denied clinic scope degrades to empty; own scopes stay loud", async () => {
+    const q = async (field: string) => {
+      if (field === "clinicId") throw denied;
+      return field === "doctorId" ? [{ id: "a-doc", data: {} }] : [];
+    };
+    expect((await authorisationRowsForScopes("me", { "c-emp": "employee" }, q)).map((r) => r.id)).toEqual(["a-doc"]);
+    const qOwn = async (field: string) => { if (field === "doctorId") throw denied; return []; };
+    await expect(authorisationRowsForScopes("me", {}, qOwn)).rejects.toThrow(denied.message);
+  });
+});
+
+describe("invoiceRowsForScopes (admin-gated clinic counterparty)", () => {
+  const denied = new FirebaseError("permission-denied", "Missing or insufficient permissions.");
+  const asDoctor = { id: "inv-doc", data: { doctorId: "me" } };
+  const asNurse = { id: "inv-nurse", data: { counterpartyType: "nurse", counterpartyId: "me" } };
+  const asClinic = { id: "inv-clinic", data: { counterpartyType: "clinic", counterpartyId: "c-admin" } };
+
+  it("queries the clinic counterparty only for admin memberships", async () => {
+    const calls: string[] = [];
+    const q = async (scope: string, id: string) => {
+      calls.push(`${scope}:${id}`);
+      if (scope === "doctorId") return [asDoctor];
+      if (scope === "nurseCounterparty") return [asNurse];
+      return [asClinic];
+    };
+    const rows = await invoiceRowsForScopes("me", { "c-admin": "admin", "c-emp": "employee" }, q);
+    expect(rows.map((r) => r.id).sort()).toEqual(["inv-clinic", "inv-doc", "inv-nurse"]);
+    expect(calls).toEqual(["doctorId:me", "nurseCounterparty:me", "clinicCounterparty:c-admin"]);
+  });
+
+  it("a denied clinic-counterparty scope degrades to empty; own scopes stay loud", async () => {
+    const q = async (scope: string) => {
+      if (scope === "clinicCounterparty") throw denied;
+      return scope === "doctorId" ? [asDoctor] : [];
+    };
+    expect((await invoiceRowsForScopes("me", { "c-admin": "admin" }, q)).map((r) => r.id)).toEqual(["inv-doc"]);
+    const qOwn = async (scope: string) => { if (scope === "doctorId") throw denied; return []; };
+    await expect(invoiceRowsForScopes("me", {}, qOwn)).rejects.toThrow(denied.message);
+  });
+
+  it("a transient error on the clinic-counterparty scope rethrows", async () => {
+    const q = async (scope: string) => {
+      if (scope === "clinicCounterparty") throw new FirebaseError("unavailable", "invoice blip");
+      return [];
+    };
+    await expect(invoiceRowsForScopes("me", { "c-admin": "admin" }, q)).rejects.toThrow("invoice blip");
   });
 });
 
