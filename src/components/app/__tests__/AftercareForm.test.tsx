@@ -106,6 +106,57 @@ describe("AftercareForm", () => {
     expect(sendAftercare).toHaveBeenCalledTimes(1);
   });
 
+  // "Recorded" means THIS composed content was recorded. Editing after a hand-off must clear it,
+  // or the mail client opens with the new instructions while the patient file silently keeps the
+  // old ones — and the banner would still claim the send was recorded.
+  it("records a second send after the practitioner changes the content", async () => {
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /^antiwrinkle$/i }));
+    await user.click(mailtoLink());
+    expect(sendAftercare).toHaveBeenCalledTimes(1);
+    expect(sendAftercare.mock.calls[0][0]).toMatchObject({ categories: ["antiwrinkle"] });
+
+    // Swap the category — the composed email is now different aftercare entirely.
+    await user.click(screen.getByRole("button", { name: /^antiwrinkle$/i }));
+    await user.click(screen.getByRole("button", { name: /^ha filler$/i }));
+    expect(screen.queryByText(/recorded on the patient file/i)).not.toBeInTheDocument();
+
+    await user.click(mailtoLink());
+    expect(sendAftercare).toHaveBeenCalledTimes(2);
+    expect(sendAftercare.mock.calls[1][0]).toMatchObject({ categories: ["haFiller"] });
+  });
+
+  it("clears the recorded confirmation when the body is edited by hand", async () => {
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+    await user.click(mailtoLink());
+    expect(screen.getByText(/recorded on the patient file/i)).toBeInTheDocument();
+
+    await user.type(screen.getByRole("textbox"), " Extra guidance.");
+    expect(screen.queryByText(/recorded on the patient file/i)).not.toBeInTheDocument();
+
+    await user.click(mailtoLink());
+    expect(sendAftercare).toHaveBeenCalledTimes(2);
+    expect(sendAftercare.mock.calls[1][0].content).toContain("Extra guidance.");
+  });
+
+  // Both banners appear only after an interaction, so screen readers need them announced —
+  // matching ConsultCall's existing role="alert" / role="status" convention.
+  it("announces the confirmation and the truncation warning", async () => {
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+
+    await user.click(mailtoLink());
+    expect(screen.getByRole("status")).toHaveTextContent(/recorded on the patient file/i);
+
+    for (const name of [/^antiwrinkle$/i, /^skinbooster$/i, /^ha filler$/i, /^fat dissolve$/i, /^filler dissolve$/i]) {
+      await user.click(screen.getByRole("button", { name }));
+    }
+    expect(screen.getByRole("alert")).toHaveTextContent(/some email apps/i);
+  });
+
   // A mailto href beyond ~2k characters is truncated or refused by some desktop handlers, and
   // with no delivery signal that would fail silently — so warn rather than let it fail unseen.
   it("warns when the composed email is long enough to risk truncation", async () => {

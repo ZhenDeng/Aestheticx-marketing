@@ -39,3 +39,5 @@
 - [x] 6.2 Keep the panel open after hand-off with a confirmation, so the composed text stays selectable if no mail client opened, and the hand-off stays re-clickable while recording only once
 - [x] 6.3 Warn when the mailto exceeds ~2k characters (all five templates reach ~2.6k), which some desktop handlers truncate — otherwise a short send would fail invisibly
 - [x] 6.4 Restore the defensive `!canSend` guard inside the handler that the 15/07 fix had deliberately added
+- [x] 6.5 Reset `recorded` on any category toggle or manual edit — re-review found the one-shot flag let a practitioner hand off edited instructions while the patient file silently kept the superseded ones, under a banner still claiming "Recorded"
+- [x] 6.6 Announce both new banners (`role="status"` / `role="alert"`), matching ConsultCall's convention

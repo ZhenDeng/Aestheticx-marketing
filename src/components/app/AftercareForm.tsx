@@ -21,8 +21,10 @@ export function AftercareForm({
   const [selected, setSelected] = useState<AftercareCategory[]>([]);
   const [content, setContent] = useState(() => aftercareBody([]));
   const [includeMeds, setIncludeMeds] = useState(true);
-  // Whether this send has been written to the patient file. The hand-off stays re-clickable
-  // (a mail client that never opened is invisible to us), but must only ever record once.
+  // Whether the CURRENTLY composed content has been written to the patient file. The hand-off
+  // stays re-clickable (a mail client that never opened is invisible to us) without recording
+  // twice — but any edit clears this, because the mailto would then carry different instructions
+  // than the note, and the file must not keep the superseded ones under a "Recorded" banner.
   const [recorded, setRecorded] = useState(false);
   // 15/07 bug: aftercare goes to the patient's address, and this was the one email path with no
   // empty-recipient guard. Still true under the mailto hand-off — a mailto with no address just
@@ -37,6 +39,7 @@ export function AftercareForm({
     const next = selected.includes(c) ? selected.filter((x) => x !== c) : [...selected, c];
     setSelected(next);
     setContent(aftercareBody(next));
+    setRecorded(false); // different instructions now — the previous record no longer describes them
   }
 
   // Composed from the CURRENT textarea contents, so the practitioner's edits are what leaves.
@@ -76,7 +79,7 @@ export function AftercareForm({
         ))}
       </div>
 
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={8}
+      <textarea value={content} onChange={(e) => { setContent(e.target.value); setRecorded(false); }} rows={8}
                 className="mt-3 w-full rounded-inner border border-line px-3 py-2 text-sm text-ink outline-none focus:border-tint" />
 
       {lastMeds.length > 0 && (
@@ -92,13 +95,13 @@ export function AftercareForm({
             Opens your email app with this message to {recipient}, ready for you to send.
           </p>
           {mayTruncate && (
-            <p className="mt-2 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
+            <p role="alert" className="mt-2 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
               This message is long — some email apps shorten it. Check it looks complete before
               sending, or copy the text above into a new email instead.
             </p>
           )}
           {recorded && (
-            <p className="mt-2 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-tint)", color: "var(--color-tint)" }}>
+            <p role="status" className="mt-2 rounded-inner border px-3 py-2 text-sm" style={{ borderColor: "var(--color-tint)", color: "var(--color-tint)" }}>
               Recorded on the patient file. Send the email from your email app — if it didn&apos;t
               open, use Email again or copy the text above.
             </p>
