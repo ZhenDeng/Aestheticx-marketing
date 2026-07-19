@@ -86,6 +86,21 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
     return <p className="text-ink-soft">This patient is not in your view.</p>;
   }
   const perms = patientPermissions(identity, patient);
+  // Commercial access without clinical view (a collaborating doctor who is neither
+  // prescriber nor reviewer): the isolation guard admits them to OPERATE — checkout and
+  // wallet — but grants no clinical rights (spec: client-data-isolation). Render a
+  // reduced file: identity strip + Account section only; no demographics detail,
+  // allergies/medications, authorisations, notes, forms, or history.
+  if (!perms.canView) {
+    return (
+      <div className="max-w-3xl">
+        <Link href="/app/patients" className="text-sm text-ink-soft hover:text-ink">← All patients</Link>
+        <h1 className="mt-4 font-display text-3xl text-ink">{displayName(patient)}</h1>
+        <p className="mt-1 text-sm text-ink-soft">Clinic client — commercial access only. The clinical record stays with the clinic.</p>
+        <PatientAccountSection patient={patient} />
+      </div>
+    );
+  }
   const isAdminViewer = me.role === "superAdmin";
   // As this viewer sees it: a prescriber-only doctor gets treatment notes only.
   const notes = store.visibleNotesForPatient(id, identity);
