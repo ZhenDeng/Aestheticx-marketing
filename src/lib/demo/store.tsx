@@ -20,6 +20,9 @@ interface StoreValue {
   state: DemoState;
   now: number;
   status: Status;
+  // True while an action-triggered refresh re-hydrates — the shell overlays the page
+  // (20/07 feedback); status stays "ready" so pages don't unmount into "Loading…".
+  refreshing: boolean;
   lastSyncError: string | null;
   rehydrate: () => void;
   searchPatients: (query: string, identity: Identity) => ReturnType<typeof backend.searchPatients>;
@@ -185,6 +188,12 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>(live ? "loading" : "demo");
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  // True while a REFRESH re-hydrate runs (action-triggered, same identity set already
+  // hydrated) — the shell overlays the page instead of unmounting it (20/07 feedback).
+  const [refreshing, setRefreshing] = useState(false);
+  // `${uid}|${identitySetKey}` of the last COMPLETED hydrate — how a re-run knows it is
+  // a refresh rather than a first load or an identity switch.
+  const hydratedKeyRef = useRef<string | null>(null);
   // Captured once per provider mount (live: session start; demo: fixed SEED_NOW).
   // Lazy initializer keeps the impure Date.now() out of the render path.
   // READ-side "now" only — expiry windows and the demo's frozen "today". Writes must NOT use
@@ -220,8 +229,14 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let unsubscribeRequests: (() => void) | undefined;
     let unsubscribeAppointments: (() => void) | undefined;
+    // A re-run for an identity set that already completed a hydrate is a REFRESH (an
+    // action bumped refreshTick): keep the rendered page and let the shell overlay it
+    // (20/07 feedback) instead of flipping status to "loading", which unmounts every
+    // page into its bare "Loading…" early-return. First loads and identity switches
+    // keep the full-page loading state.
+    const isRefresh = hydratedKeyRef.current === `${identity.user.id}|${identitySetKey}`;
     (async () => {
-      setStatus("loading");
+      if (isRefresh) setRefreshing(true); else setStatus("loading");
       try {
         const { hydrate } = await import("@/lib/firebase/hydrate");
         // Hydrate across ALL of the user's identities (roles + clinics), not just the
@@ -234,6 +249,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setState(next);
         setStatus("ready");
+        hydratedKeyRef.current = `${identity.user.id}|${identitySetKey}`;
         // A successful hydrate is the authoritative recovery point. In particular,
         // first-login can briefly race a stale ID token and report permission-denied,
         // then immediately succeed after the refreshed claims arrive. Do not leave that
@@ -289,7 +305,12 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           // Stay on the one-shot snapshot; manual rehydrate still works.
         }
       } catch (e) {
-        if (!cancelled) { setStatus("error"); setLastSyncError(syncErrorMessage(e)); }
+        // A failed REFRESH keeps the already-rendered data and reports through the
+        // sync-error banner; only a failed first load blanks into the error state.
+        if (!cancelled && isRefresh) setLastSyncError(syncErrorMessage(e));
+        else if (!cancelled) { setStatus("error"); setLastSyncError(syncErrorMessage(e)); }
+      } finally {
+        if (isRefresh && !cancelled) setRefreshing(false);
       }
     })();
     return () => { cancelled = true; unsubscribeRequests?.(); unsubscribeAppointments?.(); };
@@ -333,6 +354,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       state,
       now,
       status,
+      refreshing,
       lastSyncError,
       rehydrate: () => setRefreshTick((t) => t + 1),
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
@@ -884,7 +906,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorUpdateProfile(identity.user.id, edits),
         ),
     }),
-    [state, now, writeNow, status, lastSyncError, applyAndMirror, live],
+    [state, now, writeNow, status, refreshing, lastSyncError, applyAndMirror, live],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

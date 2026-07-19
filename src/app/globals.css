@@ -116,6 +116,14 @@ body::after {
   color: var(--color-ink-faint);
 }
 
+/* A micro label on a filled chip/button (tint/rose background + text-card) must keep the
+   fill's readable text colour: .micro's ink-faint ties with the text-card utility (both
+   0,1,0) and wins by source order, which rendered selected kind chips green-on-green
+   (20/07 feedback). The compound selector outranks both. */
+.micro.text-card {
+  color: var(--color-card);
+}
+
 /* Kicker — gold hairline + mono label */
 .kicker {
   display: inline-flex;

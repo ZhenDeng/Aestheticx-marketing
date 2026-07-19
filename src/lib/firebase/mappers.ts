@@ -600,11 +600,16 @@ const isRole = (r: unknown): r is Role =>
 
 export function mapAccount(id: string, data: Doc): AccountRecord {
   const roles = Array.isArray(data.roles) ? data.roles.filter(isRole) : [];
+  // The server-managed membership map ({clinicId: role}); its keys let the admin console
+  // resolve a clinic-keyed business entity to this account (20/07 feedback).
+  const clinics = data.clinics;
+  const clinicIDs = clinics && typeof clinics === "object" && !Array.isArray(clinics) ? Object.keys(clinics) : [];
   return {
     id,
     name: str(data.name),
     email: str(data.email),
     roles,
+    clinicIDs,
     mustChangePassword: data.mustChangePassword === true,
   };
 }
