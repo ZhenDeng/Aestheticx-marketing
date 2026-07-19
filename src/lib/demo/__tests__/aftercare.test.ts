@@ -44,6 +44,39 @@ describe("aftercare domain", () => {
     expect(t("prpPrf")).toContain("leave the remaining plasma matrix on your skin for at least 6 to 12 hours before washing");
   });
 
+  // 19/07 owner feedback round 3: the document's bold-labelled points render as a bulleted
+  // list. The prefill is plain text (textarea → mailto), so "•"/"◦" characters stand in for
+  // the document's <ul>, and the bold labels remain as "Label:" text prefixes.
+  it("renders each bold-labelled point as a • bullet line", () => {
+    const pointCounts = {
+      antiwrinkle: 5, skinbooster: 6, haFiller: 5, biostimulatorFiller: 5,
+      biostimulatorRejuvenation: 5, fatDissolve: 6, fillerDissolve: 5, prpPrf: 6,
+    } as const;
+    for (const c of AFTERCARE_CATEGORIES) {
+      const lines = aftercareTemplate(c).split("\n");
+      expect(lines.filter((l) => l.startsWith("• ")).length).toBe(pointCounts[c]);
+    }
+  });
+
+  it("indents the 5-5-5 rule's product-specific sub-points under their heading", () => {
+    const lines = aftercareTemplate("biostimulatorRejuvenation").split("\n");
+    const head = lines.indexOf("• Crucial Massage Instructions (The 5-5-5 Rule):");
+    expect(head).toBeGreaterThan(-1);
+    expect(lines[head + 1]).toMatch(/^ {3}◦ If you received Sculptra or Lenisna/);
+    expect(lines[head + 2]).toMatch(/^ {3}◦ If you received Gouri/);
+  });
+
+  // The document's intro sentence and the anti-wrinkle review invitation are paragraphs,
+  // not list items — they stay flush left.
+  it("keeps intro and trailing paragraphs unbulleted", () => {
+    for (const c of AFTERCARE_CATEGORIES) {
+      expect(aftercareTemplate(c).split("\n")[0].startsWith("•")).toBe(false);
+    }
+    expect(aftercareTemplate("antiwrinkle").split("\n").at(-1)).toBe(
+      "If this is your first session, we highly recommend booking a complimentary 2-week review."
+    );
+  });
+
   // The closing is appended once by aftercareBody, so no template may carry its own.
   it("keeps the per-template closing out of the templates", () => {
     for (const c of AFTERCARE_CATEGORIES) {
