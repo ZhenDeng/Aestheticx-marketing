@@ -41,6 +41,7 @@ import type {
   UserProfileEdit,
   CooperationRelationship,
   CounterpartyType,
+  RelationshipKind,
   RelationshipStatus,
   RelationshipAuditEntry,
   RelationshipAction,
@@ -51,7 +52,7 @@ import type {
 } from "./types";
 import { LUMIERE, ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
-import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf } from "./types";
+import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf, effectiveRelationshipKinds, RELATIONSHIP_KINDS } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, computeInclusiveTotals, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
@@ -2031,6 +2032,7 @@ export interface SetCooperationRelationshipInput {
   counterpartyType: CounterpartyType;
   counterpartyID: string;
   counterpartyName: string;
+  relationshipKinds?: RelationshipKind[]; // clinic only, ≥1 kind; absent ⇒ ["employee"] (pre-kind semantics)
   status: RelationshipStatus;
   authRequestsAllowed: boolean;
   invoiceApplies: boolean;
@@ -2039,7 +2041,8 @@ export interface SetCooperationRelationshipInput {
 
 function relationshipSummary(r: CooperationRelationship): string {
   const price = r.priceCentsOverride == null ? "default" : `$${(r.priceCentsOverride / 100).toFixed(2)}`;
-  return `${r.status}${r.authRequestsAllowed ? "" : " · requests paused"} · price ${price} · invoicing ${r.invoiceApplies ? "on" : "off"}`;
+  const kinds = effectiveRelationshipKinds(r);
+  return `${kinds ? `${kinds.join("+")} · ` : ""}${r.status}${r.authRequestsAllowed ? "" : " · requests paused"} · price ${price} · invoicing ${r.invoiceApplies ? "on" : "off"}`;
 }
 
 function relationshipAudit(action: RelationshipAction, rel: CooperationRelationship, actor: Identity, now: number): RelationshipAuditEntry {
@@ -2060,6 +2063,14 @@ export function setCooperationRelationship(state: DemoState, input: SetCooperati
   if (input.priceCentsOverride != null && (!Number.isInteger(input.priceCentsOverride) || input.priceCentsOverride <= 0)) {
     throw new BackendError("validationFailed");
   }
+  // Kinds are a clinic-only attribute; when supplied the set must be ≥1 valid kind
+  // (mirrors the callable's validation — an empty or garbled set must fail loudly, not
+  // silently collapse to the employee default and grant membership).
+  if (input.relationshipKinds != null) {
+    if (input.counterpartyType !== "clinic") throw new BackendError("validationFailed");
+    if (input.relationshipKinds.length === 0) throw new BackendError("validationFailed");
+    if (input.relationshipKinds.some((k) => !RELATIONSHIP_KINDS.includes(k))) throw new BackendError("validationFailed");
+  }
   const id = cooperationDocId(input.doctorID, input.counterpartyType, input.counterpartyID);
   const prior = state.cooperationRelationshipsByID[id];
   const rel: CooperationRelationship = {
@@ -2069,6 +2080,10 @@ export function setCooperationRelationship(state: DemoState, input: SetCooperati
     counterpartyType: input.counterpartyType,
     counterpartyID: input.counterpartyID,
     counterpartyName: input.counterpartyName,
+    // Stored deduped in canonical order so summaries and row chips render stably.
+    ...(input.counterpartyType === "clinic"
+      ? { relationshipKinds: RELATIONSHIP_KINDS.filter((k) => (input.relationshipKinds ?? ["employee"]).includes(k)) }
+      : {}),
     status: input.status,
     authRequestsAllowed: input.authRequestsAllowed,
     invoiceApplies: input.invoiceApplies,

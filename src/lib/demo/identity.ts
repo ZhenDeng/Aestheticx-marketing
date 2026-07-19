@@ -1,7 +1,7 @@
 // Pure helpers over an account's set of identities. An account can hold several identities
 // (e.g. doctor + clinicAdmin); the auth context tracks one *active* identity plus the full set.
 import { DEMO_ACCOUNTS } from "./accounts";
-import type { CooperationRelationship, Identity } from "./types";
+import { effectiveRelationshipKinds, type CooperationRelationship, type Identity } from "./types";
 
 /**
  * The full set of identities the signed-in account holds, cross-mode. Live mode resolves them
@@ -24,9 +24,12 @@ export function heldIdentities(
 
   // Live clinic identities come from server-verified membership claims. Demo mode has no
   // claims service, so mirror the same outcome from its in-memory relationship source:
-  // an active doctor↔clinic relationship grants the doctor an employee clinic identity.
+  // an active doctor↔clinic relationship whose kind set includes employee grants the
+  // doctor an employee clinic identity. A prescriber-only relationship is an external
+  // cooperation — it gates authorisation requests but confers no membership.
   for (const relationship of demoRelationships) {
     if (relationship.status !== "active" || relationship.counterpartyType !== "clinic") continue;
+    if (!effectiveRelationshipKinds(relationship)?.includes("employee")) continue;
     if (relationship.doctorID !== active.user.id) continue;
     const duplicate = identities.some((identity) =>
       identity.role === "doctor"

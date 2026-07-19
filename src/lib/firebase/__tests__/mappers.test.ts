@@ -20,7 +20,7 @@ import {
   formatDob,
 } from "@/lib/firebase/mappers";
 import { encodePatientForCreate, encodePatientEdits } from "@/lib/firebase/mappers";
-import { mapForm, encodeForm } from "@/lib/firebase/mappers";
+import { mapForm, encodeForm, mapCooperationRelationship } from "@/lib/firebase/mappers";
 import type { SignedFormRecord } from "@/lib/demo/types";
 import type { Patient } from "@/lib/demo/types";
 
@@ -73,6 +73,31 @@ describe("mapAuditLogEntry", () => {
     expect(rec.targetType).toBeNull();
     expect(rec.targetID).toBeNull();
     expect(rec.at).toBe(0);
+  });
+});
+
+describe("mapCooperationRelationship", () => {
+  const clinicDoc = {
+    doctorId: "u-voss", doctorName: "Dr Voss", counterpartyType: "clinic",
+    counterpartyId: "c1", counterpartyName: "C1", status: "active",
+    authRequestsAllowed: true, invoiceApplies: true, priceCentsOverride: null,
+    createdAt: { toMillis: () => 1 }, updatedAt: { toMillis: () => 2 },
+  };
+  it("decodes the clinic kind set (canonical order) and defaults a pre-kind doc to [employee]", () => {
+    expect(mapCooperationRelationship("id", { ...clinicDoc, relationshipKinds: ["prescriber"] }).relationshipKinds).toEqual(["prescriber"]);
+    expect(mapCooperationRelationship("id", { ...clinicDoc, relationshipKinds: ["prescriber", "employee"] }).relationshipKinds).toEqual(["employee", "prescriber"]);
+    // Absent (every doc written before kinds existed) must decode as [employee] — defaulting
+    // to prescriber would silently revoke live doctors' clinic identities. Garbled values too.
+    expect(mapCooperationRelationship("id", clinicDoc).relationshipKinds).toEqual(["employee"]);
+    expect(mapCooperationRelationship("id", { ...clinicDoc, relationshipKinds: ["weird"] }).relationshipKinds).toEqual(["employee"]);
+  });
+  it("honours an interim singular relationshipKind doc as a one-element set", () => {
+    expect(mapCooperationRelationship("id", { ...clinicDoc, relationshipKind: "prescriber" }).relationshipKinds).toEqual(["prescriber"]);
+    expect(mapCooperationRelationship("id", { ...clinicDoc, relationshipKind: "employee" }).relationshipKinds).toEqual(["employee"]);
+  });
+  it("leaves nurse relationships kind-free", () => {
+    const rec = mapCooperationRelationship("id", { ...clinicDoc, counterpartyType: "nurse", relationshipKinds: ["employee"] });
+    expect(rec.relationshipKinds).toBeUndefined();
   });
 });
 

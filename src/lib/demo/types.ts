@@ -442,6 +442,14 @@ export interface SignedFormRecord {
 
 export type CounterpartyType = "nurse" | "clinic";
 export type RelationshipStatus = "active" | "inactive";
+// Doctor↔clinic relationships carry a SET of kinds (19/07 feedback, kind-set rework): an
+// employee works at the clinic (grants clinic membership + identity); a prescriber authorises
+// for it externally (gate + pricing, no membership). The kinds are not mutually exclusive —
+// a doctor can be both — but a clinic relationship always has at least one. Nurse
+// relationships carry no kinds.
+export type RelationshipKind = "employee" | "prescriber";
+// Canonical display/storage order; also the closed enum used to sanitise decoded values.
+export const RELATIONSHIP_KINDS: readonly RelationshipKind[] = ["employee", "prescriber"];
 
 // A doctor ↔ (nurse|clinic) cooperation relationship (spec 2026-07-08 cooperation-relationships,
 // constitution §17). Gates which doctors a nurse/clinic may request authorisation from
@@ -454,12 +462,24 @@ export interface CooperationRelationship {
   counterpartyType: CounterpartyType;
   counterpartyID: string;     // nurse uid or clinic id
   counterpartyName: string;   // denormalised
+  relationshipKinds?: RelationshipKind[]; // clinic counterparties only; absent ⇒ ["employee"] (pre-kind docs)
   status: RelationshipStatus;
   authRequestsAllowed: boolean;
   invoiceApplies: boolean;
   priceCentsOverride: number | null; // null ⇒ DEFAULT_SCRIPT_PRICE_CENTS
   createdAt: number;
   updatedAt: number;
+}
+
+// The kind set a relationship effectively has, in canonical order: clinic relationships
+// default to ["employee"] (every pre-kind doc was created under grant-membership semantics,
+// and an empty/garbled set must not silently revoke); nurse relationships have none.
+export function effectiveRelationshipKinds(
+  rel: Pick<CooperationRelationship, "counterpartyType" | "relationshipKinds">,
+): RelationshipKind[] | null {
+  if (rel.counterpartyType !== "clinic") return null;
+  const kinds = RELATIONSHIP_KINDS.filter((k) => rel.relationshipKinds?.includes(k));
+  return kinds.length > 0 ? kinds : ["employee"];
 }
 
 export type RelationshipAction = "created" | "updated" | "removed";

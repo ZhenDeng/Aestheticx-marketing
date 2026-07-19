@@ -61,7 +61,7 @@ describe("create-relationship counterparty types", () => {
     expect(screen.getByLabelText("Nurse", { selector: "select" })).toBeInTheDocument();
   });
 
-  it("links a clinic to a doctor: picks from the directory and submits counterpartyType clinic", async () => {
+  it("links a clinic to a doctor: picks from the directory and submits counterpartyType clinic (kinds [employee] by default)", async () => {
     await openCreateForm();
     await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
     const clinicSelect = screen.getByLabelText("Clinic", { selector: "select" });
@@ -73,6 +73,7 @@ describe("create-relationship counterparty types", () => {
         counterpartyType: "clinic",
         counterpartyID: "clinic-lumiere",
         counterpartyName: "Lumière Clinic",
+        relationshipKinds: ["employee"],
         status: "active",
         authRequestsAllowed: true,
         invoiceApplies: true,
@@ -81,7 +82,38 @@ describe("create-relationship counterparty types", () => {
     );
   });
 
-  it("still creates nurse relationships exactly as before", async () => {
+  it("offers the Employee/Prescriber kind chips only for clinic counterparties; both can be selected", async () => {
+    await openCreateForm();
+    // Nurse counterparty: no kind choice.
+    expect(screen.queryByRole("button", { name: "Prescriber" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
+    expect(screen.getByRole("button", { name: "Employee" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Prescriber" })).toHaveAttribute("aria-pressed", "false");
+    // Selecting Prescriber alongside Employee submits both kinds.
+    await userEvent.click(screen.getByRole("button", { name: "Prescriber" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
+    expect(setCooperationRelationship).toHaveBeenCalledWith(
+      expect.objectContaining({ counterpartyType: "clinic", relationshipKinds: ["employee", "prescriber"] }),
+      admin,
+    );
+  });
+
+  it("submits a prescriber-only set and never lets the set go empty", async () => {
+    await openCreateForm();
+    await userEvent.click(screen.getByRole("button", { name: "Clinic" }));
+    await userEvent.click(screen.getByRole("button", { name: "Prescriber" }));
+    await userEvent.click(screen.getByRole("button", { name: "Employee" })); // deselect employee
+    // Deselecting the last remaining kind is a no-op — prescriber stays selected.
+    await userEvent.click(screen.getByRole("button", { name: "Prescriber" }));
+    expect(screen.getByRole("button", { name: "Prescriber" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
+    expect(setCooperationRelationship).toHaveBeenCalledWith(
+      expect.objectContaining({ counterpartyType: "clinic", relationshipKinds: ["prescriber"] }),
+      admin,
+    );
+  });
+
+  it("still creates nurse relationships exactly as before, with no kinds", async () => {
     await openCreateForm();
     await userEvent.click(screen.getByRole("button", { name: "Create relationship" }));
     expect(setCooperationRelationship).toHaveBeenCalledWith(
@@ -89,6 +121,7 @@ describe("create-relationship counterparty types", () => {
         counterpartyType: "nurse",
         counterpartyID: "u-nurse",
         counterpartyName: "Yinghua Xu",
+        relationshipKinds: undefined,
       }),
       admin,
     );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act, within } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Identity } from "@/lib/demo/types";
 
@@ -79,10 +79,12 @@ describe("AdminConsole per-account actions", () => {
     expect(deleteUserAccount).not.toHaveBeenCalled();
   });
 
-  it("renders the account, cooperation, catalog and business-entity management sections", async () => {
+  it("renders the account, cooperation and business-entity sections — the catalog lives on its own Products tab", async () => {
     await renderSettled();
-    for (const heading of ["Accounts", "Cooperation relationships", "Product catalog", "Business entities"]) {
+    for (const heading of ["Accounts", "Cooperation relationships", "Business entities"]) {
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     }
+    // 19/07 feedback: the product catalog moved to /app/admin/products (ProductCatalog.tsx).
+    expect(screen.queryByRole("heading", { name: "Product catalog" })).not.toBeInTheDocument();
   });
 });
