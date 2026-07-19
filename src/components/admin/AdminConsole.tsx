@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
-import { identityBadge, type AccountRecord, type CooperationRelationship, type Identity, type Role, type ProductCategory, type ProductUnit, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
+import { identityBadge, type AccountRecord, type CooperationRelationship, type CounterpartyType, type Identity, type Role, type ProductCategory, type ProductUnit, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
 import { categoryDisplayName, PRODUCT_CATEGORIES, type CatalogProduct } from "@/lib/demo/catalog";
 import type { SetCooperationRelationshipInput } from "@/lib/demo/backend";
 import { validateNewUser, type NewPremiseInput, type NewUserInput } from "@/lib/demo/userAdmin";
@@ -459,6 +459,7 @@ function CooperationRelationshipsSection() {
 
   const relationships = store.cooperationRelationships();
   const nurses = store.accounts().filter((a) => a.roles.includes("nurse"));
+  const clinics = store.clinics();
 
   // Group by doctor, preserving cooperationRelationships()'s sort (doctor name, then
   // counterparty name) since Map insertion order follows first-seen iteration order.
@@ -499,6 +500,7 @@ function CooperationRelationshipsSection() {
         <CreateRelationshipForm
           doctorOptions={doctorOptions}
           nurses={nurses}
+          clinics={clinics}
           identity={identity}
           onDone={() => setCreating(false)}
           onCancel={() => setCreating(false)}
@@ -511,9 +513,6 @@ function CooperationRelationshipsSection() {
           Add cooperation relationship
         </button>
       )}
-      {/* Clinic-counterparty CREATE is out of scope here — there is no clinic directory yet
-          to pick from. Edit/remove below still work for clinic relationships that already
-          exist from seed data or a backfill. */}
     </section>
   );
 }
@@ -970,29 +969,31 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
   );
 }
 
-// Inline create form: doctor + nurse pickers (clinic counterparties have no directory to
-// pick from yet — out of scope), an optional price override, and sensible active defaults
-// (authRequestsAllowed + invoiceApplies on) matching what a super admin would set up first.
-function CreateRelationshipForm({ doctorOptions, nurses, identity, onDone, onCancel }: {
+// Inline create form: doctor picker + a Nurse/Clinic counterparty toggle (spec:
+// cooperation-linking — the callable, rules and edit rows always took clinic
+// counterparties; only this create path was nurse-only), an optional price override,
+// and sensible active defaults (authRequestsAllowed + invoiceApplies on) matching what
+// a super admin would set up first.
+function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDone, onCancel }: {
   doctorOptions: { doctorId: string; doctorName: string }[];
   nurses: AccountRecord[];
+  clinics: { id: string; label: string }[];
   identity: Identity;
   onDone: () => void;
   onCancel: () => void;
 }) {
   const store = useDemoStore();
   const [doctorID, setDoctorID] = useState(doctorOptions[0]?.doctorId ?? "");
+  const [counterpartyType, setCounterpartyType] = useState<CounterpartyType>("nurse");
   const [counterpartyID, setCounterpartyID] = useState(nurses[0]?.id ?? "");
   const [priceDollars, setPriceDollars] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (doctorOptions.length === 0 || nurses.length === 0) {
+  if (doctorOptions.length === 0) {
     return (
       <section className="mt-4 rounded-card border border-line bg-card px-5 py-4 shadow-card">
-        <p className="text-sm text-ink-soft">
-          {doctorOptions.length === 0 ? "No doctors in the directory yet." : "No nurse accounts yet."}
-        </p>
+        <p className="text-sm text-ink-soft">No doctors in the directory yet.</p>
         <div className="mt-3 flex justify-end">
           <button onClick={onCancel} className="rounded-btn border border-line px-4 py-1.5 text-sm text-ink-soft hover:border-tint/50">Close</button>
         </div>
@@ -1000,11 +1001,23 @@ function CreateRelationshipForm({ doctorOptions, nurses, identity, onDone, onCan
     );
   }
 
+  // The selected type's directory as uniform {id, label} options; empty ⇒ the picker cell
+  // explains and Create disables, while the toggle stays usable to switch type.
+  const options = counterpartyType === "nurse"
+    ? nurses.map((n) => ({ id: n.id, label: n.name || n.email || n.id }))
+    : clinics;
+
+  function selectType(type: CounterpartyType) {
+    setCounterpartyType(type);
+    setError(null);
+    setCounterpartyID((type === "nurse" ? nurses.map((n) => n.id)[0] : clinics[0]?.id) ?? "");
+  }
+
   function submit() {
     setError(null);
     const doctor = doctorOptions.find((d) => d.doctorId === doctorID);
-    const nurse = nurses.find((n) => n.id === counterpartyID);
-    if (!doctor || !nurse) { setError("Pick a doctor and a nurse."); return; }
+    const counterparty = options.find((o) => o.id === counterpartyID);
+    if (!doctor || !counterparty) { setError(`Pick a doctor and a ${counterpartyType}.`); return; }
     let priceCentsOverride: number | null = null;
     const trimmed = priceDollars.trim();
     if (trimmed) {
@@ -1018,9 +1031,9 @@ function CreateRelationshipForm({ doctorOptions, nurses, identity, onDone, onCan
         {
           doctorID: doctor.doctorId,
           doctorName: doctor.doctorName,
-          counterpartyType: "nurse",
-          counterpartyID: nurse.id,
-          counterpartyName: nurse.name || nurse.email || nurse.id,
+          counterpartyType,
+          counterpartyID: counterparty.id,
+          counterpartyName: counterparty.label,
           status: "active",
           authRequestsAllowed: true,
           invoiceApplies: true,
@@ -1038,6 +1051,20 @@ function CreateRelationshipForm({ doctorOptions, nurses, identity, onDone, onCan
   return (
     <section className="mt-4 rounded-card border border-line bg-card px-5 py-4 shadow-card">
       <h3 className="font-display text-base text-ink">New cooperation relationship</h3>
+      <div className="mt-3 flex gap-1.5">
+        {([["nurse", "Nurse"], ["clinic", "Clinic"]] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => selectType(value)}
+            aria-pressed={counterpartyType === value}
+            className={`rounded-btn px-3 py-1.5 text-sm ${counterpartyType === value ? "text-card" : "border border-line text-ink-soft"}`}
+            style={counterpartyType === value ? { background: "var(--color-tint)" } : undefined}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="micro">Doctor</span>
@@ -1046,13 +1073,21 @@ function CreateRelationshipForm({ doctorOptions, nurses, identity, onDone, onCan
             {doctorOptions.map((d) => <option key={d.doctorId} value={d.doctorId}>{d.doctorName}</option>)}
           </select>
         </label>
-        <label className="block">
-          <span className="micro">Nurse</span>
-          <select value={counterpartyID} onChange={(e) => setCounterpartyID(e.target.value)}
-            className="mt-1 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink">
-            {nurses.map((n) => <option key={n.id} value={n.id}>{n.name || n.email || n.id}</option>)}
-          </select>
-        </label>
+        {options.length === 0 ? (
+          <p className="self-end pb-1.5 text-sm text-ink-soft">
+            {counterpartyType === "nurse"
+              ? "No nurse accounts yet."
+              : "No clinic accounts yet — create a clinic account first."}
+          </p>
+        ) : (
+          <label className="block">
+            <span className="micro">{counterpartyType === "nurse" ? "Nurse" : "Clinic"}</span>
+            <select value={counterpartyID} onChange={(e) => setCounterpartyID(e.target.value)}
+              className="mt-1 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink">
+              {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          </label>
+        )}
         <label className="block">
           <span className="micro">Price override (optional)</span>
           <input
@@ -1069,7 +1104,7 @@ function CreateRelationshipForm({ doctorOptions, nurses, identity, onDone, onCan
         <button onClick={onCancel} disabled={submitting} className="rounded-btn border border-line px-4 py-1.5 text-sm text-ink-soft hover:border-tint/50">
           Cancel
         </button>
-        <button onClick={submit} disabled={submitting} className="rounded-btn px-4 py-1.5 text-sm font-medium text-card disabled:opacity-60" style={{ background: "var(--color-tint)" }}>
+        <button onClick={submit} disabled={submitting || options.length === 0} className="rounded-btn px-4 py-1.5 text-sm font-medium text-card disabled:opacity-60" style={{ background: "var(--color-tint)" }}>
           {submitting ? "Creating…" : "Create relationship"}
         </button>
       </div>

@@ -22,6 +22,7 @@ vi.mock("@/lib/demo/store", () => ({
       { id: "u-admin", name: "Priya Nair", email: "admin@example.com", roles: ["superAdmin"], mustChangePassword: false },
     ],
     cooperationRelationships: () => [],
+    clinics: () => [],
     listDoctors: () => Promise.resolve([]),
     catalogProducts: () => [],
     businessEntities: () => [],
