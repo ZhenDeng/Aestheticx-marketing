@@ -22,5 +22,5 @@
 
 ## 5. Verification
 
-- [ ] 5.1 Full web suite (`npm test`) + build green; backend rules tests green in the backend worktree.
-- [ ] 5.2 Emulator/live sanity: clinic account login hydrates without a permission banner once rules are applied (emulator e2e if harness supports it, else documented manual check), and a clinic↔doctor link created in the console gates the request picker.
+- [x] 5.1 Full web suite (`npm test`) + build green; backend rules tests green in the backend worktree.
+- [x] 5.2 Emulator/live sanity: clinic account login hydrates without a permission banner once rules are applied (emulator e2e if harness supports it, else documented manual check), and a clinic↔doctor link created in the console gates the request picker.
