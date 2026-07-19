@@ -48,20 +48,28 @@ describe("setCooperationRelationship", () => {
   it("rejects a non-positive price override", () => {
     expect(() => setCooperationRelationship(emptyState(), baseInput({ priceCentsOverride: 0 }), admin, NOW)).toThrow();
   });
-  it("stores the clinic relationship kind, defaulting to employee, and notes it in the audit summary", () => {
+  it("stores the clinic kind set (deduped, canonical order), defaulting to [employee], and notes it in the audit summary", () => {
     const clinicInput = (over: Record<string, unknown> = {}) =>
       baseInput({ counterpartyType: "clinic" as const, counterpartyID: "c1", counterpartyName: "C1", ...over });
     const clinicID = "u-voss_clinic_c1";
     const employee = setCooperationRelationship(emptyState(), clinicInput(), admin, NOW);
-    expect(employee.cooperationRelationshipsByID[clinicID].relationshipKind).toBe("employee");
-    const prescriber = setCooperationRelationship(emptyState(), clinicInput({ relationshipKind: "prescriber" }), admin, NOW);
-    expect(prescriber.cooperationRelationshipsByID[clinicID].relationshipKind).toBe("prescriber");
+    expect(employee.cooperationRelationshipsByID[clinicID].relationshipKinds).toEqual(["employee"]);
+    const prescriber = setCooperationRelationship(emptyState(), clinicInput({ relationshipKinds: ["prescriber"] }), admin, NOW);
+    expect(prescriber.cooperationRelationshipsByID[clinicID].relationshipKinds).toEqual(["prescriber"]);
     expect(relationshipAuditForRelationship(prescriber, clinicID)[0].summary).toContain("prescriber");
+    // Both kinds normalise to canonical order and dedupe; the summary shows the set.
+    const both = setCooperationRelationship(emptyState(), clinicInput({ relationshipKinds: ["prescriber", "employee", "prescriber"] }), admin, NOW);
+    expect(both.cooperationRelationshipsByID[clinicID].relationshipKinds).toEqual(["employee", "prescriber"]);
+    expect(relationshipAuditForRelationship(both, clinicID)[0].summary).toContain("employee+prescriber");
   });
-  it("keeps nurse relationships kind-free and rejects a kind supplied for a nurse", () => {
+  it("rejects an empty kind set for a clinic relationship", () => {
+    const clinicInput = baseInput({ counterpartyType: "clinic" as const, counterpartyID: "c1", counterpartyName: "C1", relationshipKinds: [] });
+    expect(() => setCooperationRelationship(emptyState(), clinicInput, admin, NOW)).toThrow();
+  });
+  it("keeps nurse relationships kind-free and rejects kinds supplied for a nurse", () => {
     const s = setCooperationRelationship(emptyState(), baseInput(), admin, NOW);
-    expect(s.cooperationRelationshipsByID[ID].relationshipKind).toBeUndefined();
-    expect(() => setCooperationRelationship(emptyState(), baseInput({ relationshipKind: "employee" }), admin, NOW)).toThrow();
+    expect(s.cooperationRelationshipsByID[ID].relationshipKinds).toBeUndefined();
+    expect(() => setCooperationRelationship(emptyState(), baseInput({ relationshipKinds: ["employee"] }), admin, NOW)).toThrow();
   });
 });
 

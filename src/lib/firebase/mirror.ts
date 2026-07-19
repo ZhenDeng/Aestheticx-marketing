@@ -46,9 +46,9 @@ export async function mirrorSetCooperationRelationship(input: import("@/lib/demo
     counterpartyType: input.counterpartyType,
     counterpartyId: input.counterpartyID,
     counterpartyName: input.counterpartyName,
-    // Clinic-only kind (19/07 feedback): employee grants membership, prescriber does not.
-    // Omitted for nurse counterparties (the callable rejects a nurse kind).
-    ...(input.counterpartyType === "clinic" ? { relationshipKind: input.relationshipKind ?? "employee" } : {}),
+    // Clinic-only kind set (19/07 feedback): employee grants membership, prescriber does
+    // not; a doctor can be both. Omitted for nurse counterparties (the callable rejects it).
+    ...(input.counterpartyType === "clinic" ? { relationshipKinds: input.relationshipKinds ?? ["employee"] } : {}),
     status: input.status,
     authRequestsAllowed: input.authRequestsAllowed,
     invoiceApplies: input.invoiceApplies,

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
-import { identityBadge, effectiveRelationshipKind, type AccountRecord, type CooperationRelationship, type CounterpartyType, type Identity, type RelationshipKind, type Role, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
+import { identityBadge, effectiveRelationshipKinds, RELATIONSHIP_KINDS, type AccountRecord, type CooperationRelationship, type CounterpartyType, type Identity, type RelationshipKind, type Role, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
 import type { ClinicOption, SetCooperationRelationshipInput } from "@/lib/demo/backend";
 import { validateNewUser, type NewPremiseInput, type NewUserInput } from "@/lib/demo/userAdmin";
 
@@ -705,9 +705,9 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
           counterpartyType: rel.counterpartyType,
           counterpartyID: rel.counterpartyID,
           counterpartyName: rel.counterpartyName,
-          // Effective, not stored: a pre-kind clinic doc behaves as employee, so an edit
-          // must persist that same kind rather than dropping the field (nurse rows: null → omitted).
-          relationshipKind: effectiveRelationshipKind(rel) ?? undefined,
+          // Effective, not stored: a pre-kind clinic doc behaves as ["employee"], so an edit
+          // must persist that same set rather than dropping the field (nurse rows: null → omitted).
+          relationshipKinds: effectiveRelationshipKinds(rel) ?? undefined,
           status: rel.status,
           authRequestsAllowed: rel.authRequestsAllowed,
           invoiceApplies: rel.invoiceApplies,
@@ -738,7 +738,7 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
 
   const priceLabel = rel.priceCentsOverride == null ? "default $25.00" : `$${(rel.priceCentsOverride / 100).toFixed(2)}`;
   const history = showHistory ? store.relationshipAuditFor(rel.id) : [];
-  const kind = effectiveRelationshipKind(rel);
+  const kinds = effectiveRelationshipKinds(rel);
 
   return (
     <li className="flex flex-col gap-2.5 border-b border-line px-4 py-3 last:border-b-0">
@@ -746,7 +746,7 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium text-ink">{rel.counterpartyName}</span>
           <span className="micro block">
-            {rel.counterpartyType === "nurse" ? "Nurse" : `Clinic · ${kind === "prescriber" ? "prescriber" : "employee"}`} · {priceLabel} · invoicing {rel.invoiceApplies ? "on" : "off"}
+            {kinds ? `Clinic · ${kinds.join(" + ")}` : "Nurse"} · {priceLabel} · invoicing {rel.invoiceApplies ? "on" : "off"}
           </span>
         </span>
         <span
@@ -760,24 +760,31 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
       </div>
 
       <div className="flex flex-wrap items-center gap-4 text-sm text-ink">
-        {kind && (
-          // Employee ⇄ prescriber switch (19/07 feedback): switching to prescriber revokes the
-          // clinic membership this relationship granted (never an independent grant); switching
-          // to employee grants it. The audit history records the change like any other edit.
+        {kinds && (
+          // Employee/Prescriber kind-set chips (19/07 feedback): each chip toggles that kind
+          // in the set — deselecting Employee revokes the clinic membership this relationship
+          // granted (never an independent grant), selecting it grants one. At least one kind
+          // must stay selected, so the last chip is a no-op. Audit history records each change.
           <span className="flex items-center gap-1.5">
             <span className="micro">Kind</span>
-            {(["employee", "prescriber"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => { if (kind !== value) patch({ relationshipKind: value }); }}
-                aria-pressed={kind === value}
-                className={`micro rounded-btn px-2 py-1 ${kind === value ? "text-card" : "border border-line text-ink-soft"}`}
-                style={kind === value ? { background: "var(--color-tint)" } : undefined}
-              >
-                {value === "employee" ? "Employee" : "Prescriber"}
-              </button>
-            ))}
+            {RELATIONSHIP_KINDS.map((value) => {
+              const selected = kinds.includes(value);
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    const next = selected ? kinds.filter((k) => k !== value) : [...kinds, value];
+                    if (next.length > 0) patch({ relationshipKinds: RELATIONSHIP_KINDS.filter((k) => next.includes(k)) });
+                  }}
+                  aria-pressed={selected}
+                  className={`micro rounded-btn px-2 py-1 ${selected ? "text-card" : "border border-line text-ink-soft"}`}
+                  style={selected ? { background: "var(--color-tint)" } : undefined}
+                >
+                  {value === "employee" ? "Employee" : "Prescriber"}
+                </button>
+              );
+            })}
           </span>
         )}
         <label className="flex items-center gap-1.5">
@@ -867,9 +874,10 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
   const [doctorID, setDoctorID] = useState(doctorOptions[0]?.doctorId ?? "");
   const [counterpartyType, setCounterpartyType] = useState<CounterpartyType>("nurse");
   const [counterpartyID, setCounterpartyID] = useState(nurses[0]?.id ?? "");
-  // Clinic-only relationship kind (19/07 feedback). Employee is the default: it matches every
+  // Clinic-only relationship kind set (19/07 feedback) — a doctor can be employee,
+  // prescriber, or both, but never neither. Employee is the default: it matches every
   // pre-kind relationship's behaviour (membership + clinic identity).
-  const [relationshipKind, setRelationshipKind] = useState<RelationshipKind>("employee");
+  const [relationshipKinds, setRelationshipKinds] = useState<RelationshipKind[]>(["employee"]);
   const [priceDollars, setPriceDollars] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -940,7 +948,7 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
           counterpartyType,
           counterpartyID: counterparty.id,
           counterpartyName: counterparty.label,
-          relationshipKind: counterpartyType === "clinic" ? relationshipKind : undefined,
+          relationshipKinds: counterpartyType === "clinic" ? relationshipKinds : undefined,
           status: "active",
           authRequestsAllowed: true,
           invoiceApplies: true,
@@ -974,25 +982,31 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
       </div>
       {counterpartyType === "clinic" && (
         <div className="mt-3">
-          <span className="micro">Relationship kind</span>
+          <span className="micro">Relationship kind — pick one or both</span>
           <div className="mt-1 flex gap-1.5">
-            {([["employee", "Employee"], ["prescriber", "Prescriber"]] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setRelationshipKind(value)}
-                aria-pressed={relationshipKind === value}
-                className={`rounded-btn px-3 py-1.5 text-sm ${relationshipKind === value ? "text-card" : "border border-line text-ink-soft"}`}
-                style={relationshipKind === value ? { background: "var(--color-tint)" } : undefined}
-              >
-                {label}
-              </button>
-            ))}
+            {([["employee", "Employee"], ["prescriber", "Prescriber"]] as const).map(([value, label]) => {
+              const selected = relationshipKinds.includes(value);
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRelationshipKinds((kinds) => {
+                    const next = kinds.includes(value) ? kinds.filter((k) => k !== value) : [...kinds, value];
+                    // Never let the set go empty — a clinic relationship must be at least one kind.
+                    return next.length > 0 ? RELATIONSHIP_KINDS.filter((k) => next.includes(k)) : kinds;
+                  })}
+                  aria-pressed={selected}
+                  className={`rounded-btn px-3 py-1.5 text-sm ${selected ? "text-card" : "border border-line text-ink-soft"}`}
+                  style={selected ? { background: "var(--color-tint)" } : undefined}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
           <p className="micro mt-1 text-ink-soft">
-            {relationshipKind === "employee"
-              ? "The doctor works at this clinic — they gain a clinic identity under “Practise as”."
-              : "An external prescriber — the clinic can request authorisations, but the doctor gains no clinic identity."}
+            Employee — works at the clinic and gains a clinic identity under “Practise as”.
+            Prescriber — authorises for the clinic externally, no clinic identity.
           </p>
         </div>
       )}

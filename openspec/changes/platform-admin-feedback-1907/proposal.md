@@ -7,12 +7,12 @@
 ## What Changes
 
 - The product catalog editor moves out of the Admin tab into its own top-level **Products** nav tab for platform admins (`/app/admin/products`). The Admin page no longer renders the catalog section; behaviour of the editor itself (list, add, activate/deactivate) is unchanged.
-- Doctor ↔ clinic cooperation relationships gain a **relationship kind**: `employee` or `prescriber`, chosen in the create form (clinic counterparties only) and shown on relationship rows.
-  - `employee`: current behaviour — an active relationship grants the doctor an employee membership of the clinic (claims + "Practise as" identity), revoked with the relationship.
-  - `prescriber`: the relationship gates authorisation requests and carries pricing/invoicing exactly as today, but grants **no** clinic membership or identity.
-  - Editing a relationship's kind reconciles membership accordingly (employee→prescriber revokes only a relationship-granted membership; prescriber→employee grants one).
-  - Existing stored relationships (no kind field) keep behaving as `employee` — no migration, no claim churn on deploy.
-- Backend `setCooperationRelationship` callable accepts and persists `relationshipKind`, and the clinic-membership synchronisation keys off it. Deploy order: backend first (old web + new backend ⇒ kind absent ⇒ employee, today's behaviour).
+- Doctor ↔ clinic cooperation relationships gain a **relationship kind set**: one or both of `employee` and `prescriber` (not mutually exclusive), chosen as multi-select chips in the create form (clinic counterparties only) and shown/editable on relationship rows.
+  - set includes `employee`: current behaviour — an active relationship grants the doctor an employee membership of the clinic (claims + "Practise as" identity), revoked with the relationship.
+  - prescriber-only set: the relationship gates authorisation requests and carries pricing/invoicing exactly as today, but grants **no** clinic membership or identity.
+  - Editing a relationship's kind set reconciles membership accordingly (removing `employee` revokes only a relationship-granted membership; adding it grants one). The set can never be empty.
+  - Existing stored relationships (no kinds field) keep behaving as `[employee]` — no migration, no claim churn on deploy.
+- Backend `setCooperationRelationship` callable accepts and persists `relationshipKinds`, and the clinic-membership synchronisation keys off whether the set contains `employee`. Deploy order: backend first (old web + new backend ⇒ kinds absent ⇒ [employee], today's behaviour).
 - Doctor ↔ nurse relationships are unaffected (no kind).
 
 ## Capabilities
@@ -23,7 +23,7 @@
 
 ### Modified Capabilities
 
-- `cooperation-linking`: doctor ↔ clinic relationships carry a kind (employee | prescriber); membership/identity grant becomes conditional on kind `employee` instead of applying to every active clinic relationship.
+- `cooperation-linking`: doctor ↔ clinic relationships carry a kind set (subset of {employee, prescriber}, ≥1); membership/identity grant becomes conditional on the set containing `employee` instead of applying to every active clinic relationship.
 
 ## Impact
 

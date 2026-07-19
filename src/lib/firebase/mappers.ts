@@ -181,6 +181,16 @@ export function mapEmergencyAuthorisation(id: string, data: Doc): EmergencyAutho
   };
 }
 
+// Kind-set decode (enum-coerced like PRODUCT_CATEGORY_SET below): the plural array field wins,
+// a singular string is honoured as a one-element set, and anything else falls back to the
+// employee default — the fail-safe for docs that predate kinds.
+const RELATIONSHIP_KIND_SET: readonly RelationshipKind[] = ["employee", "prescriber"];
+function decodeRelationshipKinds(data: Doc): RelationshipKind[] {
+  const raw = Array.isArray(data.relationshipKinds) ? data.relationshipKinds : [data.relationshipKind];
+  const kinds = RELATIONSHIP_KIND_SET.filter((k) => raw.includes(k));
+  return kinds.length > 0 ? kinds : ["employee"];
+}
+
 // Cooperation relationship (spec 2026-07-08) written by the setCooperationRelationship /
 // backfillCooperationRelationships Cloud Functions. priceCentsOverride is a plain number or null.
 export function mapCooperationRelationship(id: string, data: Doc): CooperationRelationship {
@@ -193,11 +203,10 @@ export function mapCooperationRelationship(id: string, data: Doc): CooperationRe
     counterpartyType,
     counterpartyID: str(data.counterpartyId),
     counterpartyName: str(data.counterpartyName),
-    // Kind is clinic-only; pre-kind docs (field absent) behave as employee — every one was
-    // created under grant-membership semantics, so the default must not revoke anything.
-    ...(counterpartyType === "clinic"
-      ? { relationshipKind: (data.relationshipKind === "prescriber" ? "prescriber" : "employee") as RelationshipKind }
-      : {}),
+    // Kinds are clinic-only; pre-kind docs (field absent) behave as ["employee"] — every one
+    // was created under grant-membership semantics, so the default must not revoke anything.
+    // A brief singular-field doc (interim relationshipKind wire shape) decodes equivalently.
+    ...(counterpartyType === "clinic" ? { relationshipKinds: decodeRelationshipKinds(data) } : {}),
     status,
     authRequestsAllowed: data.authRequestsAllowed !== false, // default true when absent
     invoiceApplies: data.invoiceApplies !== false,           // default true when absent
