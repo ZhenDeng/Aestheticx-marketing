@@ -15,13 +15,8 @@ import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { emergencyKindLabel } from "@/lib/demo/direction";
-import { displayName, fullName, hasAlert, routeLabel, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
 import { unitSuffix } from "@/lib/demo/catalog";
-
-const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
-function deliveryColor(s: DeliveryStatus): string {
-  return s === "delivered" ? "var(--color-tint)" : s === "failed" ? "var(--color-rose)" : "var(--color-ink-soft)";
-}
 
 const APPT_STATUS_LABEL: Record<AppointmentStatus, string> = {
   awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
@@ -56,10 +51,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showHistory, setShowHistory] = useState(false);
   // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
-  // Note id of an in-flight aftercare retry. A live retry sends a REAL email and the note
-  // keeps showing "failed" until the rehydrate lands, so without this a double-click would
-  // deliver the patient two copies (the callable's own guard only rejects ALREADY-sent mail).
-  const [retryingNoteID, setRetryingNoteID] = useState<string | null>(null);
   // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
   // open; the ref dedupes React's StrictMode double-effect + repeat renders so it stays a single
   // event per file. `patientForLog` is a dependency (not read inside only) so that when a live
@@ -234,11 +225,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                         {n.kind === "treatment" ? "Treatment" : "Aftercare"}
                       </span>
                     )}
-                    {n.deliveryStatus && (
-                      <span className="micro rounded-full border px-2 py-0.5" style={{ color: deliveryColor(n.deliveryStatus), borderColor: deliveryColor(n.deliveryStatus) }}>
-                        {DELIVERY_LABEL[n.deliveryStatus]}
-                      </span>
-                    )}
                     <span className="micro">{n.authorBadge}</span>
                   </span>
                 </button>
@@ -260,32 +246,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                       <p className="mt-1 micro" style={{ color: "var(--color-tint)" }}>
                         Consumed {n.consumedAuthorisationIDs.length} repeat{n.consumedAuthorisationIDs.length === 1 ? "" : "s"}
                       </p>
-                    )}
-                    {/* A bare "Failed" badge is undiagnosable — the 18/07 report was a Resend
-                        rejection the backend had recorded all along. Show the reason it mirrored
-                        onto the note, and offer retry in live too (the deployed retryAftercare
-                        callable backs it), not just in the demo. */}
-                    {n.deliveryStatus === "failed" && (
-                      <div className="mt-2">
-                        {n.failureReason && (
-                          <p className="rounded-inner border px-3 py-2 text-sm"
-                             style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}>
-                            Delivery failed: {n.failureReason}
-                          </p>
-                        )}
-                        {canAftercare && (
-                          <button onClick={async () => {
-                                    if (retryingNoteID) return;
-                                    setRetryingNoteID(n.id);
-                                    try { await store.retryAftercare(id, n.id, me); } finally { setRetryingNoteID(null); }
-                                  }}
-                                  disabled={retryingNoteID !== null}
-                                  className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm disabled:opacity-40"
-                                  style={{ color: "var(--color-rose)" }}>
-                            {retryingNoteID === n.id ? "Retrying…" : "Retry delivery"}
-                          </button>
-                        )}
-                      </div>
                     )}
                   </div>
                 )}

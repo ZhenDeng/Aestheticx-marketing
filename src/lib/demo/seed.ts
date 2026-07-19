@@ -257,19 +257,16 @@ export function buildSeedState(): DemoState {
     bookingTokensByUser: { ...state.bookingTokensByUser, "u-voss": "bk-seed-voss" },
   };
 
-  // A failed aftercare send so the delivery badge + Retry are demonstrable.
-  const failedAftercare: Note = {
-    id: "n-aftercare-failed", patientID: amara.id, kind: "aftercareRecord", title: "Aftercare sent",
+  // A prior aftercare send, so the patient file shows an aftercareRecord note.
+  const priorAftercare: Note = {
+    id: "n-aftercare-prior", patientID: amara.id, kind: "aftercareRecord", title: "Aftercare sent",
     body: "— ANTIWRINKLE —\nAvoid touching or massaging the treated area for 4 hours. Stay upright for 4 hours.",
     createdAt: SEED_NOW, authorID: "u-voss", authorBadge: "Dr Elena Voss",
-    consumedAuthorisationIDs: [], medications: [], deliveryStatus: "failed", aftercareCategories: ["antiwrinkle"],
-    // Shaped like a real mailDelivery failureReason ("provider {status}: {body}") so the demo
-    // shows the reason line, not just the badge.
-    failureReason: "provider 422: recipient mailbox is full",
+    consumedAuthorisationIDs: [], medications: [], aftercareCategories: ["antiwrinkle"],
   };
   state = {
     ...state,
-    notesByPatient: { ...state.notesByPatient, [amara.id]: [...(state.notesByPatient[amara.id] ?? []), failedAftercare] },
+    notesByPatient: { ...state.notesByPatient, [amara.id]: [...(state.notesByPatient[amara.id] ?? []), priorAftercare] },
   };
 
   // A note with photo + file attachments so the thumbnail strip and rename-able file
