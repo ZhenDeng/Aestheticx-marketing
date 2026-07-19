@@ -17,13 +17,8 @@ import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { emergencyKindLabel } from "@/lib/demo/direction";
-import { displayName, fullName, hasAlert, routeLabel, type DeliveryStatus, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
 import { unitSuffix } from "@/lib/demo/catalog";
-
-const DELIVERY_LABEL: Record<DeliveryStatus, string> = { queued: "Queued", delivered: "Delivered", failed: "Failed" };
-function deliveryColor(s: DeliveryStatus): string {
-  return s === "delivered" ? "var(--color-tint)" : s === "failed" ? "var(--color-rose)" : "var(--color-ink-soft)";
-}
 
 const APPT_STATUS_LABEL: Record<AppointmentStatus, string> = {
   awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
@@ -56,7 +51,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showTreatment, setShowTreatment] = useState(false);
   const [showAftercare, setShowAftercare] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  // iOS AuthorisationCard's "68C" button: which authorisation the Clause 68C direction sheet is open for.
+  // iOS AuthorisationCard's Direction button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
   // open; the ref dedupes React's StrictMode double-effect + repeat renders so it stays a single
@@ -249,11 +244,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                         {n.kind === "treatment" ? "Treatment" : "Aftercare"}
                       </span>
                     )}
-                    {n.deliveryStatus && (
-                      <span className="micro rounded-full border px-2 py-0.5" style={{ color: deliveryColor(n.deliveryStatus), borderColor: deliveryColor(n.deliveryStatus) }}>
-                        {DELIVERY_LABEL[n.deliveryStatus]}
-                      </span>
-                    )}
                     <span className="micro">{n.authorBadge}</span>
                   </span>
                 </button>
@@ -275,12 +265,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                       <p className="mt-1 micro" style={{ color: "var(--color-tint)" }}>
                         Consumed {n.consumedAuthorisationIDs.length} repeat{n.consumedAuthorisationIDs.length === 1 ? "" : "s"}
                       </p>
-                    )}
-                    {n.deliveryStatus === "failed" && store.status === "demo" && canAftercare && (
-                      <button onClick={() => store.retryAftercare(id, n.id, me)}
-                              className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
-                        Retry delivery
-                      </button>
                     )}
                   </div>
                 )}
@@ -328,10 +312,15 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               <li key={a.id}>
                 <p className="flex items-baseline justify-between gap-2">
                   <span className="font-medium text-ink">{a.medication.name}</span>
-                  {/* iOS AuthorisationCard: quiet "68C" affordance opens the Clause 68C direction capture. */}
+                  {/* iOS AuthorisationCard's direction affordance. Labelled for the document it
+                      produces, not the regulation clause — "68C" alone read as jargon (18/07
+                      feedback). The citation stays on hover, in the accessible name, and in the
+                      dialog heading. Resting colour is ink-soft rather than tint: the word is
+                      wider than "68C" was, and must not out-shout the medication name beside it. */}
                   <button type="button" onClick={() => setDirectionFor(a.id)} aria-label="Clause 68C direction"
-                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-tint)" }}>
-                    68C
+                          title="Clause 68C direction"
+                          className="micro flex-none rounded-btn border border-line px-2 py-0.5 hover:border-tint" style={{ color: "var(--color-ink-soft)" }}>
+                    Direction
                   </button>
                 </p>
                 <p className="text-sm text-ink-soft">{a.medication.areas.join(", ")}</p>
@@ -340,7 +329,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                   {a.medication.dosage} {unitSuffix(a.medication.unit)}
                   {routeLabel(a.medication.route) ? ` · ${routeLabel(a.medication.route)}` : ""}
                 </p>
-                <p className="mt-1 flex gap-1" aria-label={`${a.repeatsRemaining} repeats remaining`}>
+                {/* role="img": the dots are a graphic, and ARIA prohibits aria-label on a bare
+                    <p>, so without a role the count was silently dropped for screen readers. */}
+                <p className="mt-1 flex gap-1" role="img" aria-label={`${a.repeatsRemaining} repeats remaining`}>
                   {Array.from({ length: 5 }).map((_, i) => (
                     <span key={i} className="h-2 w-2 rounded-full" style={{ background: i < a.repeatsRemaining ? "var(--color-tint)" : "var(--color-line)" }} />
                   ))}

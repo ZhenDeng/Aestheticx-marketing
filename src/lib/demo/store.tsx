@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppointmentLead, DemoState, Identity, MedicationItem, TreatmentMedication } from "./types";
 import { fullName, ownerKeyOf } from "./types";
-import { buildSeedState, SEED_NOW } from "./seed";
+import { buildSeedState, createDemoWriteClock, SEED_NOW } from "./seed";
 import * as backend from "./backend";
 import * as billing from "./billing";
 import * as invoicing from "./invoicing";
@@ -39,7 +39,6 @@ interface StoreValue {
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
-  retryAftercare: (patientID: string, noteID: string, identity: Identity) => void;
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
   saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
   deleteNoteTemplate: (id: string, identity: Identity) => void;
@@ -185,7 +184,13 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
   const [refreshTick, setRefreshTick] = useState(0);
   // Captured once per provider mount (live: session start; demo: fixed SEED_NOW).
   // Lazy initializer keeps the impure Date.now() out of the render path.
+  // READ-side "now" only — expiry windows and the demo's frozen "today". Writes must NOT use
+  // it in demo: they would tie with the SEED_NOW-stamped seed and sort below it (see writeNow).
   const [now] = useState(() => (live ? Date.now() : SEED_NOW));
+  const [demoWriteClock] = useState(() => createDemoWriteClock());
+  // Stamp for a NEW record. Live has a real clock; demo advances a per-provider sequence so
+  // each write lands strictly after the seed, and after every earlier write in the session.
+  const writeNow = useCallback(() => (live ? Date.now() : demoWriteClock()), [live, demoWriteClock]);
 
   // Latest patients map for the requests listener's hasPatient check — a ref, not a dep,
   // so the subscription isn't torn down on every state change.
@@ -346,7 +351,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         })();
       },
       generateInvoice: (input, id) => {
-        if (!live) { setState((s) => backend.generateInvoice(s, input, id, now).state); return; }
+        if (!live) { setState((s) => backend.generateInvoice(s, input, id, writeNow()).state); return; }
         void (async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
@@ -359,7 +364,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       // live-callable split — invoices are Function-only docs; the callable returns the
       // member authorisations to the un-invoiced pool transactionally.
       deleteInvoice: (invoiceID, id) => {
-        if (!live) { setState((s) => backend.deleteInvoice(s, invoiceID, id, now)); return; }
+        if (!live) { setState((s) => backend.deleteInvoice(s, invoiceID, id, writeNow())); return; }
         void (async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
@@ -371,7 +376,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       // Mark an invoice paid (Tier 3 #6). Same demo-reducer / live-callable split as generateInvoice —
       // invoices are Function-only Firestore docs, so live routes through the markInvoicePaid callable.
       markInvoicePaid: (invoiceID, id) => {
-        if (!live) { setState((s) => backend.markInvoicePaid(s, invoiceID, id, now)); return; }
+        if (!live) { setState((s) => backend.markInvoicePaid(s, invoiceID, id, writeNow())); return; }
         void (async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
@@ -389,15 +394,15 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       walletBalance: (pid) => backend.walletBalanceCents(state, pid),
       priceListFor: (owner) => state.priceListByOwner[ownerKeyOf(owner)] ?? [],
       topUpWallet: (input, id) => {
-        if (!live) { setState((s) => backend.topUpWallet(s, input, id, now)); return; }
+        if (!live) { setState((s) => backend.topUpWallet(s, input, id, writeNow())); return; }
         setLastSyncError("Account top-ups are not yet available in live mode.");
       },
       checkoutClient: (input, id) => {
-        if (!live) { setState((s) => backend.checkoutClient(s, input, id, now)); return; }
+        if (!live) { setState((s) => backend.checkoutClient(s, input, id, writeNow())); return; }
         setLastSyncError("Client checkout is not yet available in live mode.");
       },
       finalizeServiceFee: (invoiceID, id) => {
-        if (!live) { setState((s) => backend.finalizeServiceFeeInvoice(s, invoiceID, id, now)); return; }
+        if (!live) { setState((s) => backend.finalizeServiceFeeInvoice(s, invoiceID, id, writeNow())); return; }
         setLastSyncError("Service-fee invoices are not yet available in live mode.");
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
@@ -407,7 +412,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         // doc share one id. A functional setState updater re-runs under React Strict Mode,
         // which would otherwise generate a second id inside the updater and diverge from
         // the value captured here for the mirror. See createPatient for the same pattern.
-        const { state: next, request } = backend.submitRequest(state, input, now);
+        const { state: next, request } = backend.submitRequest(state, input, writeNow());
         applyAndMirror(() => next, (m) => m.mirrorCreateRequest(request));
       },
       approveRequest: (requestID, id) =>
@@ -415,11 +420,11 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         // Cloud Function writes the emergency records, the §21 audit entry, AND the combined
         // approval-PDF treatment note (round 6), and hydrate reads them; the optimistic client
         // must not fabricate phantom ones that would vanish on the next hydrate.
-        applyAndMirror((s) => backend.approveRequest(s, requestID, id, now, { generateEmergency: !live, recordAudit: !live, generateApprovalNote: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
+        applyAndMirror((s) => backend.approveRequest(s, requestID, id, writeNow(), { generateEmergency: !live, recordAudit: !live, generateApprovalNote: !live }).state, (m) => m.mirrorApproveRequest(requestID)),
       requireEdit: (requestID, id) =>
         // auditNow: demo writes the §21 `request_edit_requested` entry with the session clock; live
         // passes undefined so the requireEdit Cloud Function + hydrate own the durable entry.
-        applyAndMirror((s) => backend.requireEdit(s, requestID, id, live ? undefined : now), (m) => m.mirrorRequireEdit(requestID)),
+        applyAndMirror((s) => backend.requireEdit(s, requestID, id, live ? undefined : writeNow()), (m) => m.mirrorRequireEdit(requestID)),
       resubmitRequest: (input) =>
         applyAndMirror(
           (s) => backend.resubmitRequest(s, input),
@@ -442,14 +447,14 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       saveGeneralNote: (input) => {
         // Mint the note id eagerly so the local copy and the mirrored doc agree (Strict
         // Mode re-runs the updater — see createPatient / submitRequest).
-        const { state: next, note } = backend.saveGeneralNote(state, input, now);
+        const { state: next, note } = backend.saveGeneralNote(state, input, writeNow());
         applyAndMirror(() => next, (m) => m.mirrorCreateNote(input.patientID, note));
       },
       saveTreatmentNote: (input) => {
         // Mint the note + follow-up ids eagerly so the local copies and the mirrored docs
         // share one id each. Inside the Strict-Mode-double-invoked updater they would
         // diverge, leaving the follow-up's sourceNoteID pointing at a phantom note id.
-        const { state: next, note, followUp } = backend.saveTreatmentNote(state, input, now);
+        const { state: next, note, followUp } = backend.saveTreatmentNote(state, input, writeNow());
         applyAndMirror(
           () => next,
           async (m) => {
@@ -472,31 +477,13 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         );
       },
       sendAftercare: (input) => {
-        // Demo records the aftercareRecord note locally. Live calls the deployed
-        // sendAftercare callable — it queues the email AND writes the note server-side,
-        // so we must NOT also write locally here; rehydrate to pull the new note.
-        if (!live) {
-          setState((s) => backend.recordAftercareSend(s, input, now).state);
-          return;
-        }
-        void (async () => {
-          try {
-            const m = await import("@/lib/firebase/mirror");
-            await m.mirrorSendAftercare({
-              patientID: input.patientID, content: input.content, medications: input.medications,
-            });
-            setRefreshTick((t) => t + 1);
-          } catch (e) {
-            setLastSyncError(syncErrorMessage(e));
-          }
-        })();
-      },
-      retryAftercare: (patientID, noteID, identity) => {
-        // Demo: a successful re-attempt flips the record to delivered. Live retry is a
-        // deferred backend task (the Retry button is demo-gated), so this is demo-only.
-        if (!live) {
-          setState((s) => backend.setNoteDeliveryStatus(s, patientID, noteID, "delivered", identity));
-        }
+        // The practitioner's mail client sends the email (AftercareForm opens a mailto), so this
+        // only records that aftercare was issued. Nothing calls the sendAftercare callable any
+        // more — the web writes the note itself, exactly like saveGeneralNote. (iOS still uses
+        // the callable; the backend is unchanged.) Id minted eagerly so the local copy and the
+        // mirrored doc agree under Strict Mode's double-invoked updater.
+        const { state: next, note } = backend.recordAftercareSend(state, input, writeNow());
+        applyAndMirror(() => next, (m) => m.mirrorCreateNote(input.patientID, note));
       },
       noteTemplatesForOwner: (ownerID) => backend.noteTemplatesForOwner(state, ownerID),
       saveNoteTemplate: (template, identity) =>
@@ -768,7 +755,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       recordForm: (input, identity) => {
         // Mint the form id eagerly so the local copy and the mirrored doc agree (Strict
         // Mode re-runs the updater — see createPatient / submitRequest).
-        const { state: next, form } = backend.recordSignedForm(state, input, identity, now);
+        const { state: next, form } = backend.recordSignedForm(state, input, identity, writeNow());
         applyAndMirror(() => next, (m) => m.mirrorCreateForm(form));
       },
       deleteForm: (patientID, formId, identity) =>
@@ -783,7 +770,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       relationshipAuditFor: (relationshipID) => backend.relationshipAuditForRelationship(state, relationshipID),
       setCooperationRelationship: (input, actor) => {
         // Eager-validate (throws before the async live branch); relationships are demo-writable.
-        const next = backend.setCooperationRelationship(state, input, actor, now);
+        const next = backend.setCooperationRelationship(state, input, actor, writeNow());
         if (!live) { setState(() => next); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetCooperationRelationship(input); setRefreshTick((t) => t + 1); }
@@ -791,7 +778,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         })();
       },
       removeCooperationRelationship: (relationshipID, actor) => {
-        const next = backend.removeCooperationRelationship(state, relationshipID, actor, now);
+        const next = backend.removeCooperationRelationship(state, relationshipID, actor, writeNow());
         if (!live) { setState(() => next); return; }
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorRemoveCooperationRelationship(relationshipID); setRefreshTick((t) => t + 1); }
@@ -891,7 +878,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorUpdateProfile(identity.user.id, edits),
         ),
     }),
-    [state, now, status, lastSyncError, applyAndMirror, live],
+    [state, now, writeNow, status, lastSyncError, applyAndMirror, live],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

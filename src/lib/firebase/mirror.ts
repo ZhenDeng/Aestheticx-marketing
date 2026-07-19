@@ -159,22 +159,6 @@ export async function mirrorConsumeRepeats(input: ConsumeRepeatsInput): Promise<
   });
 }
 
-// sendAftercare queues the email AND writes the aftercareRecord note server-side,
-// so callers must NOT also create the note locally in live mode — rehydrate after.
-export async function mirrorSendAftercare(input: {
-  patientID: string;
-  content: string;
-  medications: TreatmentMedication[];
-}): Promise<void> {
-  await httpsCallable(functions(), "sendAftercare")({
-    patientId: input.patientID,
-    content: input.content,
-    medications: input.medications.map((m) => ({
-      name: m.name, batch: m.batch ?? "", expiry: m.expiry ?? "", dosage: m.dosage ?? "",
-    })),
-  });
-}
-
 export async function mirrorCreatePatient(p: Patient): Promise<void> {
   await setDoc(doc(firestore(), "patients", p.id), encodePatientForCreate(p));
 }

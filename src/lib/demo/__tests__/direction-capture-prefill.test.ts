@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { premiseForCapture, routeForCapture } from "@/lib/demo/direction";
+import { ROUTES_OF_ADMINISTRATION } from "@/lib/demo/types";
 import type { AuthorisationRequest, MedicationItem, Premise } from "@/lib/demo/types";
 
 // The Clause 68C capture dialog left fields blank that the app already held, so a clinician
@@ -111,29 +112,29 @@ describe("premiseForCapture — clinic context", () => {
 
 describe("routeForCapture", () => {
   it("recovers the route from the single matching request item", () => {
-    const r = request([med({ route: "Intradermal" })]);
-    expect(routeForCapture(med(), r)).toBe("Intradermal");
+    const r = request([med({ route: "intradermal" })]);
+    expect(routeForCapture(med(), r)).toBe("intradermal");
   });
 
   it("matches on name and dosage, ignoring case and surrounding space", () => {
-    const r = request([med({ name: "  botox ", dosage: " 20 ", route: "Subcutaneous" })]);
-    expect(routeForCapture(med({ name: "Botox", dosage: "20" }), r)).toBe("Subcutaneous");
+    const r = request([med({ name: "  botox ", dosage: " 20 ", route: "subcutaneous" })]);
+    expect(routeForCapture(med({ name: "Botox", dosage: "20" }), r)).toBe("subcutaneous");
   });
 
   it("picks the right line when a request has several distinct items", () => {
     const r = request([
-      med({ name: "Botox", dosage: "20", route: "Intramuscular" }),
-      med({ name: "Juvederm", dosage: "1", route: "Subcutaneous" }),
+      med({ name: "Botox", dosage: "20", route: "intramuscular" }),
+      med({ name: "Juvederm", dosage: "1", route: "subcutaneous" }),
     ]);
-    expect(routeForCapture(med({ name: "Juvederm", dosage: "1" }), r)).toBe("Subcutaneous");
+    expect(routeForCapture(med({ name: "Juvederm", dosage: "1" }), r)).toBe("subcutaneous");
   });
 
   it("refuses to guess when more than one item matches", () => {
     // Two identical name+dosage lines differing only by body site. Filling either could state
     // the wrong route of administration on a legal document — leave it to the clinician.
     const r = request([
-      med({ name: "Botox", dosage: "20", route: "Intramuscular" }),
-      med({ name: "Botox", dosage: "20", route: "Intradermal" }),
+      med({ name: "Botox", dosage: "20", route: "intramuscular" }),
+      med({ name: "Botox", dosage: "20", route: "intradermal" }),
     ]);
     expect(routeForCapture(med(), r)).toBe("");
   });
@@ -144,12 +145,31 @@ describe("routeForCapture", () => {
   });
 
   it("is blank when no item matches", () => {
-    expect(routeForCapture(med({ name: "Dysport" }), request([med({ route: "Intradermal" })]))).toBe("");
+    expect(routeForCapture(med({ name: "Dysport" }), request([med({ route: "intradermal" })]))).toBe("");
   });
 
   it("is blank when the originating request is unavailable", () => {
     // Live may not have the request loaded; the dialog must degrade, not throw.
     expect(routeForCapture(med(), undefined)).toBe("");
     expect(routeForCapture(med(), null)).toBe("");
+  });
+
+  // MedicationItem.route is a loose `string` and live values come from a Cloud Function whose
+  // scheme this repo does not control, so a stored route need not be one of the five. Recovering
+  // one unvalidated is worse than recovering nothing: the capture dialog's five-option selector
+  // cannot represent it, and an HTML select handed an unmatched value silently selects its first
+  // enabled option — so "Intramuscular" would DISPLAY as "Intradermal" while the export still
+  // said Intramuscular. Refusing the value routes it through the same prompt as any other
+  // unresolved field, which is the whole fail-closed doctrine.
+  it("refuses a route that is not one of the five canonical values", () => {
+    for (const bogus of ["Intramuscular", "IM", "intra-dermal", "IntraDermal", "topical"]) {
+      expect(routeForCapture(med(), request([med({ route: bogus })]))).toBe("");
+    }
+  });
+
+  it("accepts every canonical value", () => {
+    for (const route of ROUTES_OF_ADMINISTRATION) {
+      expect(routeForCapture(med(), request([med({ route })]))).toBe(route);
+    }
   });
 });

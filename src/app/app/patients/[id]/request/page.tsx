@@ -7,7 +7,11 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions } from "@/lib/demo/backend";
 import { doctorRequestStats, rankDoctors, mostRecentlyRequestedDoctor } from "@/lib/demo/doctorRanking";
-import { ROUTES_OF_ADMINISTRATION, ROUTE_DISPLAY_LABELS, type MedicationItem, type ProductCategory } from "@/lib/demo/types";
+import { type MedicationItem, type ProductCategory } from "@/lib/demo/types";
+// Clause 68C route selector (round 6): exactly the five options, never pre-chosen — the nurse
+// must actively pick one per item before the request can be submitted (mirrors iOS
+// LineItemEditorView.routePicker). Shared with the direction capture dialog.
+import { RouteSelect } from "@/components/app/RouteSelect";
 import {
   categoryDisplayName, productsInCategory, brandsInCategory, productsInBrand,
   searchProducts, productLabel, treatmentAreasFor, quantityCaption, unitSuffix, effectiveCatalog, type CatalogProduct,
@@ -28,24 +32,6 @@ function itemFromProduct(p: CatalogProduct): MedicationItem {
 // — Swift init defaults unit to .freeText.
 function emptyOtherItem(): MedicationItem {
   return { name: "", dosage: "", category: "other", unit: "freeText", areas: [] };
-}
-
-// Clause 68C route selector (round 6): exactly the five options, never pre-chosen —
-// the nurse must actively pick one per item before the request can be submitted
-// (mirrors iOS LineItemEditorView.routePicker).
-function RouteSelect({ value, onChange }: { value: string | undefined; onChange: (route: string) => void }) {
-  return (
-    <label className="block">
-      <span className="micro">Route of administration</span>
-      <select value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-label="Route of administration"
-        className="mt-1 w-48 rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink">
-        <option value="" disabled>Select route…</option>
-        {ROUTES_OF_ADMINISTRATION.map((r) => (
-          <option key={r} value={r}>{ROUTE_DISPLAY_LABELS[r]}</option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 // Free-text editor for the "other" category — port of iOS LineItemEditorView's

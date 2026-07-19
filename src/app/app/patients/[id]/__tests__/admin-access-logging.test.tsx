@@ -34,7 +34,7 @@ vi.mock("@/lib/demo/store", () => ({
     searchPatients: () => [],
     recordAdminAccess,
     deletePatient: vi.fn(), mergePatients: vi.fn(), saveGeneralNote: vi.fn(),
-    retryAftercare: vi.fn(), withdrawRequest: vi.fn(),
+    withdrawRequest: vi.fn(),
   }),
 }));
 

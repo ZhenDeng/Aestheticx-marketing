@@ -62,7 +62,9 @@ const field = (label: RegExp | string) => screen.getByLabelText(label) as HTMLIn
 
 beforeEach(() => {
   profiles = { "u-sarah": { ahpra: "", abn: "", phone: "", address: "", principalPlace: "", premises: [BONDI], selectedPremiseId: BONDI.id } };
-  requests = { "req-1": originatingRequest("Intradermal") };
+  // Canonical wire value, as ROUTES_OF_ADMINISTRATION / the Firestore item stores it — the
+  // display label ("Intradermal") is rendered from it, never stored.
+  requests = { "req-1": originatingRequest("intradermal") };
 });
 
 describe("DirectionDialog prefills", () => {
@@ -102,11 +104,11 @@ describe("DirectionDialog prefills", () => {
 
   it("recovers Route from the originating request when the medication has none", () => {
     open(authorisation());
-    expect(field(/route/i).value).toBe("Intradermal");
+    expect(field(/route/i).value).toBe("intradermal");
   });
 
   it("shows no Route capture field when the medication already carries one", () => {
-    open(authorisation({ medication: { ...authorisation().medication, route: "Intramuscular" } }));
+    open(authorisation({ medication: { ...authorisation().medication, route: "intramuscular" } }));
     expect(screen.queryByLabelText(/route/i)).not.toBeInTheDocument();
   });
 
