@@ -69,6 +69,11 @@ the values stamped on the authorisation at approval. When a value is not stamped
 back to the prescriber's profile. The two fields SHALL resolve independently, and both SHALL
 remain editable.
 
+Approval SHALL write that stamp from the profile of the doctor who approved, in demo exactly as in
+live. Each field SHALL be omitted when the profile holds no usable value, never stamped blank: a
+blank stamp would both empty the field on the document and satisfy the `missingDirectionFields`
+gate that exists to catch it, whereas an omitted one lets the reader fall back to the profile.
+
 #### Scenario: Stamped contact wins over the profile
 
 - **WHEN** a direction is captured for an authorisation carrying stamped prescriber contact
@@ -79,6 +84,23 @@ remain editable.
 - **WHEN** a nurse captures a direction and the prescriber's profile is not loaded
 - **AND** the authorisation carries stamped prescriber contact
 - **THEN** both fields are prefilled rather than blank
+
+#### Scenario: Approval stamps the approving doctor's contact
+
+- **WHEN** a doctor approves an authorisation request
+- **THEN** every authorisation granted carries that doctor's phone and principal place of practice
+- **AND** it is that doctor's, not the requesting nurse's and not the clinic's
+
+#### Scenario: An unusable profile value is omitted, not stamped blank
+
+- **WHEN** the approving doctor's profile holds no usable phone
+- **THEN** the granted authorisation carries no prescriber phone at all
+- **AND** it does not carry an empty prescriber phone
+
+#### Scenario: The two stamped fields are independent
+
+- **WHEN** the approving doctor holds a usable phone but no principal place of practice
+- **THEN** the granted authorisation carries the phone and omits the principal place
 
 #### Scenario: Falls back to the prescriber profile when unstamped
 
