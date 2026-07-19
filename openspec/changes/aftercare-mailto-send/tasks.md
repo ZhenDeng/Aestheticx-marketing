@@ -6,29 +6,29 @@
 
 ## 2. Hand off through mailto
 
-- [ ] 2.1 `AftercareForm` builds the prefill and opens `mailtoHref(recipient, subject, body)` instead of calling `store.sendAftercare`'s Resend path
-- [ ] 2.2 Keep the existing empty-recipient guard, category chips, editable body, and medication toggle
-- [ ] 2.3 Still record the send (note append) when the practitioner confirms
-- [ ] 2.4 Tests: confirming opens a mailto to the patient carrying the composed body; a patient with no email keeps the control disabled; the note is still recorded
+- [x] 2.1 `AftercareForm` builds the prefill and opens `mailtoHref(recipient, subject, body)` instead of calling `store.sendAftercare`'s Resend path
+- [x] 2.2 Keep the existing empty-recipient guard, category chips, editable body, and medication toggle
+- [x] 2.3 Still record the send (note append) when the practitioner confirms
+- [x] 2.4 Tests: confirming opens a mailto to the patient carrying the composed body; a patient with no email keeps the control disabled; the note is still recorded
 
 ## 3. Write the note from the client
 
-- [ ] 3.1 `store.sendAftercare` records locally in both modes and mirrors via `mirrorCreateNote` in live; drop the `mirrorSendAftercare` call
-- [ ] 3.2 Remove `mirrorSendAftercare` from `src/lib/firebase/mirror.ts`
-- [ ] 3.3 Verify the encoded note carries only keys the Firestore `hasOnly` allowlist permits
+- [x] 3.1 `store.sendAftercare` records locally in both modes and mirrors via `mirrorCreateNote` in live; drop the `mirrorSendAftercare` call
+- [x] 3.2 Remove `mirrorSendAftercare` from `src/lib/firebase/mirror.ts`
+- [x] 3.3 Verify the encoded note carries only keys the Firestore `hasOnly` allowlist permits
 
 ## 4. Remove delivery tracking
 
-- [ ] 4.1 Remove `retryAftercare` from the store and `StoreValue`; remove `mirrorRetryAftercare`
-- [ ] 4.2 Remove the delivery badge, failure-reason line, and Retry control from `src/app/app/patients/[id]/page.tsx`
-- [ ] 4.3 Remove `deliveryStatus` and `failureReason` from `Note`, `mapNote`, and `encodeNote`
-- [ ] 4.4 Remove `DeliveryStatus` from `src/lib/demo/types.ts` and `setNoteDeliveryStatus` from `src/lib/demo/backend.ts` if unused
-- [ ] 4.5 Update the seed's aftercare record to drop the failure fields
-- [ ] 4.6 Delete `aftercare-retry.test.tsx`; reduce `email-delivery.test.ts` to assertions that still apply
-- [ ] 4.7 Test: a note carrying a legacy `deliveryStatus` from Firestore renders with no badge
+- [x] 4.1 Remove `retryAftercare` from the store and `StoreValue`; remove `mirrorRetryAftercare`
+- [x] 4.2 Remove the delivery badge, failure-reason line, and Retry control from `src/app/app/patients/[id]/page.tsx`
+- [x] 4.3 Remove `deliveryStatus` and `failureReason` from `Note`, `mapNote`, and `encodeNote`
+- [x] 4.4 Remove `DeliveryStatus` from `src/lib/demo/types.ts` and `setNoteDeliveryStatus` from `src/lib/demo/backend.ts` if unused
+- [x] 4.5 Update the seed's aftercare record to drop the failure fields
+- [x] 4.6 Delete `aftercare-retry.test.tsx`; reduce `email-delivery.test.ts` to assertions that still apply
+- [x] 4.7 Test: a note carrying a legacy `deliveryStatus` from Firestore renders with no badge
 
 ## 5. Verify
 
-- [ ] 5.1 Full suite green, `tsc --noEmit` clean, lint clean on changed files
-- [ ] 5.2 Drive the demo: compose aftercare, confirm the mailto href carries subject + body + the closing sentence once, and the note is appended with no delivery badge
-- [ ] 5.3 Confirm no remaining reference to `sendAftercare`/`retryAftercare` callables in the web, and that the backend is untouched
+- [x] 5.1 Full suite green, `tsc --noEmit` clean, lint clean on changed files
+- [x] 5.2 Drove the demo: mailto to amara@example.com carries the subject, `Hi Amara Boyd,`, both category sections in selection order, the closing sentence exactly once even with 2 categories, and the filler template's URGENT line intact; hand-off appended the note (1 -> 2) with no badge and no Retry anywhere. (Required `npm ci` in the worktree — Turbopack won't resolve a parent or symlinked node_modules.)
+- [x] 5.3 Confirm no remaining reference to `sendAftercare`/`retryAftercare` callables in the web, and that the backend is untouched
