@@ -11,9 +11,17 @@ import type { ClinicOption, SetCooperationRelationshipInput } from "@/lib/demo/b
 // per-relationship price override + invoice-applies flag. Writes are demo-writable (the
 // store validates + applies eagerly, then best-effort mirrors live), so this section renders
 // identically in both modes.
+//
+// 20/07 feedback (spec: admin-relationship-views): one combined list answered neither
+// operational question, so the section renders as two switchable views over the SAME
+// records — Prescribing (by doctor: who can they authorise for) and Employment (by
+// clinic: who works there). A dual-kind doctor↔clinic relationship appears in both.
+type RelationshipView = "prescribing" | "employment";
+
 export function CooperationRelationshipsSection() {
   const store = useDemoStore();
   const { identity } = useDemoAuth();
+  const [view, setView] = useState<RelationshipView>("prescribing");
   const [creating, setCreating] = useState(false);
   // The full doctor directory, fetched once for the create form's picker (accounts() already
   // gives nurses synchronously; doctors need the async directory like the request builder did).
@@ -27,14 +35,19 @@ export function CooperationRelationshipsSection() {
   }, [store, doctorsLoaded]);
 
   const relationships = store.cooperationRelationships();
-  const nurses = store.accounts().filter((a) => a.roles.includes("nurse"));
+  const accounts = store.accounts();
+  const nurses = accounts.filter((a) => a.roles.includes("nurse"));
   const clinics = store.clinics();
 
-  // Group by doctor, preserving cooperationRelationships()'s sort (doctor name, then
+  // Prescribing: every counterparty the doctor can issue authorisations to — nurse
+  // relationships always, clinic relationships only when their kind set includes
+  // `prescriber` (an employee-only link is employment, not prescribing). Group by
+  // doctor, preserving cooperationRelationships()'s sort (doctor name, then
   // counterparty name) since Map insertion order follows first-seen iteration order.
-  const groups = useMemo(() => {
+  const prescribingGroups = useMemo(() => {
     const byDoctor = new Map<string, { doctorID: string; doctorName: string; rels: CooperationRelationship[] }>();
     for (const r of relationships) {
+      if (r.counterpartyType === "clinic" && !effectiveRelationshipKinds(r)?.includes("prescriber")) continue;
       const g = byDoctor.get(r.doctorID) ?? { doctorID: r.doctorID, doctorName: r.doctorName, rels: [] };
       g.rels.push(r);
       byDoctor.set(r.doctorID, g);
@@ -42,25 +55,97 @@ export function CooperationRelationshipsSection() {
     return [...byDoctor.values()];
   }, [relationships]);
 
+  // Employment: each clinic's staff — employee-kind doctor relationships (editable, the
+  // same records as Prescribing) plus member accounts whose claims list the clinic
+  // (nurse/clinicAdmin — a doctor's clinic membership already surfaces as its
+  // relationship row). Clinics come from the directory so a staffless clinic still
+  // lists, with names resolved directory-first.
+  const employmentGroups = useMemo(() => {
+    const byClinic = new Map<string, { clinicID: string; name: string; rels: CooperationRelationship[]; members: AccountRecord[] }>();
+    const ensure = (clinicID: string, name: string) => {
+      const g = byClinic.get(clinicID) ?? { clinicID, name, rels: [], members: [] };
+      if (!byClinic.has(clinicID)) byClinic.set(clinicID, g);
+      return g;
+    };
+    for (const c of clinics) ensure(c.id, c.label);
+    for (const r of relationships) {
+      if (r.counterpartyType !== "clinic" || !effectiveRelationshipKinds(r)?.includes("employee")) continue;
+      ensure(r.counterpartyID, r.counterpartyName).rels.push(r);
+    }
+    for (const a of accounts) {
+      if (a.roles.includes("doctor")) continue;
+      if (!a.roles.includes("nurse") && !a.roles.includes("clinicAdmin")) continue;
+      for (const clinicID of a.clinicIDs ?? []) ensure(clinicID, clinicID).members.push(a);
+    }
+    return [...byClinic.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [relationships, accounts, clinics]);
+
   if (!identity) return null;
 
   return (
     <section className="mt-8">
-      <h2 className="font-display text-lg text-ink">Cooperation relationships</h2>
-      <p className="mt-1 text-sm text-ink-soft">
-        Controls which doctors a nurse or clinic may request authorisation from, plus each
-        relationship&apos;s pricing and invoicing.
+      <h2 className="font-display text-lg text-ink">Relationships</h2>
+      <div className="mt-2 flex gap-1.5">
+        {([["prescribing", "Prescribing"], ["employment", "Employment"]] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setView(value)}
+            aria-pressed={view === value}
+            className={`rounded-btn px-3 py-1.5 text-sm ${view === value ? "text-card" : "border border-line text-ink-soft"}`}
+            style={view === value ? { background: "var(--color-tint)" } : undefined}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-sm text-ink-soft">
+        {view === "prescribing"
+          ? "Everyone each doctor can issue authorisations to — cooperating nurses, and clinics with a prescriber-kind relationship — plus each relationship’s pricing and invoicing."
+          : "Each clinic’s staff — doctors employed through an employee-kind relationship (editable here) and the clinic’s member accounts."}
       </p>
-      {groups.length === 0 ? (
-        <p className="mt-3 text-sm text-ink-soft">No cooperation relationships yet.</p>
+      {view === "prescribing" ? (
+        prescribingGroups.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-soft">No prescribing relationships yet.</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-4">
+            {prescribingGroups.map((g) => (
+              <div key={g.doctorID} className="rounded-card border border-line bg-card shadow-card">
+                <h3 className="border-b border-line px-4 py-2.5 font-display text-base text-ink">{g.doctorName}</h3>
+                <ul>
+                  {g.rels.map((r) => <RelationshipRow key={r.id} rel={r} identity={identity} />)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )
+      ) : employmentGroups.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-soft">No clinics yet.</p>
       ) : (
         <div className="mt-3 flex flex-col gap-4">
-          {groups.map((g) => (
-            <div key={g.doctorID} className="rounded-card border border-line bg-card shadow-card">
-              <h3 className="border-b border-line px-4 py-2.5 font-display text-base text-ink">{g.doctorName}</h3>
-              <ul>
-                {g.rels.map((r) => <RelationshipRow key={r.id} rel={r} identity={identity} />)}
-              </ul>
+          {employmentGroups.map((g) => (
+            <div key={g.clinicID} className="rounded-card border border-line bg-card shadow-card">
+              <h3 className="border-b border-line px-4 py-2.5 font-display text-base text-ink">{g.name}</h3>
+              {g.rels.length === 0 && g.members.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-ink-soft">No staff yet.</p>
+              ) : (
+                <ul>
+                  {g.rels.map((r) => <RelationshipRow key={r.id} rel={r} identity={identity} title={r.doctorName} />)}
+                  {g.members.map((m) => (
+                    <li key={m.id} className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-ink">{m.name || m.email || m.id}</span>
+                        <span className="micro block">
+                          {m.roles.filter((role) => role !== "doctor").map((role) => role === "clinicAdmin" ? "Clinic admin" : role === "nurse" ? "Nurse" : role).join(" · ")}
+                        </span>
+                      </span>
+                      {/* Membership derives from the account's claims, not from a cooperation
+                          relationship — nothing to edit from this list. */}
+                      <span className="micro flex-none rounded-full border border-line px-2 py-0.5 text-ink-soft">Member account</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
         </div>
@@ -86,7 +171,10 @@ export function CooperationRelationshipsSection() {
   );
 }
 
-function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; identity: Identity }) {
+// One editable relationship row. `title` overrides the headline for views not grouped by
+// doctor (the Employment view leads with the doctor; the doctor-grouped Prescribing view
+// leads with the counterparty).
+function RelationshipRow({ rel, identity, title }: { rel: CooperationRelationship; identity: Identity; title?: string }) {
   const store = useDemoStore();
   const [error, setError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -144,9 +232,11 @@ function RelationshipRow({ rel, identity }: { rel: CooperationRelationship; iden
     <li className="flex flex-col gap-2.5 border-b border-line px-4 py-3 last:border-b-0">
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-ink">{rel.counterpartyName}</span>
+          <span className="block text-sm font-medium text-ink">{title ?? rel.counterpartyName}</span>
           <span className="micro block">
-            {kinds ? `Clinic · ${kinds.join(" + ")}` : "Nurse"} · {priceLabel} · invoicing {rel.invoiceApplies ? "on" : "off"}
+            {title
+              ? `Doctor${kinds ? ` · ${kinds.join(" + ")}` : ""}`
+              : kinds ? `Clinic · ${kinds.join(" + ")}` : "Nurse"} · {priceLabel} · invoicing {rel.invoiceApplies ? "on" : "off"}
           </span>
         </span>
         <span
