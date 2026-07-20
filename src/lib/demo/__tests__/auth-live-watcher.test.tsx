@@ -16,11 +16,15 @@ let watchCb: WatchCb;
 let currentUid: string | null = null;
 let identitiesImpl: () => Promise<Identity[]>;
 
+const watchClaimsRevision = vi.fn((_uid: string) => claimsUnsub);
+const claimsUnsub = vi.fn();
+
 vi.mock("@/lib/firebase/auth", () => ({
   watchUser: (cb: WatchCb) => { watchCb = cb; return () => {}; },
   identitiesForUser: () => identitiesImpl(),
   mustChangePasswordForUser: async () => false,
   currentUserUid: () => currentUid,
+  watchClaimsRevision: (uid: string) => watchClaimsRevision(uid),
 }));
 
 import { DemoAuthProvider, useDemoAuth } from "@/lib/demo/auth";
@@ -30,9 +34,13 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 const nurse: Identity = { user: { id: "u-1", name: "Yinghua Xu" }, role: "nurse", context: { kind: "independent" } };
+const doctorIndependent: Identity = { user: { id: "u-1", name: "Dr Jenn Lee" }, role: "doctor", context: { kind: "independent" } };
+const doctorClinic: Identity = {
+  user: { id: "u-1", name: "Dr Jenn Lee" }, role: "doctor", context: { kind: "clinic", clinic: { id: "c-1", name: "Internal Clinic" } },
+};
 
 describe("DemoAuthProvider (live watcher hardening)", () => {
-  beforeEach(() => { currentUid = null; });
+  beforeEach(() => { currentUid = null; watchClaimsRevision.mockClear(); claimsUnsub.mockClear(); window.localStorage.clear(); });
 
   it("ignores a stale identity resolution that settles after sign-out", async () => {
     let release!: (ids: Identity[]) => void;
@@ -80,6 +88,49 @@ describe("DemoAuthProvider (live watcher hardening)", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it("drops a revoked identity from the ACTIVE selection when a token refresh removes it (20/07)", async () => {
+    identitiesImpl = () => Promise.resolve([doctorIndependent, doctorClinic]);
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {}); // flush the dynamic import so the watcher subscribes
+
+    currentUid = "u-1";
+    await act(async () => { await watchCb({ uid: "u-1" }); });
+    act(() => result.current.selectIdentity(doctorClinic)); // practising as the clinic
+    expect(result.current.identity).toEqual(doctorClinic);
+
+    // The admin revokes the employee kind → claims sync → forced token refresh re-fires
+    // the watcher with the clinic identity gone. Selection must fall back, not linger.
+    identitiesImpl = () => Promise.resolve([doctorIndependent]);
+    await act(async () => { await watchCb({ uid: "u-1" }); });
+    expect(result.current.availableIdentities).toEqual([doctorIndependent]);
+    expect(result.current.identity).toEqual(doctorIndependent);
+  });
+
+  it("keeps the current selection across refreshes while it is still held", async () => {
+    identitiesImpl = () => Promise.resolve([doctorIndependent, doctorClinic]);
+    const { result } = renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+    currentUid = "u-1";
+    await act(async () => { await watchCb({ uid: "u-1" }); });
+    act(() => result.current.selectIdentity(doctorClinic));
+    await act(async () => { await watchCb({ uid: "u-1" }); }); // routine hourly refresh
+    expect(result.current.identity).toEqual(doctorClinic);
+  });
+
+  it("watches claimsRevision once per uid and tears the watch down on sign-out", async () => {
+    identitiesImpl = () => Promise.resolve([nurse]);
+    renderHook(() => useDemoAuth(), { wrapper });
+    await act(async () => {});
+    currentUid = "u-1";
+    await act(async () => { await watchCb({ uid: "u-1" }); });
+    await act(async () => { await watchCb({ uid: "u-1" }); }); // token refresh re-fires
+    expect(watchClaimsRevision).toHaveBeenCalledTimes(1);
+    expect(watchClaimsRevision).toHaveBeenCalledWith("u-1");
+    currentUid = null;
+    await act(async () => { await watchCb(null); });
+    expect(claimsUnsub).toHaveBeenCalledTimes(1);
   });
 
   it("resolves (signed-out) instead of loading forever when identity resolution rejects", async () => {

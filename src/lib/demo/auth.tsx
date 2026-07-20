@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Identity } from "./types";
 import { DEMO_ACCOUNTS } from "./accounts";
-import { pickInitialIdentity, saveSelectedIdentity } from "./identityPrefs";
+import { identityKey, pickInitialIdentity, saveSelectedIdentity } from "./identityPrefs";
 import { readDemoMode, subscribeDemoMode, writeDemoMode } from "./demoMode";
 import { isFirebaseConfigured } from "@/lib/firebase/client";
 
@@ -119,12 +119,24 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     if (mode !== "live" || !hydrated) return;
     let cancelled = false;
     let unsub: (() => void) | undefined;
-    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser, currentUserUid }) => {
+    let unsubClaims: (() => void) | undefined;
+    let claimsUid: string | null = null;
+    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser, currentUserUid, watchClaimsRevision }) => {
       if (cancelled) return; // cleanup ran before the import resolved — don't subscribe
       unsub = watchUser(async (user) => {
         if (!user) {
+          unsubClaims?.(); unsubClaims = undefined; claimsUid = null;
           if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setLiveResolved(true); }
           return;
+        }
+        // Claims fast path (20/07): one users/{uid} watcher per signed-in uid — a bumped
+        // claimsRevision (admin granted/revoked a membership) force-refreshes the token,
+        // which re-fires this very callback with the updated identity set in seconds
+        // instead of at the next hourly refresh. (Optional call: test mocks may omit it.)
+        if (claimsUid !== user.uid) {
+          unsubClaims?.();
+          claimsUid = user.uid;
+          unsubClaims = watchClaimsRevision?.(user.uid);
         }
         try {
           const [ids, mustChange] = await Promise.all([
@@ -138,7 +150,13 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
           setAvailableIdentities(ids);
           // Restore the user's last-practised identity across reloads (device-local), else
           // the default (first). window is present — this runs only in the browser callback.
-          setIdentity((cur) => cur ?? pickInitialIdentity(window.localStorage, user.uid, ids));
+          // The current selection survives ONLY while the fresh set still holds it — a
+          // revoked clinic identity must drop out of "practising as" too, not just the
+          // switcher list (20/07: revoking employee left it selected and selectable).
+          setIdentity((cur) => {
+            const stillHeld = cur && cur.user.id === user.uid && ids.some((i) => identityKey(i) === identityKey(cur));
+            return stillHeld ? cur : pickInitialIdentity(window.localStorage, user.uid, ids);
+          });
           setMustChangePassword(mustChange);
           setLiveResolved(true);
         } catch (error) {
@@ -153,7 +171,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         }
       });
     });
-    return () => { cancelled = true; unsub?.(); };
+    return () => { cancelled = true; unsub?.(); unsubClaims?.(); };
   }, [mode, hydrated]);
 
   const value = useMemo<AuthValue>(
