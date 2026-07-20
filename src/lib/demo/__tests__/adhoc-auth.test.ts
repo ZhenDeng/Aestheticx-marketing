@@ -9,8 +9,8 @@ const me: Identity = {
 } as unknown as Identity;
 
 describe("requestAdHocAuth", () => {
-  it("accepts when the doctor is online (even if not always-accepting)", () => {
-    const s = setDoctorStatus(emptyState(), "u-voss", { online: true });
+  it("accepts when the doctor is always-accepting", () => {
+    const s = setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
     const { appt } = requestAdHocAuth(s, {
       doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, patientID: "p1", patientName: "Pat One", identity: me,
     });
@@ -20,7 +20,7 @@ describe("requestAdHocAuth", () => {
     });
   });
 
-  it("accepts when the doctor is always-accepting (even while offline)", () => {
+  it("accepts regardless of published slots or treatment hours", () => {
     const s = setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
     const { appt } = requestAdHocAuth(s, {
       doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, patientID: "p1", patientName: "Pat One", identity: me,
@@ -28,14 +28,14 @@ describe("requestAdHocAuth", () => {
     expect(appt.status).toBe("confirmed");
   });
 
-  it("rejects when the doctor is neither online nor always-accepting", () => {
+  it("rejects when the doctor is not always-accepting", () => {
     expect(() => requestAdHocAuth(emptyState(), {
       doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, patientID: "p1", patientName: "Pat One", identity: me,
     })).toThrow(BackendError);
   });
 
   it("stamps the appointment note with the requesting nurse's name", () => {
-    const s = setDoctorStatus(emptyState(), "u-voss", { online: true });
+    const s = setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
     const { appt } = requestAdHocAuth(s, {
       doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, patientID: "p1", patientName: "Pat One", identity: me,
     });
@@ -44,23 +44,23 @@ describe("requestAdHocAuth", () => {
 });
 
 describe("requestAdHocAuth — auth-overlap rule (parity with deployed adHocAuthTx)", () => {
-  const online = () => setDoctorStatus(emptyState(), "u-voss", { online: true });
+  const accepting = () => setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
   const request = (s: ReturnType<typeof emptyState>, atMinute: number, doctorID = "u-voss", dateISO = "2026-07-01") =>
     requestAdHocAuth(s, { doctorID, dateISO, atMinute, patientID: "p1", patientName: "Pat One", identity: me });
 
   it("rejects a request overlapping an existing authorisation appointment", () => {
-    const s = request(online(), 615).state; // 615–625
+    const s = request(accepting(), 615).state; // 615–625
     expect(() => request(s, 620)).toThrow("slotTaken"); // 620–630 overlaps
     expect(() => request(s, 610)).toThrow("slotTaken"); // 610–620 overlaps from below
   });
 
   it("allows a touching (adjacent, non-overlapping) request", () => {
-    const s = request(online(), 615).state; // 615–625
+    const s = request(accepting(), 615).state; // 615–625
     expect(request(s, 625).appt.startMinute).toBe(625);
   });
 
   it("ignores cancelled authorisation appointments", () => {
-    const first = request(online(), 615);
+    const first = request(accepting(), 615);
     const cancelled = {
       ...first.state,
       appointments: { [first.appt.id]: { ...first.appt, status: "cancelled" as const } },
@@ -69,14 +69,14 @@ describe("requestAdHocAuth — auth-overlap rule (parity with deployed adHocAuth
   });
 
   it("ignores treatment appointments (auth may overlap treatment) and other doctors/days", () => {
-    let s = online();
+    let s = accepting();
     s = {
       ...s,
       appointments: {
         t1: { id: "t1", type: "treatment" as const, ownerID: "u-voss", dateISO: "2026-07-01", startMinute: 615, endMinute: 625, status: "confirmed" as const },
       },
     };
-    s = setDoctorStatus(s, "u-khan", { online: true });
+    s = setDoctorStatus(s, "u-khan", { alwaysAcceptAuth: true });
     s = request(s, 615, "u-khan").state;              // other doctor, same time — fine
     s = request(s, 615, "u-voss", "2026-07-02").state; // other day — fine
     expect(request(s, 615).appt.startMinute).toBe(615); // over the treatment appt — allowed

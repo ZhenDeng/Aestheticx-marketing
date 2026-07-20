@@ -366,11 +366,11 @@ export interface ExternalBusyCalendar {
   updatedAtMillis?: number;
 }
 
-// A doctor's online/always-accept status for authorisation requests (feedback: doctor online
-// status + always-on authorisations). Independent booleans — always-accept works even while
-// offline (spec: "Always-accept overrides availability"). Absent entry -> both false.
+// A doctor's standing opt-in to ad-hoc authorisation requests (requests with no booked slot).
+// 20/07: the old transient "I'm online now" flag was removed — it was OR'd with this one in
+// every gate, so it duplicated this switch while implying a presence indicator that nothing
+// ever displayed. Absent entry -> false.
 export interface DoctorStatus {
-  online: boolean;
   alwaysAcceptAuth: boolean;
 }
 

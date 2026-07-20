@@ -289,11 +289,11 @@ export async function mirrorWithdrawAvailability(dateISO: string, startMinute: n
   await httpsCallable(functions(), "withdrawAuthSlots")({ dateISO, startMinute });
 }
 // Nurse-facing availability reads (server-side; the nurse has no local windows).
-export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]> {
+export async function mirrorListAvailableDoctors(): Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; alwaysAcceptAuth: boolean }[]> {
   const res = await httpsCallable(functions(), "listAvailableDoctors")({});
   const raw = (res.data as { doctors?: unknown }).doctors;
-  const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]) : [];
-  return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName, hasSlots: d.hasSlots, online: d.online, alwaysAcceptAuth: d.alwaysAcceptAuth }));
+  const doctors = Array.isArray(raw) ? (raw as { doctorId: string; doctorName: string; hasSlots: boolean; alwaysAcceptAuth: boolean }[]) : [];
+  return doctors.map((d) => ({ doctorID: d.doctorId, doctorName: d.doctorName, hasSlots: d.hasSlots, alwaysAcceptAuth: d.alwaysAcceptAuth }));
 }
 // Full prescribing-doctor directory (any signed-in caller) — the auth-request picker.
 export async function mirrorListDoctors(): Promise<{ doctorId: string; doctorName: string }[]> {
@@ -338,10 +338,12 @@ export async function mirrorSyncGoogleCalendar(timeZone: string): Promise<{ busy
   };
 }
 
-// A doctor toggles online/always-accept status → the existing, already-deployed
-// setOnlineStatus callable (writes users/{uid}.onlineStatus/alwaysAcceptAuth, merge:true).
+// A doctor toggles their standing always-accept opt-in → the setOnlineStatus callable
+// (writes users/{uid}.alwaysAcceptAuth, merge:true). The callable keeps its deployed name
+// for wire compatibility; the transient `online` field it used to take was removed on 20/07
+// (it duplicated always-accept in every gate) and is no longer sent.
 export async function mirrorSetOnlineStatus(status: import("@/lib/demo/types").DoctorStatus): Promise<void> {
-  await httpsCallable(functions(), "setOnlineStatus")({ online: status.online, alwaysAcceptAuth: status.alwaysAcceptAuth });
+  await httpsCallable(functions(), "setOnlineStatus")({ alwaysAcceptAuth: status.alwaysAcceptAuth });
 }
 
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.

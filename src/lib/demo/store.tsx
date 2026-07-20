@@ -76,7 +76,7 @@ interface StoreValue {
   syncGoogleCalendar: (timeZone: string, ownerID: string) => Promise<{ busyCount: number; mirrored: number }>;
   openSlotsForDoctorOnDay: (doctorID: string, dateISO: string) => ReturnType<typeof backend.openSlotsForDoctorOnDay>;
   // Nurse-facing reads: demo resolves from local state; live calls the backend (nurse has no local windows).
-  listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]>;
+  listAvailableDoctors: () => Promise<{ doctorID: string; doctorName: string; hasSlots: boolean; alwaysAcceptAuth: boolean }[]>;
   // The full prescribing-doctor directory for the auth-request picker (live: listDoctors
   // callable; demo: the DEMO_ACCOUNTS doctors).
   listDoctors: () => Promise<{ doctorId: string; doctorName: string }[]>;
@@ -749,7 +749,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           setState((s) => ({ ...s, appointments: { ...s.appointments, [appt.id]: appt } }));
           return;
         }
-        // Live: the server is authoritative (validates online/always-accept, mints the appointment).
+        // Live: the server is authoritative (validates always-accept, mints the appointment).
         const m = await import("@/lib/firebase/mirror");
         await m.mirrorRequestAdHocAuth({
           doctorID: input.doctorID, dateISO: input.dateISO, atMinute: input.atMinute,

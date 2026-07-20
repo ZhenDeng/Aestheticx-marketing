@@ -6,7 +6,7 @@ const emptyRows: HydrationRows = {
   patients: [], notesByPatient: {}, authorisations: [], requests: [], appointments: [],
   formsByPatient: {}, invoices: [], scriptPricing: [], noteTemplates: [], followUpTasks: [],
   followUpSettings: null, appointmentReminderLead: null, bookingToken: null,
-  doctorStatus: { online: false, alwaysAcceptAuth: false },
+  doctorStatus: { alwaysAcceptAuth: false },
   currentUserID: "u-admin",
 };
 
