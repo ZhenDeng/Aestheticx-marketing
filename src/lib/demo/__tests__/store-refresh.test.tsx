@@ -13,12 +13,18 @@ const LIVE_IDENTITY = DEMO_ACCOUNTS[2].identities[0];
 vi.mock("@/lib/firebase/client", () => ({
   isFirebaseConfigured: () => true,
 }));
+// Controllable auth: tests can re-fire the watcher with a GROWN identity set, simulating
+// the claims-revision chain (admin toggles their own membership → forced token refresh →
+// new clinic identity) that re-keys the store's hydrate effect mid-refresh.
+let watchCb: ((u: unknown) => void | Promise<void>) | undefined;
+let identities = [LIVE_IDENTITY];
 vi.mock("@/lib/firebase/auth", () => ({
   watchUser: (cb: (u: unknown) => void) => {
+    watchCb = cb;
     cb({ uid: LIVE_IDENTITY.user.id });
     return () => {};
   },
-  identitiesForUser: async () => [LIVE_IDENTITY],
+  identitiesForUser: async () => identities,
   mustChangePasswordForUser: async () => false,
   currentUserUid: () => LIVE_IDENTITY.user.id,
   watchClaimsRevision: () => () => {},
@@ -41,6 +47,7 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   hydrate.mockReset();
   hydrate.mockResolvedValue(emptyState());
+  identities = [LIVE_IDENTITY];
 });
 
 describe("useDemoStore refresh re-hydrate", () => {
@@ -62,6 +69,36 @@ describe("useDemoStore refresh re-hydrate", () => {
     act(() => release());
     await waitFor(() => expect(result.current.refreshing).toBe(false));
     expect(result.current.status).toBe("ready");
+  });
+
+  it("clears `refreshing` when an identity-set change supersedes an in-flight refresh (20/07 self-admin toggle)", async () => {
+    // Production repro: the platform admin IS the doctor being granted employee. The toggle
+    // starts a refresh; the claims watcher then force-refreshes the token, the identity set
+    // grows (new clinic identity), and the hydrate effect re-runs as a FULL load — the
+    // cancelled refresh must relinquish `refreshing` or the Syncing overlay never ends.
+    const { result } = renderHook(() => useDemoStore(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    // The refresh hydrate hangs (production-sized superAdmin hydrate is slow).
+    let releaseRefresh!: () => void;
+    hydrate.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseRefresh = () => resolve(emptyState()); }),
+    );
+    act(() => result.current.rehydrate());
+    await waitFor(() => expect(result.current.refreshing).toBe(true));
+
+    // Claims chain lands mid-refresh: the identity set grows → identitySetKey changes →
+    // the effect re-runs as a full load (not a refresh).
+    identities = [
+      LIVE_IDENTITY,
+      { user: LIVE_IDENTITY.user, role: "doctor" as const, context: { kind: "clinic" as const, clinic: { id: "c-1", name: "Repro Clinic" } } },
+    ];
+    await act(async () => { await watchCb?.({ uid: LIVE_IDENTITY.user.id }); });
+
+    act(() => releaseRefresh()); // the superseded refresh settles late
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    // The overlay flag must not wedge on — this is the "syncing never ends" bug.
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
   });
 
   it("keeps rendered data on a failed refresh and reports through the sync-error banner", async () => {

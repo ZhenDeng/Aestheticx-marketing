@@ -313,7 +313,18 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         if (isRefresh && !cancelled) setRefreshing(false);
       }
     })();
-    return () => { cancelled = true; unsubscribeRequests?.(); unsubscribeAppointments?.(); };
+    return () => {
+      cancelled = true;
+      // A cancelled refresh must relinquish the flag ITSELF: its finally skips the reset
+      // (cancelled), and if the superseding run is a FULL load (identity set changed —
+      // e.g. a self-admin toggling their own membership grew their identities via the
+      // claims watcher), nothing else would ever clear it and the Syncing overlay never
+      // ends. Cleanup runs before the next effect body, so a superseding refresh
+      // re-raises the flag right after this reset.
+      if (isRefresh) setRefreshing(false);
+      unsubscribeRequests?.();
+      unsubscribeAppointments?.();
+    };
     // identitySetKey stands in for availableIdentities (content-keyed; read via ref) so
     // token-refresh array churn doesn't tear down the listeners.
   }, [live, identity, identitySetKey, refreshTick]);
