@@ -194,6 +194,10 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
       enterDemoMode,
       exitDemoMode,
       signOut: () => {
+        // Captured before the local state is cleared: "I'm online now" is a doctor-only
+        // presence switch, so there is nothing to clear for a nurse/clinic/admin account.
+        const heldDoctorIdentity = mode === "live"
+          && [identity, ...availableIdentities].some((i) => i?.role === "doctor");
         setIdentity(null);
         setAvailableIdentities([]);
         setMustChangePassword(false);
@@ -204,7 +208,22 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         // real session untouched; /login is the explicit way out (it calls exitDemoMode).
         if (mode === "live") {
           void import("@/lib/firebase/auth")
-            .then((m) => m.signOutUser())
+            .then(async (m) => {
+              // Clear the presence flag BEFORE signing out — the callable needs a valid
+              // token — and never let its failure block sign-out. The local session is
+              // already cleared above, so this runs behind an already-signed-out UI.
+              // Closing the tab can't reach this path, which is why the label still says
+              // the switch stays on until it is turned off.
+              if (heldDoctorIdentity) {
+                try {
+                  const { mirrorClearOnlineStatus } = await import("@/lib/firebase/mirror");
+                  await mirrorClearOnlineStatus();
+                } catch (e) {
+                  console.error("Could not clear online status on sign-out:", e);
+                }
+              }
+              await m.signOutUser();
+            })
             .catch((e) => console.error("Sign-out failed on the server:", e));
         }
       },

@@ -344,6 +344,14 @@ export async function mirrorSetOnlineStatus(status: import("@/lib/demo/types").D
   await httpsCallable(functions(), "setOnlineStatus")({ online: status.online, alwaysAcceptAuth: status.alwaysAcceptAuth });
 }
 
+// Sign-out clears the presence flag only (20/07 owner question: "I'm online now" reads as
+// presence but lives on the user doc, so it survived sign-out and kept the doctor reachable
+// for ad-hoc requests). alwaysAcceptAuth is OMITTED deliberately — the callable leaves the
+// field untouched when it is absent, so the doctor's standing opt-in survives sign-out.
+export async function mirrorClearOnlineStatus(): Promise<void> {
+  await httpsCallable(functions(), "setOnlineStatus")({ online: false });
+}
+
 // The server validates the slot + mints the appointment; a slot-taken double-book rejects here.
 // The callables require patientId XOR lead (a new-patient booking sends the lead record).
 export async function mirrorBookAuthSlot(p: {

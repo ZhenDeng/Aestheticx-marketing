@@ -73,16 +73,29 @@ function DoctorAvailability({ me }: { me: Identity }) {
     <>
       <div className="mt-6 rounded-card border border-line bg-card p-5">
         <h2 className="font-display text-lg text-ink">Your status</h2>
-        <div className="mt-3 flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-ink-soft">
-            <input type="checkbox" checked={status.online}
+        {/* 20/07 owner feedback: neither label said what the switches govern, and "online"
+            reads as automatic presence though it is a manual flag stored on the account. */}
+        <p className="mt-1 text-sm text-ink-soft">
+          Controls <span className="text-ink">unscheduled</span> requests — a nurse or clinic asking for a consult
+          without booking one of your published slots. Either switch accepts them. Your published slots stay
+          bookable either way, and authorisation requests always reach your inbox.
+        </p>
+        <div className="mt-3 flex flex-col gap-3">
+          <label className="flex items-start gap-2 text-sm text-ink-soft">
+            <input type="checkbox" className="mt-0.5" checked={status.online}
               onChange={(e) => store.setDoctorStatus(me.user.id, { online: e.target.checked })} />
-            I&apos;m online now
+            <span>
+              I&apos;m online now
+              <span className="micro mt-0.5 block">Stays on until you switch it off or sign out — closing the tab won&apos;t clear it.</span>
+            </span>
           </label>
-          <label className="flex items-center gap-2 text-sm text-ink-soft">
-            <input type="checkbox" checked={status.alwaysAcceptAuth}
+          <label className="flex items-start gap-2 text-sm text-ink-soft">
+            <input type="checkbox" className="mt-0.5" checked={status.alwaysAcceptAuth}
               onChange={(e) => store.setDoctorStatus(me.user.id, { alwaysAcceptAuth: e.target.checked })} />
-            Always accept authorisation requests
+            <span>
+              Always accept authorisation requests
+              <span className="micro mt-0.5 block">Standing preference — survives sign-out, so you stay reachable without switching on each session.</span>
+            </span>
           </label>
         </div>
       </div>
