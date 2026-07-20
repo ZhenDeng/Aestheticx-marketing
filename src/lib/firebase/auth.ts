@@ -5,7 +5,7 @@ import {
   updatePassword, setPersistence, browserLocalPersistence, browserSessionPersistence,
   type User,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firebaseAuth, firestore, functions } from "./client";
 import { identitiesFromClaims } from "./identity";
@@ -91,6 +91,37 @@ export function currentUserUid(): string | null {
 // Subscribe to auth state; calls back with the User (or null when signed out).
 export function watchUser(cb: (user: User | null) => void): () => void {
   return onIdTokenChanged(firebaseAuth(), cb);
+}
+
+/**
+ * Membership-claims fast path (20/07: an admin revoking a doctor's employee kind left the
+ * clinic identity selectable for up to an hour). Server-side revocation converges Auth
+ * custom claims immediately, but a signed-in session only sees them at its next ID-token
+ * refresh. The claim writers bump `claimsRevision` on users/{uid} (own-doc reads are
+ * rules-permitted), so watch it and force a refresh when it moves — the fresh token
+ * re-fires onIdTokenChanged (watchUser) and the identity set updates within seconds.
+ * The first snapshot only records the baseline (no refresh: sign-in just minted a fresh
+ * token), and unrelated profile edits don't move the revision. Best-effort: on watch
+ * failure the hourly refresh still applies the change.
+ */
+export function watchClaimsRevision(uid: string): () => void {
+  let last: number | null = null;
+  return onSnapshot(
+    doc(firestore(), "users", uid),
+    (snap) => {
+      const revision = Number(snap.get("claimsRevision") ?? 0);
+      if (last !== null && revision !== last) {
+        void firebaseAuth().currentUser?.getIdToken(true).catch(() => {
+          // Transient refresh failure — the next scheduled refresh picks the claims up.
+        });
+      }
+      last = revision;
+    },
+    () => {
+      // Watch failure (offline, rules change mid-session) — silently degrade to the
+      // hourly token refresh rather than surfacing an error for a background listener.
+    },
+  );
 }
 
 // The first-login gate, carried on the ID token's custom claims exactly as iOS reads it

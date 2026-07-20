@@ -15,6 +15,7 @@ vi.mock("@/lib/firebase/auth", () => ({
   identitiesForUser: async () => [SUPER],
   mustChangePasswordForUser: async () => false,
   currentUserUid: () => SUPER.user.id,
+  watchClaimsRevision: () => () => {},
 }));
 // Server truth: one active product exists.
 vi.mock("@/lib/firebase/hydrate", () => ({ hydrate: vi.fn(async () => ({ ...emptyState(), productsByID: { [PRODUCT.id]: PRODUCT } })) }));

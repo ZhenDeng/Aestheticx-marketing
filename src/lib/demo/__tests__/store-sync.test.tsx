@@ -24,6 +24,7 @@ vi.mock("@/lib/firebase/auth", () => ({
   identitiesForUser: async () => [LIVE_IDENTITY],
   mustChangePasswordForUser: async () => false,
   currentUserUid: () => LIVE_IDENTITY.user.id,
+  watchClaimsRevision: () => () => {},
 }));
 
 // hydrate is the source of "server truth". It always returns an empty state —
