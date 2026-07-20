@@ -19,6 +19,7 @@ const ACTION_LABEL: Record<AuditAction, string> = {
   wallet_topup: "Wallet top-up",
   client_checkout: "Client checkout",
   service_fee_finalized: "Service fee finalized",
+  service_invoice_issued: "Service invoice issued",
   user_created: "User created",
   user_deleted: "User deleted",
   admin_patient_access: "Patient file access",
