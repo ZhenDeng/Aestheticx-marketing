@@ -81,7 +81,9 @@ describe("AdminConsole per-account actions", () => {
 
   it("renders the account and cooperation sections — catalog is on Products, entities live on account rows", async () => {
     await renderSettled();
-    for (const heading of ["Accounts", "Cooperation relationships"]) {
+    // 20/07 feedback: the cooperation section became the two-view "Relationships"
+    // (Prescribing | Employment — see relationship-views.test.tsx).
+    for (const heading of ["Accounts", "Relationships"]) {
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     }
     // 19/07 feedback: the product catalog moved to /app/admin/products (ProductCatalog.tsx).

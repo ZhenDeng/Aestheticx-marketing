@@ -138,6 +138,7 @@ interface StoreValue {
   topUpWallet: (input: import("./backend").TopUpWalletInput, identity: Identity) => void;
   checkoutClient: (input: import("./backend").CheckoutClientInput, identity: Identity) => void;
   finalizeServiceFee: (invoiceID: string, identity: Identity) => void;
+  createServiceInvoice: (input: import("./backend").CreateServiceInvoiceInput, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
@@ -442,6 +443,10 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       finalizeServiceFee: (invoiceID, id) => {
         if (!live) { setState((s) => backend.finalizeServiceFeeInvoice(s, invoiceID, id, writeNow())); return; }
         setLastSyncError("Service-fee invoices are not yet available in live mode.");
+      },
+      createServiceInvoice: (input, id) => {
+        if (!live) { setState((s) => backend.createServiceInvoice(s, input, id, writeNow())); return; }
+        setLastSyncError("Manual service invoices are not yet available in live mode.");
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),

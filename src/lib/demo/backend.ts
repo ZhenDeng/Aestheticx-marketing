@@ -2753,6 +2753,83 @@ export function checkoutClient(state: DemoState, input: CheckoutClientInput, ide
   return audited;
 }
 
+export interface ServiceInvoiceLineInput { description: string; amountCents: number; }
+export interface CreateServiceInvoiceInput {
+  clinicID: string;
+  lines: ServiceInvoiceLineInput[];
+}
+
+// Manual service invoice (spec: manual-service-invoicing, 20/07 feedback): an employee
+// practitioner bills their clinic on their own initiative — handwritten line items, the
+// business identities stamped automatically. Issued FINAL (unlike the checkout auto-draft:
+// the practitioner composed it deliberately, there is nothing left to review). Field
+// conventions mirror checkoutClient's fee invoice exactly so visibility (invoicesFor),
+// streams, and the tax-invoice PDF renderer treat both service-fee shapes identically.
+export function createServiceInvoice(state: DemoState, input: CreateServiceInvoiceInput, identity: Identity, now: number): DemoState {
+  const practitionerKind = identity.role === "doctor" ? "doctor" : identity.role === "nurse" ? "nurse" : null;
+  if (!practitionerKind) throw new BackendError("notPermitted");
+  // Membership follows the ACCOUNT, not the selected identity (a nurse practising
+  // independently today is still the clinic's employee): the active clinic context, the
+  // account's membership claims, or — doctors — an active employee-kind relationship.
+  const memberByContext = identity.context.kind === "clinic" && identity.context.clinic.id === input.clinicID;
+  const memberByClaims = (state.accountsByID[identity.user.id]?.clinicIDs ?? []).includes(input.clinicID);
+  const doctorRel = practitionerKind === "doctor"
+    ? relationshipFor(state.cooperationRelationshipsByID, identity.user.id, "clinic", input.clinicID)
+    : null;
+  const memberByRelationship = doctorRel?.status === "active"
+    && (effectiveRelationshipKinds(doctorRel)?.includes("employee") ?? false);
+  if (!memberByContext && !memberByClaims && !memberByRelationship) throw new BackendError("notPermitted");
+
+  if (input.lines.length === 0) throw new BackendError("validationFailed");
+  for (const line of input.lines) {
+    if (!line.description.trim()) throw new BackendError("validationFailed");
+    if (!Number.isInteger(line.amountCents) || line.amountCents <= 0) throw new BackendError("validationFailed");
+  }
+
+  // GST-exclusive B2B math, per line, matching the checkout service fee: 10% on top.
+  const lines = input.lines.map((line) => ({
+    authorisationID: makeID("svc"),
+    dateISO: isoDay(now),
+    patientName: "",
+    feeCents: line.amountCents,
+    gstCents: Math.round(line.amountCents * GST_RATE),
+    description: line.description.trim(),
+    qty: 1,
+    unitCents: line.amountCents,
+  }));
+  const subtotalCents = lines.reduce((sum, l) => sum + l.feeCents, 0);
+  const gstCents = lines.reduce((sum, l) => sum + l.gstCents, 0);
+  const invoice: Invoice = {
+    id: makeID("inv"),
+    doctorID: "", // matrix invoices leave the legacy doctor-centric fields inert
+    counterpartyID: input.clinicID,
+    counterpartyType: "clinic",
+    periodLabel: isoDay(now),
+    lines,
+    subtotalCents,
+    gstCents,
+    totalCents: subtotalCents + gstCents,
+    authorisationIDs: [],
+    createdAt: now,
+    paid: false,
+    kind: "service-fee",
+    issuerRef: { kind: practitionerKind, id: identity.user.id },
+    issuer: invoicePartyFor(state, practitionerKind, identity.user.id),
+    billTo: invoicePartyFor(state, "clinic", input.clinicID),
+  };
+  return appendAuditEntry(
+    { ...state, invoices: [...state.invoices, invoice] },
+    {
+      actor: identity,
+      action: "service_invoice_issued",
+      targetType: "invoice",
+      targetID: invoice.id,
+      summary: `service invoice ${formatAUD(invoice.totalCents)} · ${ownerDisplayLabel(state, { kind: "clinic", id: input.clinicID })}`,
+    },
+    now,
+  );
+}
+
 // The practitioner reviews and finalizes their drafted service-fee invoice (spec:
 // client-checkout — "queued for drafting"). Issuer-only; idempotent on non-drafts.
 export function finalizeServiceFeeInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {

@@ -59,6 +59,11 @@ vi.mock("@/lib/demo/store", () => ({
     finalizeServiceFee,
     customTimeframeCount: () => 0,
     clinicBusinessStats: () => null,
+    // 20/07 manual-service-invoicing surfaces (no relationships/patients in this fixture,
+    // so the composer and client picker stay dormant).
+    cooperationRelationships: () => [],
+    patientAccess: () => "none" as const,
+    createServiceInvoice: vi.fn(),
     ...storeOverrides,
   }),
 }));

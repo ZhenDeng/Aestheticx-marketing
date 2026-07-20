@@ -512,6 +512,7 @@ export type AuditAction =
   | "wallet_topup"
   | "client_checkout"
   | "service_fee_finalized"
+  | "service_invoice_issued"
   | "user_created"
   | "user_deleted"
   | "admin_patient_access";

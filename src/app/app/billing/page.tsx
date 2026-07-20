@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
 import { counterpartyMonthDetail, invoicePartiesFor, ownerDisplayLabel, isoDay } from "@/lib/demo/backend";
 import { formatAUD, computeInvoice, resolveInvoiceKind, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
 import { buildTaxInvoiceModel, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
+import { fullName } from "@/lib/demo/types";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
+import { ServiceInvoiceComposer } from "@/components/app/ServiceInvoiceComposer";
 
 export default function BillingPage() {
   const { identity } = useDemoAuth();
@@ -125,6 +128,19 @@ export default function BillingPage() {
         </div>
       )}
 
+      {/* 20/07 feedback (spec: manual-service-invoicing): the nurse page is populated —
+          a client picker into the checkout flow — and any employed practitioner can
+          hand-write a service invoice to their clinic. Both ride the matrix layer, so
+          live mode explains itself instead of rendering a bare heading. */}
+      {me.role === "nurse" && (store.matrixEnabled ? <InvoiceClientSection /> : (
+        <p className="mt-4 text-sm text-ink-soft">
+          Client and clinic invoicing isn&apos;t available in live mode yet — it arrives with
+          the billing backend. Invoices doctors generate for your authorisation requests are
+          emailed to you directly.
+        </p>
+      ))}
+      <ServiceInvoiceComposer />
+
       {/* Billing matrix streams: client invoices, service fees (drafts to finalize),
           received service fees — kind-tagged, per role (design-ui.md §4). */}
       <MatrixStreams />
@@ -197,6 +213,51 @@ export default function BillingPage() {
       </>
       )}
     </div>
+  );
+}
+
+// The nurse's way into client invoicing (spec: manual-service-invoicing): checkout on the
+// client file IS the invoice flow, so this section lists every client the active identity
+// may check out (own book independently; the clinic book in clinic context — the
+// isolation gate, not a new rule) and links straight there.
+function InvoiceClientSection() {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  const me = identity!;
+  const clients = Object.values(store.state.patients)
+    .filter((p) => store.patientAccess(p, me) !== "none")
+    .sort((a, b) => fullName(a).localeCompare(fullName(b)));
+
+  return (
+    <section className="mt-6">
+      <h2 className="font-display text-xl text-ink">Invoice a client</h2>
+      <p className="mt-1 text-sm text-ink-soft">
+        Open a client&apos;s account to check out — checkout issues the invoice.
+      </p>
+      {clients.length === 0 ? (
+        <p className="mt-2 text-sm text-ink-soft">
+          No clients you can invoice yet — clients appear here once they are in
+          {me.context.kind === "clinic" ? " the clinic's book." : " your book."}
+        </p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1.5">
+          {clients.map((p) => (
+            <li key={p.id}>
+              <Link
+                href={`/app/patients/${p.id}`}
+                className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3 hover:border-tint"
+              >
+                <span className="min-w-0 text-sm font-medium text-ink">
+                  {fullName(p)}
+                  <span className="micro ml-2">{ownerDisplayLabel(store.state, p.owner)}</span>
+                </span>
+                <span className="flex-none text-sm text-ink-soft">Check out ›</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
