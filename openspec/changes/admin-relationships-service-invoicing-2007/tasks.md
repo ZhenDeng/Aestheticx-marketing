@@ -29,4 +29,4 @@
 
 ## 6. Verify
 
-- [ ] 6.1 Full test suite + typecheck/lint green; manual browser pass over admin views and nurse billing page in demo mode.
+- [x] 6.1 Full test suite + typecheck/lint green; manual browser pass over admin views and nurse billing page in demo mode.
