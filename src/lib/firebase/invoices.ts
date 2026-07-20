@@ -28,6 +28,24 @@ export async function markInvoicePaid(invoiceID: string): Promise<void> {
   await httpsCallable(functions(), "markInvoicePaid")({ invoiceId: invoiceID });
 }
 
+export interface CreateServiceInvoiceArgs {
+  clinicID: string;
+  issuerRole: "nurse" | "doctor";
+  lines: { description: string; amountCents: number }[];
+}
+
+// Manual practitioner→clinic service invoice (spec: manual-service-invoicing; backend
+// PR ZhenDeng/Aestheticx#115). The backend validates membership and freezes both
+// business-entity snapshots server-side.
+export async function createServiceInvoice(args: CreateServiceInvoiceArgs): Promise<string> {
+  const res = await httpsCallable(functions(), "createServiceInvoice")({
+    clinicId: args.clinicID,
+    issuerRole: args.issuerRole,
+    lines: args.lines,
+  });
+  return (res.data as { invoiceId?: string }).invoiceId ?? "";
+}
+
 // 16/07 feedback enhancement 2: delete an invoice to correct an error — the backend
 // transactionally removes the doc and returns its member authorisations to un-invoiced.
 export async function deleteInvoice(invoiceID: string): Promise<void> {

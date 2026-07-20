@@ -583,6 +583,32 @@ describe("mapInvoice issuer/billTo snapshot (Tier 3 #4)", () => {
   });
 });
 
+describe("mapInvoice matrix fields (manual service invoices, backend PR #115)", () => {
+  it("decodes kind/issuerRef/draft and handwritten line description/qty/unitCents", () => {
+    const inv = mapInvoice("inv3", {
+      doctorId: "", counterpartyId: "clinic-lumiere", counterpartyType: "clinic", periodLabel: "2026-07-21",
+      kind: "service-fee", draft: false, issuerRef: { kind: "nurse", id: "u-sarah" },
+      lines: [{ authorisationId: "svc-1", dateISO: "2026-07-21", patientName: "", feeCents: 100000, gstCents: 10000, description: "Cosmetic nursing services", qty: 1, unitCents: 100000 }],
+      subtotalCents: 100000, gstCents: 10000, totalCents: 110000, authorisationIds: [], paid: false,
+    });
+    expect(inv.kind).toBe("service-fee");
+    expect(inv.issuerRef).toEqual({ kind: "nurse", id: "u-sarah" });
+    expect(inv.draft).toBe(false);
+    expect(inv.lines[0]).toMatchObject({ description: "Cosmetic nursing services", qty: 1, unitCents: 100000 });
+  });
+  it("legacy invoices decode without matrix fields (resolveInvoiceKind fallback intact)", () => {
+    const inv = mapInvoice("inv4", {
+      doctorId: "u-voss", counterpartyId: "n1", counterpartyType: "nurse", periodLabel: "Jun 2026",
+      lines: [{ authorisationId: "a1", dateISO: "2026-06-01", patientName: "Mara", feeCents: 2500, gstCents: 250 }],
+      subtotalCents: 2500, gstCents: 250, totalCents: 2750, authorisationIds: ["a1"], paid: false,
+    });
+    expect(inv.kind).toBeUndefined();
+    expect(inv.issuerRef).toBeUndefined();
+    expect(inv.draft).toBeUndefined();
+    expect(inv.lines[0].description).toBeUndefined();
+  });
+});
+
 describe("mapClinic (clinic directory)", () => {
   it("decodes a clinics/{id} doc into a ClinicRef, keeping the doc id", () => {
     const c = mapClinic("clinic-lumiere", { name: "Lumière Clinic", address: "12 Harbour Lane, Sydney NSW", abn: "82601443218" });

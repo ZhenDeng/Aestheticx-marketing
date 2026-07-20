@@ -134,9 +134,9 @@ export default function BillingPage() {
           live mode explains itself instead of rendering a bare heading. */}
       {me.role === "nurse" && (store.matrixEnabled ? <InvoiceClientSection /> : (
         <p className="mt-4 text-sm text-ink-soft">
-          Client and clinic invoicing isn&apos;t available in live mode yet — it arrives with
-          the billing backend. Invoices doctors generate for your authorisation requests are
-          emailed to you directly.
+          Client invoicing isn&apos;t available in live mode yet — it arrives with the billing
+          backend. You can invoice your clinic below, and invoices doctors generate for your
+          authorisation requests are emailed to you directly.
         </p>
       ))}
       <ServiceInvoiceComposer />
@@ -306,14 +306,16 @@ function MatrixInvoiceRow({ invoice, action }: { invoice: Invoice; action?: Reac
 }
 
 /** The role's matrix streams: issued client documents, own service fees (drafts first),
- *  and — for clinic-context viewers — received service fees. Sections hide when empty. */
+ *  and — for clinic-context viewers — received service fees. Sections hide when empty.
+ *  Client documents remain matrix-gated (demo-only); service-fee streams render in both
+ *  modes now that manual service invoicing is live (backend PR #115). */
 function MatrixStreams() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const me = identity!;
-  if (!store.matrixEnabled) return null;
+  if (!store.matrixEnabled && !store.serviceInvoicingEnabled) return null;
   const all = store.invoicesFor(me);
-  const clientDocs = all.filter((i) => {
+  const clientDocs = !store.matrixEnabled ? [] : all.filter((i) => {
     const k = resolveInvoiceKind(i);
     return k === "client-sale" || k === "top-up";
   });

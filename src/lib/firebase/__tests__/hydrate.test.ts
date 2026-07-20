@@ -279,17 +279,33 @@ describe("invoiceRowsForScopes (admin-gated clinic counterparty)", () => {
   const asNurse = { id: "inv-nurse", data: { counterpartyType: "nurse", counterpartyId: "me" } };
   const asClinic = { id: "inv-clinic", data: { counterpartyType: "clinic", counterpartyId: "c-admin" } };
 
+  const asIssuer = { id: "inv-svc", data: { doctorId: "", issuerRef: { kind: "nurse", id: "me" } } };
+
   it("queries the clinic counterparty only for admin memberships", async () => {
     const calls: string[] = [];
     const q = async (scope: string, id: string) => {
       calls.push(`${scope}:${id}`);
       if (scope === "doctorId") return [asDoctor];
+      if (scope === "issuer") return [asIssuer];
       if (scope === "nurseCounterparty") return [asNurse];
       return [asClinic];
     };
     const rows = await invoiceRowsForScopes("me", { "c-admin": "admin", "c-emp": "employee" }, q);
-    expect(rows.map((r) => r.id).sort()).toEqual(["inv-clinic", "inv-doc", "inv-nurse"]);
-    expect(calls).toEqual(["doctorId:me", "nurseCounterparty:me", "clinicCounterparty:c-admin"]);
+    expect(rows.map((r) => r.id).sort()).toEqual(["inv-clinic", "inv-doc", "inv-nurse", "inv-svc"]);
+    expect(calls).toEqual(["doctorId:me", "issuer:me", "nurseCounterparty:me", "clinicCounterparty:c-admin"]);
+  });
+
+  it("a denied issuer scope degrades to empty (rule ships with backend PR #115); transients rethrow", async () => {
+    const q = async (scope: string) => {
+      if (scope === "issuer") throw denied;
+      return scope === "doctorId" ? [asDoctor] : [];
+    };
+    expect((await invoiceRowsForScopes("me", {}, q)).map((r) => r.id)).toEqual(["inv-doc"]);
+    const qBlip = async (scope: string) => {
+      if (scope === "issuer") throw new FirebaseError("unavailable", "issuer blip");
+      return [];
+    };
+    await expect(invoiceRowsForScopes("me", {}, qBlip)).rejects.toThrow("issuer blip");
   });
 
   it("a denied clinic-counterparty scope degrades to empty; own scopes stay loud", async () => {
