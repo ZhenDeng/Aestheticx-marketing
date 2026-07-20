@@ -48,6 +48,7 @@ vi.mock("@/lib/demo/store", () => ({
       now: SEED_NOW,
       status: "demo" as const,
       matrixEnabled,
+      serviceInvoicingEnabled: true,
       billingSummary: (id: Identity) => billingSummary(Object.values(state.authorisations), id),
       invoicesFor: (id: Identity) => invoicing.invoicesFor(state.invoices, id),
       scriptPrice: () => 2500,
@@ -95,12 +96,13 @@ describe("nurse Invoice page", () => {
     expect(within(section).queryByText(/Boyd/)).not.toBeInTheDocument();
   });
 
-  it("explains instead of rendering an empty page when invoicing is unavailable (live mode)", () => {
+  it("live mode: client invoicing explains itself while the clinic composer stays available", () => {
     matrixEnabled = false;
     render(<BillingPage />);
     expect(screen.queryByText("Invoice a client")).not.toBeInTheDocument();
-    expect(screen.queryByText("Invoice the clinic")).not.toBeInTheDocument();
-    expect(screen.getByText(/isn.t available in live mode yet/i)).toBeInTheDocument();
+    // The composer is no longer matrix-gated — its callable shipped (backend PR #115).
+    expect(screen.getByText("Invoice the clinic")).toBeInTheDocument();
+    expect(screen.getByText(/client invoicing isn.t available in live mode yet/i)).toBeInTheDocument();
   });
 });
 

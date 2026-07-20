@@ -521,8 +521,25 @@ export function mapInvoice(id: string, data: Doc): Invoice {
     patientName: str(l.patientName),
     feeCents: intValue(l.feeCents),
     gstCents: intValue(l.gstCents),
+    // Matrix lines (manual service invoices) carry a handwritten description + unit price.
+    ...(typeof l.description === "string" && l.description ? { description: l.description } : {}),
+    ...(typeof l.qty === "number" ? { qty: l.qty } : {}),
+    ...(typeof l.unitCents === "number" ? { unitCents: l.unitCents } : {}),
   }));
+  // Matrix fields (kind/issuerRef/draft) arrived with manual service invoices (backend
+  // PR #115); legacy authorisation invoices carry none and resolve via resolveInvoiceKind.
+  const issuerRefRaw = data.issuerRef as Doc | undefined;
+  const issuerRef = issuerRefRaw && typeof issuerRefRaw === "object" && typeof issuerRefRaw.id === "string" && issuerRefRaw.id
+    ? {
+        kind: issuerRefRaw.kind === "doctor" ? "doctor" as const : issuerRefRaw.kind === "clinic" ? "clinic" as const : "nurse" as const,
+        id: issuerRefRaw.id,
+      }
+    : undefined;
   return {
+    ...(data.kind === "service-fee" || data.kind === "client-sale" || data.kind === "top-up"
+      ? { kind: data.kind } : {}),
+    ...(issuerRef ? { issuerRef } : {}),
+    ...(typeof data.draft === "boolean" ? { draft: data.draft } : {}),
     id,
     doctorID: str(data.doctorId),
     counterpartyID: str(data.counterpartyId),

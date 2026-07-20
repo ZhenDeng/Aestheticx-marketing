@@ -315,10 +315,19 @@ export async function requestRowsForScopes(
 export async function invoiceRowsForScopes(
   uid: string,
   clinics: Record<string, string>,
-  q: (scope: "doctorId" | "nurseCounterparty" | "clinicCounterparty", id: string) => Promise<Row[]>,
+  q: (scope: "doctorId" | "issuer" | "nurseCounterparty" | "clinicCounterparty", id: string) => Promise<Row[]>,
 ): Promise<Row[]> {
   const byId = new Map<string, Row>();
   for (const row of await q("doctorId", uid)) byId.set(row.id, row);
+  // Manual service invoices key on issuerRef, not doctorId (their doctorId is "" by
+  // convention) — without this scope a nurse issuer never hydrates her own invoices.
+  // Degrades on denial (unlike the own-doctor scope): the issuer read-rule clause ships
+  // with backend PR #115, and a not-yet-deployed rule must not lock out billing hydration.
+  try {
+    for (const row of await q("issuer", uid)) byId.set(row.id, row);
+  } catch (e) {
+    if (!isPermissionDenied(e)) throw e;
+  }
   for (const row of await q("nurseCounterparty", uid)) byId.set(row.id, row);
   for (const cid of adminClinicIdsOf(clinics)) {
     try {
@@ -544,6 +553,8 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const invoiceRows = await invoiceRowsForScopes(uid, claims.clinics, (scope, id) =>
     scope === "doctorId"
       ? runQuery("invoices", where("doctorId", "==", id))
+      : scope === "issuer"
+      ? runQuery("invoices", where("issuerRef.id", "==", id))
       : runQuery("invoices",
           where("counterpartyType", "==", scope === "nurseCounterparty" ? "nurse" : "clinic"),
           where("counterpartyId", "==", id)));

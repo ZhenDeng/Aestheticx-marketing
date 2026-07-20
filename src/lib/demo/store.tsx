@@ -138,6 +138,9 @@ interface StoreValue {
   topUpWallet: (input: import("./backend").TopUpWalletInput, identity: Identity) => void;
   checkoutClient: (input: import("./backend").CheckoutClientInput, identity: Identity) => void;
   finalizeServiceFee: (invoiceID: string, identity: Identity) => void;
+  // Manual service invoicing shipped its live callable (backend PR #115), so it is no
+  // longer matrix-gated: available in both modes.
+  serviceInvoicingEnabled: boolean;
   createServiceInvoice: (input: import("./backend").CreateServiceInvoiceInput, identity: Identity) => void;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
@@ -444,9 +447,20 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         if (!live) { setState((s) => backend.finalizeServiceFeeInvoice(s, invoiceID, id, writeNow())); return; }
         setLastSyncError("Service-fee invoices are not yet available in live mode.");
       },
+      serviceInvoicingEnabled: true,
       createServiceInvoice: (input, id) => {
         if (!live) { setState((s) => backend.createServiceInvoice(s, input, id, writeNow())); return; }
-        setLastSyncError("Manual service invoices are not yet available in live mode.");
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/invoices");
+            await m.createServiceInvoice({
+              clinicID: input.clinicID,
+              issuerRole: id.role === "doctor" ? "doctor" : "nurse",
+              lines: input.lines,
+            });
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
+        })();
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),

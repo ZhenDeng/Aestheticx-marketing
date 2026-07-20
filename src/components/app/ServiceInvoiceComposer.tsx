@@ -11,8 +11,8 @@ import type { ServiceInvoiceLineInput } from "@/lib/demo/backend";
 // an employed practitioner (nurse, or doctor with an employee-kind clinic relationship)
 // hand-writes service lines and issues a FINAL service-fee invoice to their clinic; both
 // business identities are stamped by the backend, never typed. Renders nothing for
-// ineligible viewers, and — like every matrix surface — stays hidden in live mode until
-// the backend callable ships.
+// ineligible viewers. Live mode routes through the createServiceInvoice callable
+// (backend PR #115) — the composer is NOT matrix-gated.
 interface DraftLine { key: number; description: string; amount: string; }
 
 // Monotonic draft-line keys: array indices shift when a middle line is removed, which
@@ -35,7 +35,7 @@ export function ServiceInvoiceComposer() {
   const [error, setError] = useState<string | null>(null);
   const [issued, setIssued] = useState(false);
 
-  if (!identity || !store.matrixEnabled) return null;
+  if (!identity || !store.serviceInvoicingEnabled) return null;
   if (identity.role !== "nurse" && identity.role !== "doctor") return null;
 
   // The clinics this account belongs to, whichever identity is active — a nurse
