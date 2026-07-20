@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities } from "@/lib/demo/identity";
-import { formatAUD } from "@/lib/demo/invoicing";
+import { formatAUD, GST_RATE } from "@/lib/demo/invoicing";
 import type { ServiceInvoiceLineInput } from "@/lib/demo/backend";
 
 // Manual "Invoice the clinic" composer (spec: manual-service-invoicing, 20/07 feedback):
@@ -13,9 +13,12 @@ import type { ServiceInvoiceLineInput } from "@/lib/demo/backend";
 // business identities are stamped by the backend, never typed. Renders nothing for
 // ineligible viewers, and — like every matrix surface — stays hidden in live mode until
 // the backend callable ships.
-interface DraftLine { description: string; amount: string; }
+interface DraftLine { key: number; description: string; amount: string; }
 
-const EMPTY_LINE: DraftLine = { description: "", amount: "" };
+// Monotonic draft-line keys: array indices shift when a middle line is removed, which
+// would re-associate focus/IME state with the wrong row.
+let nextLineKey = 1;
+const emptyLine = (): DraftLine => ({ key: nextLineKey++, description: "", amount: "" });
 
 // "1000" / "1,000.50" → integer cents, or null when unparseable/non-positive.
 function centsOf(amount: string): number | null {
@@ -27,7 +30,7 @@ function centsOf(amount: string): number | null {
 export function ServiceInvoiceComposer() {
   const { identity, availableIdentities } = useDemoAuth();
   const store = useDemoStore();
-  const [lines, setLines] = useState<DraftLine[]>([EMPTY_LINE]);
+  const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const [clinicChoice, setClinicChoice] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [issued, setIssued] = useState(false);
@@ -55,10 +58,11 @@ export function ServiceInvoiceComposer() {
   const parsed = lines.map((l) => ({ description: l.description.trim(), cents: centsOf(l.amount) }));
   const previewable = parsed.filter((l) => l.cents !== null) as { description: string; cents: number }[];
   const subtotalCents = previewable.reduce((sum, l) => sum + l.cents, 0);
-  const gstCents = previewable.reduce((sum, l) => sum + Math.round(l.cents * 0.1), 0);
+  const gstCents = previewable.reduce((sum, l) => sum + Math.round(l.cents * GST_RATE), 0);
 
   function patchLine(index: number, patch: Partial<DraftLine>) {
     setIssued(false);
+    setError(null);
     setLines((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
@@ -75,7 +79,7 @@ export function ServiceInvoiceComposer() {
     }
     try {
       store.createServiceInvoice({ clinicID, lines: inputs }, identity!);
-      setLines([EMPTY_LINE]);
+      setLines([emptyLine()]);
       setIssued(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not issue the invoice");
@@ -106,7 +110,7 @@ export function ServiceInvoiceComposer() {
         )}
         <div className="mt-3 flex flex-col gap-2">
           {lines.map((line, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2 rounded-field border border-line p-2.5 sm:grid-cols-[2fr_1fr_auto]">
+            <div key={line.key} className="grid grid-cols-1 gap-2 rounded-field border border-line p-2.5 sm:grid-cols-[2fr_1fr_auto]">
               <input
                 value={line.description}
                 placeholder="Description of services"
@@ -135,7 +139,7 @@ export function ServiceInvoiceComposer() {
         </div>
         <button
           type="button"
-          onClick={() => setLines((rows) => [...rows, EMPTY_LINE])}
+          onClick={() => setLines((rows) => [...rows, emptyLine()])}
           className="mt-2 rounded-btn border border-line px-3 py-1 text-sm text-ink-soft hover:border-tint/50"
         >
           Add line

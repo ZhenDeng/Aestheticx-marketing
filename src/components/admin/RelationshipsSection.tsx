@@ -73,9 +73,12 @@ export function CooperationRelationshipsSection() {
       ensure(r.counterpartyID, r.counterpartyName).rels.push(r);
     }
     for (const a of accounts) {
-      if (a.roles.includes("doctor")) continue;
+      // Member rows cover the account's NON-doctor memberships; a doctor's employment
+      // shows as its relationship row above, but a doctor+nurse account still lists here.
       if (!a.roles.includes("nurse") && !a.roles.includes("clinicAdmin")) continue;
-      for (const clinicID of a.clinicIDs ?? []) ensure(clinicID, clinicID).members.push(a);
+      // Fallback label is display-only (a clinic missing from the directory), mirroring
+      // the directory's non-blank-label convention — never persisted anywhere.
+      for (const clinicID of a.clinicIDs ?? []) ensure(clinicID, `Unnamed clinic (${clinicID})`).members.push(a);
     }
     return [...byClinic.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [relationships, accounts, clinics]);
