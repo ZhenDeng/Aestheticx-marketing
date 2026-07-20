@@ -49,30 +49,30 @@ describe("availabilityWindowsForDoctor / doctorsWithAvailability", () => {
     const s = withWindow();
     expect(availabilityWindowsForDoctor(s, "u-voss")).toHaveLength(1);
     expect(doctorsWithAvailability(s)).toEqual([
-      { doctorID: "u-voss", doctorName: "Dr Elena Voss", hasSlots: true, online: false, alwaysAcceptAuth: false },
-    ]);
-  });
-
-  it("includes an online-only doctor with no published windows", () => {
-    const s = setDoctorStatus(emptyState(), "u-online", { online: true });
-    expect(doctorsWithAvailability(s)).toEqual([
-      { doctorID: "u-online", doctorName: "", hasSlots: false, online: true, alwaysAcceptAuth: false },
+      { doctorID: "u-voss", doctorName: "Dr Elena Voss", hasSlots: true, alwaysAcceptAuth: false },
     ]);
   });
 
   it("includes an always-accept-only doctor with no published windows", () => {
     const s = setDoctorStatus(emptyState(), "u-always", { alwaysAcceptAuth: true });
     expect(doctorsWithAvailability(s)).toEqual([
-      { doctorID: "u-always", doctorName: "", hasSlots: false, online: false, alwaysAcceptAuth: true },
+      { doctorID: "u-always", doctorName: "", hasSlots: false, alwaysAcceptAuth: true },
     ]);
+  });
+
+  // 20/07: the transient "online" flag was removed, so switching always-accept OFF is the
+  // only way to leave the picker — there is no second flag that could keep a doctor listed.
+  it("excludes a doctor whose always-accept is off and who has no published windows", () => {
+    const s = setDoctorStatus(emptyState(), "u-idle", { alwaysAcceptAuth: false });
+    expect(doctorsWithAvailability(s)).toEqual([]);
   });
 
   it("merges all criteria for one doctor into a single entry", () => {
     let s = publishAvailability(emptyState(), { doctorID: "u-voss", dateISO: "2026-07-01", startMinute: 540, endMinute: 570 }, voss).state;
-    s = setDoctorStatus(s, "u-voss", { online: true, alwaysAcceptAuth: true });
+    s = setDoctorStatus(s, "u-voss", { alwaysAcceptAuth: true });
     const result = doctorsWithAvailability(s);
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ doctorID: "u-voss", hasSlots: true, online: true, alwaysAcceptAuth: true });
+    expect(result[0]).toMatchObject({ doctorID: "u-voss", hasSlots: true, alwaysAcceptAuth: true });
   });
 
   it("excludes a doctor satisfying no criteria", () => {
@@ -107,7 +107,7 @@ describe("bookAuthSlot", () => {
   });
   it("rejects a slot overlapping an unaligned ad-hoc authorisation appointment (parity with deployed bookAuthSlot)", () => {
     // An ad-hoc request isn't on the slot grid: 545–555 straddles the 540 and 550 slots.
-    let s = setDoctorStatus(withWindow(), "u-voss", { online: true });
+    let s = setDoctorStatus(withWindow(), "u-voss", { alwaysAcceptAuth: true });
     s = requestAdHocAuth(s, { doctorID: "u-voss", dateISO: DAY, atMinute: 545, patientID: "p1", patientName: "A", identity: sarah }).state;
     expect(() => bookAuthSlot(s, { doctorID: "u-voss", dateISO: DAY, startMinute: 540, patientID: "p2", patientName: "B", identity: sarah })).toThrow("slotTaken");
     expect(() => bookAuthSlot(s, { doctorID: "u-voss", dateISO: DAY, startMinute: 550, patientID: "p2", patientName: "B", identity: sarah })).toThrow("slotTaken");
@@ -155,7 +155,7 @@ describe("auth slot calendar visibility (bookedByID)", () => {
   });
 
   it("requestAdHocAuth stamps bookedByID with the booker's scope", () => {
-    const s = setDoctorStatus(emptyState(), "u-voss", { online: true });
+    const s = setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
     const { appt } = requestAdHocAuth(s, { doctorID: "u-voss", dateISO: DAY, atMinute: 600, patientID: "p1", patientName: "A", identity: sarah });
     expect(appt.bookedByID).toBe("u-sarah");
   });

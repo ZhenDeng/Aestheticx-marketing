@@ -25,7 +25,7 @@ export interface HydrationRows {
   followUpSettings: FollowUpSettings | null;
   appointmentReminderLead: AppointmentReminderLead | null;
   bookingToken: string | null;
-  doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
+  doctorStatus: { alwaysAcceptAuth: boolean };
   lastCalledDoctorId?: string | null;
   /** users/{uid} profile fields (null when the doc is missing). */
   profile?: UserProfile | null;
@@ -372,12 +372,12 @@ async function readUserProfile(uid: string): Promise<{
   followUpSettings: FollowUpSettings | null;
   appointmentReminderLead: AppointmentReminderLead | null;
   bookingToken: string | null;
-  doctorStatus: { online: boolean; alwaysAcceptAuth: boolean };
+  doctorStatus: { alwaysAcceptAuth: boolean };
   lastCalledDoctorId: string | null;
   profile: UserProfile | null;
 }> {
   const snap = await getDoc(doc(firestore(), "users", uid));
-  if (!snap.exists()) return { followUpSettings: null, appointmentReminderLead: null, bookingToken: null, doctorStatus: { online: false, alwaysAcceptAuth: false }, lastCalledDoctorId: null, profile: null };
+  if (!snap.exists()) return { followUpSettings: null, appointmentReminderLead: null, bookingToken: null, doctorStatus: { alwaysAcceptAuth: false }, lastCalledDoctorId: null, profile: null };
   const d = snap.data();
   // Follow-up settings: new preset model, migrating a legacy followUpIntervalDays-only doc (Tier 3 #2).
   const followUpSettings = readFollowUpSettings(d);
@@ -386,9 +386,9 @@ async function readUserProfile(uid: string): Promise<{
   const appointmentReminderLead: AppointmentReminderLead | null =
     rawLead === 1 ? 1 : rawLead === 2 ? 2 : rawLead === 0 ? 0 : null;
   const bookingToken = typeof d.bookingToken === "string" ? d.bookingToken : null;
-  // onlineStatus is a "online"|"offline" string on the backend doc (the setOnlineStatus
-  // callable's own schema); the client model is a plain boolean, hence the coercion here.
-  const doctorStatus = { online: d.onlineStatus === "online", alwaysAcceptAuth: d.alwaysAcceptAuth === true };
+  // The legacy `onlineStatus` string on the doc is deliberately ignored (20/07 removal) —
+  // ad-hoc acceptance is the standing alwaysAcceptAuth flag alone.
+  const doctorStatus = { alwaysAcceptAuth: d.alwaysAcceptAuth === true };
   const lastCalledDoctorId = typeof d.lastCalledDoctorId === "string" && d.lastCalledDoctorId ? d.lastCalledDoctorId : null;
   // Profile fields written by the createUser Function (abn/phone/ahpra) plus the
   // client-writable address/avatarFileId. ahpra is nullable on the wire (createUser

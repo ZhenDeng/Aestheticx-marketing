@@ -73,18 +73,22 @@ function DoctorAvailability({ me }: { me: Identity }) {
     <>
       <div className="mt-6 rounded-card border border-line bg-card p-5">
         <h2 className="font-display text-lg text-ink">Your status</h2>
-        <div className="mt-3 flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-ink-soft">
-            <input type="checkbox" checked={status.online}
-              onChange={(e) => store.setDoctorStatus(me.user.id, { online: e.target.checked })} />
-            I&apos;m online now
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink-soft">
-            <input type="checkbox" checked={status.alwaysAcceptAuth}
-              onChange={(e) => store.setDoctorStatus(me.user.id, { alwaysAcceptAuth: e.target.checked })} />
+        {/* 20/07: the transient "I'm online now" switch was removed — every gate OR'd it with
+            always-accept, so it duplicated this switch while implying a presence indicator
+            that nothing ever displayed to nurses. */}
+        <p className="mt-1 text-sm text-ink-soft">
+          Controls <span className="text-ink">unscheduled</span> requests — a nurse or clinic asking for a consult
+          without booking one of your published slots. Your published slots stay bookable either way, and
+          authorisation requests always reach your inbox.
+        </p>
+        <label className="mt-3 flex items-start gap-2 text-sm text-ink-soft">
+          <input type="checkbox" className="mt-0.5" checked={status.alwaysAcceptAuth}
+            onChange={(e) => store.setDoctorStatus(me.user.id, { alwaysAcceptAuth: e.target.checked })} />
+          <span>
             Always accept authorisation requests
-          </label>
-        </div>
+            <span className="micro mt-0.5 block">Stays on across sessions until you switch it off.</span>
+          </span>
+        </label>
       </div>
 
       <div className="mt-6 rounded-card border border-line bg-card p-5">
@@ -310,7 +314,7 @@ function ExternalCalendarCard({ ownerID }: { ownerID: string }) {
 function BookConsult({ me }: { me: Identity }) {
   const store = useDemoStore();
   const todayISO = isoDay(store.now);
-  const [doctors, setDoctors] = useState<{ doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean }[]>([]);
+  const [doctors, setDoctors] = useState<{ doctorID: string; doctorName: string; hasSlots: boolean; alwaysAcceptAuth: boolean }[]>([]);
   const [doctorID, setDoctorID] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO);
   const [slots, setSlots] = useState<number[]>([]);
@@ -332,7 +336,7 @@ function BookConsult({ me }: { me: Identity }) {
 
   const effectiveDoctorID = doctorID ?? doctors[0]?.doctorID ?? null;
   const effectiveDoctor = doctors.find((d) => d.doctorID === effectiveDoctorID) ?? null;
-  const canRequestAdHoc = !!effectiveDoctor && (effectiveDoctor.online || effectiveDoctor.alwaysAcceptAuth);
+  const canRequestAdHoc = !!effectiveDoctor && effectiveDoctor.alwaysAcceptAuth;
 
   // The ad-hoc target slot: "now" mirrors the doctor's real-time acceptance; "later" books
   // any chosen slot (an always-accepting doctor takes requests at any time — never gated by

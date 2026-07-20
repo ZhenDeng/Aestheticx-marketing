@@ -168,13 +168,13 @@ describe("booking with a new-patient lead", () => {
   });
 
   it("sends an ad-hoc request for a lead", () => {
-    const s = setDoctorStatus(emptyState(), "u-voss", { online: true });
+    const s = setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
     const { appt: a } = requestAdHocAuth(s, { doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, lead: jordan, identity: sarah });
     expect(a.lead).toEqual(jordan);
     expect(a.patientID).toBeUndefined();
   });
   it("rejects an ad-hoc request with neither a patient nor a lead", () => {
-    const s = setDoctorStatus(emptyState(), "u-voss", { online: true });
+    const s = setDoctorStatus(emptyState(), "u-voss", { alwaysAcceptAuth: true });
     expect(() => requestAdHocAuth(s, { doctorID: "u-voss", dateISO: "2026-07-01", atMinute: 600, identity: sarah })).toThrow(BackendError);
   });
 });

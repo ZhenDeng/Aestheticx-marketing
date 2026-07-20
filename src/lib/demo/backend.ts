@@ -1117,7 +1117,7 @@ export function availabilityWindowsForDoctor(state: DemoState, doctorID: string)
 
 // Distinct doctors who have published any availability (for the nurse booking picker).
 export function doctorsWithAvailability(state: DemoState): {
-  doctorID: string; doctorName: string; hasSlots: boolean; online: boolean; alwaysAcceptAuth: boolean;
+  doctorID: string; doctorName: string; hasSlots: boolean; alwaysAcceptAuth: boolean;
 }[] {
   const names = new Map<string, string>();
   const slotDoctorIDs = new Set<string>();
@@ -1126,7 +1126,7 @@ export function doctorsWithAvailability(state: DemoState): {
     slotDoctorIDs.add(w.doctorID);
   }
   const statusDoctorIDs = Object.entries(state.doctorStatusByID)
-    .filter(([, s]) => s.online || s.alwaysAcceptAuth)
+    .filter(([, s]) => s.alwaysAcceptAuth)
     .map(([id]) => id);
   for (const id of statusDoctorIDs) if (!names.has(id)) names.set(id, "");
   const allIDs = new Set([...slotDoctorIDs, ...statusDoctorIDs]);
@@ -1134,7 +1134,7 @@ export function doctorsWithAvailability(state: DemoState): {
     const status = doctorStatusForUser(state, doctorID);
     return {
       doctorID, doctorName: names.get(doctorID) ?? "",
-      hasSlots: slotDoctorIDs.has(doctorID), online: status.online, alwaysAcceptAuth: status.alwaysAcceptAuth,
+      hasSlots: slotDoctorIDs.has(doctorID), alwaysAcceptAuth: status.alwaysAcceptAuth,
     };
   });
 }
@@ -1202,14 +1202,14 @@ export interface RequestAdHocAuthInput {
   patientID?: string; patientName?: string; lead?: AppointmentLead; identity: Identity;
 }
 
-// Ad-hoc (no published slot) request to an online/always-accepting doctor, for an existing
-// patient or a new-patient lead. Never gated by treatment hours or published slots, but IS
-// subject to the auth-overlap rule — matching the deployed adHocAuthTx since AestheticX#49.
+// Ad-hoc (no published slot) request to an always-accepting doctor, for an existing patient
+// or a new-patient lead. Never gated by treatment hours or published slots, but IS subject
+// to the auth-overlap rule — matching the deployed adHocAuthTx since AestheticX#49.
 // Mirrors bookAuthSlot's appointment shape (10-minute, confirmed).
 export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput): { state: DemoState; appt: Appointment } {
   validateBookingPatient(input, false);
   const status = doctorStatusForUser(state, input.doctorID);
-  if (!status.online && !status.alwaysAcceptAuth) throw new BackendError("notAccepting");
+  if (!status.alwaysAcceptAuth) throw new BackendError("notAccepting");
   if (hasAuthOverlap(state, input.doctorID, input.dateISO, input.atMinute, input.atMinute + SLOT_MINUTES)) throw new BackendError("slotTaken");
   const appt: Appointment = {
     id: makeID("appt"), type: "authSlot", ownerID: input.doctorID, bookedByID: appointmentOwnerScope(input.identity),
@@ -1288,10 +1288,10 @@ export function removeTreatmentBlock(state: DemoState, ownerID: string, blockID:
   return { ...state, treatmentAvailabilityByOwner: { ...state.treatmentAvailabilityByOwner, [ownerID]: next } };
 }
 
-// --- Doctor online status ---
+// --- Doctor ad-hoc acceptance status ---
 
 export function doctorStatusForUser(state: DemoState, doctorID: string): DoctorStatus {
-  return state.doctorStatusByID[doctorID] ?? { online: false, alwaysAcceptAuth: false };
+  return state.doctorStatusByID[doctorID] ?? { alwaysAcceptAuth: false };
 }
 
 export function setDoctorStatus(state: DemoState, doctorID: string, patch: Partial<DoctorStatus>): DemoState {
