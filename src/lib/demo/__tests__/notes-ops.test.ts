@@ -93,12 +93,14 @@ describe("note attachments", () => {
 describe("canSendAftercare", () => {
   const mk = (role: Identity["role"]): Identity =>
     ({ user: { id: "u", name: "U" }, role, context: { kind: "independent" } });
-  it("allows nurse and doctor", () => {
+  // Owner decision 2026-07-21: clinic admins send aftercare too (their toolkit is create
+  // clients + general notes + forms + aftercare). Only the platform admin never sends.
+  it("allows nurse, doctor and clinic admin", () => {
     expect(canSendAftercare(mk("nurse"))).toBe(true);
     expect(canSendAftercare(mk("doctor"))).toBe(true);
+    expect(canSendAftercare(mk("clinicAdmin"))).toBe(true);
   });
-  it("denies clinic admin and super admin", () => {
-    expect(canSendAftercare(mk("clinicAdmin"))).toBe(false);
+  it("denies the super admin", () => {
     expect(canSendAftercare(mk("superAdmin"))).toBe(false);
   });
 });
@@ -117,7 +119,8 @@ describe("recordAftercareSend", () => {
     expect(notesForPatient(next, "p1")[0].id).toBe(note.id); // newest first
   });
 
-  it("rejects a clinic admin (may view but not send aftercare)", () => {
+  // Owner decision 2026-07-21: the clinic admin sends aftercare for the clinic's patients.
+  it("lets a clinic admin send aftercare for the clinic's patients", () => {
     const clinicPatient: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
     const admin: Identity = {
       user: { id: "u-ava", name: "Ava Lim" },
@@ -125,8 +128,8 @@ describe("recordAftercareSend", () => {
       context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
     };
     const state = stateWith(clinicPatient);
-    expect(() => recordAftercareSend(state, { patientID: "p1", content: "x", medications: [], categories: [], identity: admin }, 1))
-      .toThrow(BackendError);
+    const { note } = recordAftercareSend(state, { patientID: "p1", content: "x", medications: [], categories: [], identity: admin }, 1);
+    expect(note.kind).toBe("aftercareRecord");
   });
 
   it("rejects a missing patient", () => {
@@ -214,16 +217,16 @@ describe("note-kind access rules", () => {
       .toEqual(["n-gen-mine", "n-trt"]);
   });
 
-  // Owner decision 2026-07-10 (reverses the earlier full blinding): a clinic-employee doctor
-  // sees the clinic patient's TREATMENT record even without a prescribing relationship, but
-  // general/aftercare notes stay hidden (the same note pattern as the prescriber/reviewer
-  // grants). Writing treatment notes remains tied to prescribing.
-  it("shows treatment notes (read-only) to a non-prescribing clinic doctor; general notes stay hidden", () => {
+  // Owner decision 2026-07-21 (supersedes 2026-07-10): a clinic-employee doctor both sees
+  // AND writes the clinic patient's treatment record without a prescribing relationship —
+  // doctors administer medication without a script. General/aftercare notes stay hidden
+  // (the same note pattern as the prescriber/reviewer grants).
+  it("shows and lets a non-prescribing clinic doctor write treatment notes; general notes stay hidden", () => {
     const p: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
     const perms = patientPermissions(clinicDoctor, p);
     expect(perms.canView).toBe(true);
     expect(perms.canViewTreatmentNotes).toBe(true);
-    expect(perms.canWriteTreatmentNote).toBe(false);
+    expect(perms.canWriteTreatmentNote).toBe(true);
     expect(perms.canViewGeneralNotes).toBe(false);
     expect(visibleNotesForPatient(stateWithNotes(p), "p1", clinicDoctor).map((n) => n.id)).toEqual(["n-trt"]);
   });
@@ -286,5 +289,35 @@ describe("treatment note without an authorisation (rule 1)", () => {
       { patientID: "p1", tickedIDs: [], title: "", body: "x", medications: [], identity: clinicAdmin },
       1_000,
     )).toThrow(BackendError);
+  });
+});
+
+// Feedback 2026-07-21 (bug 2): a doctor writes treatment notes on ANY patient they can see —
+// clinic membership alone is enough, no prescribing relationship (script) required. Doctors
+// administer medication without a script, so the note may carry manually recorded
+// medications with no authorisation consumed.
+describe("clinic-employee doctor treatment notes", () => {
+  const clinicDoctor: Identity = {
+    user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor",
+    context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+  };
+  const clinicP: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" }, prescribingDoctorIDs: [] };
+
+  it("grants canWriteTreatmentNote without a prescribing relationship", () => {
+    expect(patientPermissions(clinicDoctor, clinicP).canWriteTreatmentNote).toBe(true);
+  });
+
+  it("saves a treatment note with manually recorded medication and dose, no script ticked", () => {
+    const { note } = saveTreatmentNote(
+      stateWith(clinicP),
+      {
+        patientID: "p1", tickedIDs: [], title: "Antiwrinkle", body: "Glabella.",
+        medications: [{ name: "Botulinum toxin A", batch: "B123", expiry: "03/27", dosage: "20U" }],
+        identity: clinicDoctor,
+      },
+      1_000,
+    );
+    expect(note.consumedAuthorisationIDs).toEqual([]);
+    expect(note.medications).toEqual([{ name: "Botulinum toxin A", batch: "B123", expiry: "03/27", dosage: "20U" }]);
   });
 });

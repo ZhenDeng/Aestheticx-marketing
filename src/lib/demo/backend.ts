@@ -225,12 +225,12 @@ export function patientPermissions(identity: Identity, patient: Patient): Permis
           case "nurse":
             return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
           case "doctor":
-            // Owner decision 2026-07-10: a clinic-employee doctor sees the clinic patient's
-            // treatment record even without a prescribing relationship (clinical safety), but
-            // WRITING treatment notes stays tied to prescribing, and general/aftercare notes
-            // stay hidden except their own (the prescriber/reviewer note pattern).
-            if (isPrescriber) return perms({ ...PRESCRIBING_DOCTOR, canEditDetails: true, canSendForms: true });
-            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canSendForms: true, canViewTreatmentNotes: true });
+            // Owner decision 2026-07-21 (supersedes 2026-07-10): a doctor writes treatment
+            // notes on ANY patient they can see — clinic membership alone is enough, no
+            // prescribing relationship (script) required, because doctors administer
+            // medication without a script. General/aftercare notes stay hidden except
+            // their own (the prescriber/reviewer note pattern).
+            return perms({ canView: true, canEditDetails: true, canWriteGeneralNote: true, canWriteTreatmentNote: true, canSendForms: true, canViewTreatmentNotes: true });
           default:
             return perms({ canView: true, canViewBusinessStats: true, canViewGeneralNotes: true, canViewTreatmentNotes: true });
         }
@@ -256,7 +256,21 @@ export function partitionPatients(patients: Patient[], doctorID: string): { own:
 
 // Under a doctor account the list is split into the doctor's own patients and everything
 // else (grouped on a subpage). Other roles keep one combined list (PatientListView.split).
+// Under a CLINIC identity the member is part of the clinic, so the clinic's book is the
+// main list and anything else visible (e.g. prescriber reach into other silos) is grouped
+// on the subpage — the independent book comes back only by switching identity (feedback
+// 2026-07-21 bug 1).
 export function splitPatients(patients: Patient[], identity: Identity): { own: Patient[]; others: Patient[] } {
+  const clinicID = contextClinicID(identity);
+  if (clinicID) {
+    const own: Patient[] = [];
+    const others: Patient[] = [];
+    for (const p of patients) {
+      if (p.owner.kind === "clinic" && p.owner.id === clinicID) own.push(p);
+      else others.push(p);
+    }
+    return { own, others };
+  }
   if (identity.role !== "doctor") return { own: patients, others: [] };
   return partitionPatients(patients, identity.user.id);
 }
@@ -1578,10 +1592,11 @@ export function usableAuthorisations(
   return activeAuthorisations(state, patientID, now).filter((a) => canUseAuthorisation(a, identity));
 }
 
-// Aftercare is sender-restricted to nurses and doctors (clinic admins may write
-// general notes but MUST NOT send aftercare, per the clinical-notes spec).
+// Aftercare senders: nurses, doctors and clinic admins (owner decision 2026-07-21 — the
+// clinic admin's toolkit is create clients + general notes + forms + aftercare; reverses
+// the earlier clinical-notes restriction). The platform admin inspects, never sends.
 export function canSendAftercare(identity: Identity): boolean {
-  return identity.role === "nurse" || identity.role === "doctor";
+  return identity.role === "nurse" || identity.role === "doctor" || identity.role === "clinicAdmin";
 }
 
 // Aftercare + delivery-status are note writes: they need an actual note-write grant, not

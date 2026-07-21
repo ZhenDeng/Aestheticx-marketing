@@ -6,9 +6,12 @@ import { ownerLabel } from "@/lib/demo/accounts";
 // Port of iOS DoctorPatientList.{partition,grouped} + PatientListView.split +
 // SessionState.ownerLabel (spec: patient-records → "Doctor patient list grouping").
 
+const lumiere = { id: "clinic-lumiere", name: "Lumière Clinic" };
 const voss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
+const vossAtClinic: Identity = { ...voss, context: { kind: "clinic", clinic: lumiere } };
 const sarah: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
-const admin: Identity = { user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin", context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } } };
+const sarahAtClinic: Identity = { ...sarah, context: { kind: "clinic", clinic: lumiere } };
+const admin: Identity = { user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin", context: { kind: "clinic", clinic: lumiere } };
 
 function patient(id: string, owner: Patient["owner"]): Patient {
   return { id, givenName: "P", lastName: id, dateOfBirth: { year: 1980, month: 1, day: 1 },
@@ -41,10 +44,22 @@ describe("splitPatients", () => {
     expect(own.map((p) => p.id)).toEqual(["own1", "np"]);
     expect(others).toEqual([]);
   });
-  it("keeps one combined list for a clinic admin", () => {
+  // Under a clinic identity the member IS part of the clinic, so the clinic's book is
+  // their main list — never routed through "Other patients" (feedback 2026-07-21 bug 1).
+  it("treats the clinic's patients as the doctor's own list under a clinic-employee identity", () => {
+    const { own, others } = splitPatients([nurseOwned, clinicOwned, own1], vossAtClinic);
+    expect(own.map((p) => p.id)).toEqual(["cp"]);
+    expect(others.map((p) => p.id)).toEqual(["np", "own1"]);
+  });
+  it("treats the clinic's patients as the nurse's own list under a clinic-employee identity", () => {
+    const { own, others } = splitPatients([clinicOwned, nurseOwned], sarahAtClinic);
+    expect(own.map((p) => p.id)).toEqual(["cp"]);
+    expect(others.map((p) => p.id)).toEqual(["np"]);
+  });
+  it("scopes a clinic admin's own list to the clinic's patients", () => {
     const { own, others } = splitPatients([clinicOwned, nurseOwned], admin);
-    expect(own.map((p) => p.id)).toEqual(["cp", "np"]);
-    expect(others).toEqual([]);
+    expect(own.map((p) => p.id)).toEqual(["cp"]);
+    expect(others.map((p) => p.id)).toEqual(["np"]);
   });
 });
 

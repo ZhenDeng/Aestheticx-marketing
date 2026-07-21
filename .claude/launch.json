@@ -13,10 +13,20 @@
     },
     {
       "name": "web-demo",
-      "runtimeExecutable": "sh",
+      "runtimeExecutable": "env",
       "runtimeArgs": [
-        "-c",
-        "cd /Users/zhendeng/Documents/Aestheticx-marketing && NEXT_PUBLIC_FIREBASE_API_KEY= NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN= NEXT_PUBLIC_FIREBASE_PROJECT_ID= NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET= NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID= NEXT_PUBLIC_FIREBASE_APP_ID= npm run dev"
+        "NEXT_PUBLIC_FIREBASE_API_KEY=",
+        "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=",
+        "NEXT_PUBLIC_FIREBASE_PROJECT_ID=",
+        "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=",
+        "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=",
+        "NEXT_PUBLIC_FIREBASE_APP_ID=",
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3001"
       ],
       "port": 3001,
       "autoPort": true
