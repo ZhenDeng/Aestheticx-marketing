@@ -17,6 +17,9 @@ export function TreatmentNoteForm({
   const templates = store.noteTemplatesForOwner(identity.user.id);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [edits, setEdits] = useState<Record<string, MedEdit>>({});
+  // Doctors administer medication without a script (feedback 2026-07-21 bug 2), so a
+  // doctor-authored note may record medications directly, no authorisation consumed.
+  const [manualMeds, setManualMeds] = useState<TreatmentMedication[]>([]);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [attachments, setAttachments] = useState<NoteAttachment[]>([]);
@@ -43,12 +46,17 @@ export function TreatmentNoteForm({
     });
   }
 
+  function setManualMed(index: number, field: keyof TreatmentMedication, value: string) {
+    setManualMeds((prev) => prev.map((m, i) => (i === index ? { ...m, [field]: value } : m)));
+  }
+
   function save() {
-    const medications: TreatmentMedication[] = [...ticked].map((id) => {
+    const consumed: TreatmentMedication[] = [...ticked].map((id) => {
       const a = usable.find((x) => x.id === id)!;
       const e = edits[id] ?? { batch: "", expiry: "", dosage: "" };
       return { name: a.medication.name, batch: e.batch, expiry: e.expiry, dosage: e.dosage };
     });
+    const medications = [...consumed, ...manualMeds.filter((m) => m.name.trim() !== "")];
     store.saveTreatmentNote({
       patientID, tickedIDs: [...ticked], title, body, medications,
       attachments: attachments.length ? attachments : undefined, identity,
@@ -91,6 +99,38 @@ export function TreatmentNoteForm({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {identity.role === "doctor" && (
+        // Doctors need no script to administer medication — record what was used directly.
+        <div className="mt-3">
+          <p className="micro">Medications administered (no script needed)</p>
+          {manualMeds.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-2">
+              {manualMeds.map((m, i) => (
+                <li key={i} className="rounded-inner border border-line px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <input placeholder="Medication" value={m.name} onChange={(e) => setManualMed(i, "name", e.target.value)}
+                           className="min-w-0 flex-1 rounded-field border border-line px-2 py-1 text-sm" />
+                    <button type="button" aria-label="Remove medication"
+                            onClick={() => setManualMeds((prev) => prev.filter((_, j) => j !== i))}
+                            className="flex-none rounded-btn border border-line px-2 py-1 text-sm text-ink-soft">✕</button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <input placeholder="Dosage" value={m.dosage ?? ""} onChange={(e) => setManualMed(i, "dosage", e.target.value)} className="rounded-field border border-line px-2 py-1 text-sm" />
+                    <input placeholder="Batch" value={m.batch ?? ""} onChange={(e) => setManualMed(i, "batch", e.target.value)} className="rounded-field border border-line px-2 py-1 text-sm" />
+                    <input placeholder="MM/YY" value={m.expiry ?? ""} onChange={(e) => setManualMed(i, "expiry", e.target.value)} className="rounded-field border border-line px-2 py-1 text-sm" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button"
+                  onClick={() => setManualMeds((prev) => [...prev, { name: "", batch: "", expiry: "", dosage: "" }])}
+                  className="mt-2 rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint/50">
+            Add medication
+          </button>
         </div>
       )}
 

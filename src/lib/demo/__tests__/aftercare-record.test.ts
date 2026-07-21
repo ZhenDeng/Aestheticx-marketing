@@ -72,11 +72,22 @@ describe("recordAftercareSend", () => {
     expect(notesForPatient(state, "p1")[0].id).toBe(note.id);
   });
 
-  it("still refuses a role that may not send aftercare", () => {
+  // Feedback 2026-07-21 (bug 3): the clinic admin's toolkit is create clients + general
+  // notes + forms + AFTERCARE — sending aftercare is now allowed (reverses the earlier
+  // clinical-notes spec restriction).
+  it("lets the clinic admin send aftercare for the clinic's patients", () => {
     const clinicPatient: Patient = { ...patientState().patients.p1, owner: { kind: "clinic", id: "clinic-lumiere" } };
     const state: DemoState = { ...emptyState(), patients: { p1: clinicPatient } };
+    const { note } = recordAftercareSend(
+      state, { patientID: "p1", content: "c", medications: [], categories: ["antiwrinkle"], identity: admin }, 1,
+    );
+    expect(note.kind).toBe("aftercareRecord");
+  });
+
+  it("still refuses the platform admin", () => {
+    const superAdmin: Identity = { user: { id: "u-priya", name: "Priya" }, role: "superAdmin", context: { kind: "independent" } };
     expect(() => recordAftercareSend(
-      state, { patientID: "p1", content: "c", medications: [], categories: [], identity: admin }, 1,
+      patientState(), { patientID: "p1", content: "c", medications: [], categories: [], identity: superAdmin }, 1,
     )).toThrow(BackendError);
   });
 
