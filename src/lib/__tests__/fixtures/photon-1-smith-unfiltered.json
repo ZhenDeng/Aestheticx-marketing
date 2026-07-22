@@ -1,0 +1,380 @@
+{
+  "features": [
+    {
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 29989730,
+        "osm_key": "landuse",
+        "osm_value": "residential",
+        "type": "locality",
+        "housenumber": "1",
+        "street": "Abel Smith Crescent",
+        "district": "Mount Ommaney",
+        "city": "Brisbane",
+        "state": "Queensland",
+        "country": "Australia",
+        "postcode": "4074",
+        "countrycode": "AU",
+        "extent": [
+          152.9355534,
+          -27.5474229,
+          152.9362124,
+          -27.5479741
+        ]
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 723606939,
+        "osm_key": "landuse",
+        "osm_value": "retail",
+        "type": "locality",
+        "housenumber": "1",
+        "name": "Cummins",
+        "street": "Brian Smith Drive",
+        "district": "Suttontown",
+        "state": "South Australia",
+        "country": "Australia",
+        "postcode": "5291",
+        "countrycode": "AU",
+        "extent": [
+          140.7909491,
+          -37.7969592,
+          140.79201,
+          -37.7979021
+        ]
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 866283227,
+        "osm_key": "landuse",
+        "osm_value": "farmyard",
+        "type": "locality",
+        "housenumber": "1",
+        "name": "Toowoomba Tree Farms",
+        "street": "Smith Lane",
+        "district": "Harlaxton",
+        "city": "Toowoomba",
+        "state": "Queensland",
+        "country": "Australia",
+        "postcode": "4350",
+        "countrycode": "AU",
+        "extent": [
+          151.958723,
+          -27.5388891,
+          151.9614147,
+          -27.5397593
+        ]
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 2280652660,
+        "osm_key": "highway",
+        "osm_value": "bus_stop",
+        "type": "house",
+        "name": "Stop 1 Sir Edwin Smith Avenue - South side",
+        "street": "Sir Edwin Smith Avenue",
+        "district": "North Adelaide",
+        "city": "Adelaide",
+        "state": "South Australia",
+        "country": "Australia",
+        "postcode": "5006",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 16547009,
+        "osm_key": "leisure",
+        "osm_value": "pitch",
+        "type": "house",
+        "name": "Smith Field 1",
+        "street": "Heath Street",
+        "district": "East Brisbane",
+        "city": "Brisbane",
+        "state": "Queensland",
+        "country": "Australia",
+        "postcode": "4169",
+        "countrycode": "AU",
+        "extent": [
+          153.0530542,
+          -27.4800133,
+          153.0540735,
+          -27.4810151
+        ]
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 2280652659,
+        "osm_key": "highway",
+        "osm_value": "bus_stop",
+        "type": "house",
+        "name": "Stop 1 Sir Edwin Smith Avenue - North side",
+        "street": "Sir Edwin Smith Avenue",
+        "district": "North Adelaide",
+        "city": "Adelaide",
+        "state": "South Australia",
+        "country": "Australia",
+        "postcode": "5006",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 6694290017,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "district": "Lindfield",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "country": "Australia",
+        "postcode": "2070",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12419578096,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Road",
+        "district": "Springvale",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3171",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12419342753,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Charles Smith Drive",
+        "district": "Wonga Park",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3115",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12419390706,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "district": "Maidstone",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3012",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12421135676,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "locality": "Keon Park",
+        "district": "Reservoir",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3073",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12421140083,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "locality": "Keon Park",
+        "district": "Reservoir",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3073",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12421140084,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "locality": "Keon Park",
+        "district": "Reservoir",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3073",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12418101229,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Evan Smith Close",
+        "locality": "Springthorpe",
+        "district": "Macleod",
+        "city": "Melbourne",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3085",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 6228644682,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Abel Smith Crescent",
+        "locality": "The Hills",
+        "district": "Mount Ommaney",
+        "city": "Brisbane",
+        "state": "Queensland",
+        "country": "Australia",
+        "postcode": "4074",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 6228644986,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Abel Smith Crescent",
+        "locality": "The Hills",
+        "district": "Mount Ommaney",
+        "city": "Brisbane",
+        "state": "Queensland",
+        "country": "Australia",
+        "postcode": "4074",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 6228644680,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Abel Smith Crescent",
+        "locality": "The Hills",
+        "district": "Mount Ommaney",
+        "city": "Brisbane",
+        "state": "Queensland",
+        "country": "Australia",
+        "postcode": "4074",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 766234111,
+        "osm_key": "building",
+        "osm_value": "detached",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "locality": "Newling",
+        "city": "Armidale",
+        "state": "New South Wales",
+        "country": "Australia",
+        "postcode": "2350",
+        "countrycode": "AU",
+        "extent": [
+          151.681898,
+          -30.527913,
+          151.682076,
+          -30.5280382
+        ]
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12420995024,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Avenue",
+        "city": "Warrnambool",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3280",
+        "countrycode": "AU"
+      }
+    },
+    {
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 12417616853,
+        "osm_key": "place",
+        "osm_value": "house",
+        "type": "house",
+        "housenumber": "1",
+        "street": "Smith Street",
+        "city": "Traralgon",
+        "state": "Victoria",
+        "country": "Australia",
+        "postcode": "3844",
+        "countrycode": "AU"
+      }
+    }
+  ]
+}
