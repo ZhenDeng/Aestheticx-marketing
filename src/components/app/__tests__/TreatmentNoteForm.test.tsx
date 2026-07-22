@@ -9,6 +9,7 @@ import type { DemoState, Identity } from "@/lib/demo/types";
 // Uses the REAL usableAuthorisations helper via a mocked store carrying an empty DemoState.
 
 const nurse: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
+const doctor: Identity = { user: { id: "u-mira", name: "Dr Mira Patel" }, role: "doctor", context: { kind: "independent" } };
 
 const saveTreatmentNote = vi.fn();
 let state: DemoState;
@@ -73,5 +74,60 @@ describe("TreatmentNoteForm", () => {
 
     await user.type(body, " Tolerated well.");
     expect(body.value).toBe("Injected forehead + glabella. Tolerated well.");
+  });
+});
+
+// 22/07 feedback #1: the doctor's no-script medication field suggests catalog products while
+// typing. The catalog is a shortcut only — a doctor may administer a product it doesn't carry.
+describe("TreatmentNoteForm medication combobox", () => {
+  async function addMedicationRow() {
+    const user = userEvent.setup();
+    render(<TreatmentNoteForm patientID="p1" identity={doctor} onDone={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /add medication/i }));
+    return { user, input: screen.getByRole("combobox", { name: /medication/i }) };
+  }
+
+  it("suggests catalog products matching the typed text", async () => {
+    const { user, input } = await addMedicationRow();
+    await user.type(input, "boto");
+    expect(await screen.findByRole("option", { name: /Botox/ })).toBeInTheDocument();
+  });
+
+  it("matches on brand as well as product name", async () => {
+    const { user, input } = await addMedicationRow();
+    await user.type(input, "juvederm");
+    expect(await screen.findByRole("option", { name: /Juvederm · Voluma/ })).toBeInTheDocument();
+  });
+
+  it("fills the field with the chosen product and saves that name", async () => {
+    const { user, input } = await addMedicationRow();
+    await user.type(input, "volux");
+    await user.click(await screen.findByRole("option", { name: /Juvederm · Volux/ }));
+    expect(input).toHaveValue("Juvederm · Volux");
+
+    await user.click(screen.getByRole("button", { name: /save treatment note/i }));
+    expect(saveTreatmentNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medications: [expect.objectContaining({ name: "Juvederm · Volux" })],
+      }),
+    );
+  });
+
+  it("saves a typed medication the catalog does not carry", async () => {
+    const { user, input } = await addMedicationRow();
+    await user.type(input, "Compounded lignocaine 2%");
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /save treatment note/i }));
+    expect(saveTreatmentNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        medications: [expect.objectContaining({ name: "Compounded lignocaine 2%" })],
+      }),
+    );
+  });
+
+  it("is not offered to a nurse, whose medications come from an authorisation", () => {
+    render(<TreatmentNoteForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /add medication/i })).not.toBeInTheDocument();
   });
 });

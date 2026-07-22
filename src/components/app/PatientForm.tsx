@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { missingFields } from "@/lib/demo/backend";
+import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import type { Patient, PatientDraft } from "@/lib/demo/types";
 
 function dobToInput(d: PatientDraft["dateOfBirth"]): string {
@@ -83,7 +84,8 @@ export function PatientForm({ mode, initial, existing, onCreated, onCancel, comp
         <label className="block"><span className="micro">Phone *</span>
           <input className={FIELD} value={draft.phone} onChange={(e) => set("phone", e.target.value)} /></label>
         <label className="block sm:col-span-2"><span className="micro">Address *</span>
-          <input className={FIELD} value={draft.address} onChange={(e) => set("address", e.target.value)} /></label>
+          {/* 22/07 feedback: suggestions fill the field; typed text stays valid as-is. */}
+          <AddressAutocomplete className={FIELD} value={draft.address} onChange={(v) => set("address", v)} /></label>
         <label className="block sm:col-span-2"><span className="micro">Email *</span>
           <input type="email" className={FIELD} value={draft.email} onChange={(e) => set("email", e.target.value)} /></label>
         <label className="block"><span className="micro">Allergies *</span>

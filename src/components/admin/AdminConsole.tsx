@@ -7,6 +7,7 @@ import { DEMO_ACCOUNTS } from "@/lib/demo/accounts";
 import { identityBadge, type AccountRecord, type Identity, type Role, type BusinessEntity, type BusinessEntityType } from "@/lib/demo/types";
 import { CooperationRelationshipsSection } from "@/components/admin/RelationshipsSection";
 import { validateNewUser, type NewPremiseInput, type NewUserInput } from "@/lib/demo/userAdmin";
+import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 
 // The platform-admin management console (accounts + create user + cooperation relationships).
 // Lives under the Admin module (/app/admin), separate from the clinical UI (constitution
@@ -302,16 +303,27 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
     }
   }
 
-  const field = (label: string, key: keyof typeof draft, extra?: { type?: string; hint?: string }) => (
+  // `address: true` swaps the plain input for the geocoder-assisted combobox (22/07 feedback);
+  // the stored value is the same free-text string either way.
+  const field = (label: string, key: keyof typeof draft, extra?: { type?: string; hint?: string; address?: boolean }) => (
     <label className="block">
       <span className="micro">{label}</span>
-      <input
-        type={extra?.type ?? "text"}
-        autoComplete={extra?.type === "password" ? "new-password" : "off"}
-        value={draft[key]}
-        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-        className={`mt-1 ${input(key)}`}
-      />
+      {extra?.address ? (
+        <AddressAutocomplete
+          value={draft[key]}
+          onChange={(v) => setDraft((d) => ({ ...d, [key]: v }))}
+          ariaLabel={label}
+          className={`mt-1 ${input(key)}`}
+        />
+      ) : (
+        <input
+          type={extra?.type ?? "text"}
+          autoComplete={extra?.type === "password" ? "new-password" : "off"}
+          value={draft[key]}
+          onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+          className={`mt-1 ${input(key)}`}
+        />
+      )}
       {extra?.hint && <span className="micro mt-1 block text-ink-soft">{extra.hint}</span>}
     </label>
   );
@@ -346,7 +358,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
         {field("ABN", "abn")}
         {field("Business name", "businessName")}
         {!clinic && field("AHPRA", "ahpra", { hint: "Required for doctors and nurses" })}
-        {clinic && field("Clinic address", "clinicAddress", { hint: "Printed as the premises of administration on clinic authorisations" })}
+        {clinic && field("Clinic address", "clinicAddress", { address: true, hint: "Printed as the premises of administration on clinic authorisations" })}
         {field("Temporary password", "temporaryPassword", { type: "password", hint: "At least 8 characters — they change it on first login" })}
         {!clinic && (
           <div>
@@ -361,9 +373,9 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
             </div>
           </div>
         )}
-        {isDoctor && field("Principal place of practice", "principalPlace", { hint: "Prints in the Clause 68C direction and PDF signature block" })}
+        {isDoctor && field("Principal place of practice", "principalPlace", { address: true, hint: "Prints in the Clause 68C direction and PDF signature block" })}
         {/* 16/07 feedback bug 2: a contact address entered here persists to the user's Profile. */}
-        {!clinic && field("Address", "address", { hint: "Contact address — shows on the user's profile (optional)" })}
+        {!clinic && field("Address", "address", { address: true, hint: "Contact address — shows on the user's profile (optional)" })}
       </div>
       {isNurse && (
         <label className="mt-3 block">
@@ -393,10 +405,10 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
                   onChange={(e) => setPremises((rows) => rows.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))}
                   className="rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
                 />
-                <input
-                  value={p.address} placeholder="Street address" aria-label={`Premise ${i + 1} address`}
-                  onChange={(e) => setPremises((rows) => rows.map((r, j) => (j === i ? { ...r, address: e.target.value } : r)))}
-                  className="rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
+                <AddressAutocomplete
+                  value={p.address} placeholder="Street address" ariaLabel={`Premise ${i + 1} address`}
+                  onChange={(v) => setPremises((rows) => rows.map((r, j) => (j === i ? { ...r, address: v } : r)))}
+                  className="w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
                 />
                 <button
                   type="button"

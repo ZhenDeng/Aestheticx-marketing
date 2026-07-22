@@ -5,6 +5,7 @@ import { useDemoStore } from "@/lib/demo/store";
 import { usableAuthorisations } from "@/lib/demo/backend";
 import { unitSuffix } from "@/lib/demo/catalog";
 import { NoteAttachmentsInput } from "@/components/app/NoteAttachments";
+import { MedicationCombobox } from "@/components/app/MedicationCombobox";
 import { routeLabel, type Identity, type NoteAttachment, type TreatmentMedication } from "@/lib/demo/types";
 
 type MedEdit = { batch: string; expiry: string; dosage: string };
@@ -111,8 +112,11 @@ export function TreatmentNoteForm({
               {manualMeds.map((m, i) => (
                 <li key={i} className="rounded-inner border border-line px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <input placeholder="Medication" value={m.name} onChange={(e) => setManualMed(i, "name", e.target.value)}
-                           className="min-w-0 flex-1 rounded-field border border-line px-2 py-1 text-sm" />
+                    {/* 22/07 feedback: catalog-assisted combobox — free text stays valid. */}
+                    <div className="min-w-0 flex-1">
+                      <MedicationCombobox value={m.name} onChange={(name) => setManualMed(i, "name", name)}
+                             className="w-full rounded-field border border-line px-2 py-1 text-sm" />
+                    </div>
                     <button type="button" aria-label="Remove medication"
                             onClick={() => setManualMeds((prev) => prev.filter((_, j) => j !== i))}
                             className="flex-none rounded-btn border border-line px-2 py-1 text-sm text-ink-soft">✕</button>
