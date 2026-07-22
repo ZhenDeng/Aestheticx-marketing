@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { formatPhotonAddress, matchesQuery, parseAddressQuery, searchAddresses } from "@/lib/addressSearch";
+import { biasForAddress, formatPhotonAddress, matchesQuery, parseAddressQuery, searchAddresses, stateFromAddress } from "@/lib/addressSearch";
 import UNFILTERED_1_SMITH from "./fixtures/photon-1-smith-unfiltered.json";
 
 // The address suggestion source feeds fields that print onto legal documents. The behaviours
@@ -29,18 +29,29 @@ afterEach(() => {
 describe("parseAddressQuery", () => {
   it("pulls out the house number and the street anchor word", () => {
     expect(parseAddressQuery("12 Smith Street")).toEqual({
-      houseNumber: "12", streetWord: "smith", search: "12 smith street",
+      houseNumber: "12", streetPhrase: "smith street", extraWords: [], search: "12 smith street",
     });
   });
 
   it("has no house number when the text starts with a street name", () => {
     expect(parseAddressQuery("Chapel Street").houseNumber).toBeUndefined();
-    expect(parseAddressQuery("Chapel Street").streetWord).toBe("chapel");
+    expect(parseAddressQuery("Chapel Street").streetPhrase).toBe("chapel street");
   });
 
-  it("skips short particles when choosing the street anchor", () => {
-    // "st kilda road" must anchor on "kilda" — "st" would match half of Australia.
-    expect(parseAddressQuery("2 St Kilda Road").streetWord).toBe("kilda");
+  it("never ends the street on its own first word", () => {
+    // "St Kilda Road" opens with a street-type word; stopping there would anchor on "st".
+    expect(parseAddressQuery("2 St Kilda Road").streetPhrase).toBe("st kilda road");
+  });
+
+  it("ends the street at its type word, keeping the rest as ranking hints", () => {
+    // Matching the whole remainder would let a typed suburb reject the street it names.
+    expect(parseAddressQuery("12 High Street Prahran")).toMatchObject({
+      houseNumber: "12", streetPhrase: "high street", extraWords: ["prahran"],
+    });
+  });
+
+  it("keeps the whole remainder while the street type is still untyped", () => {
+    expect(parseAddressQuery("12 Chapel")).toMatchObject({ streetPhrase: "chapel", extraWords: [] });
   });
 
   it.each([
@@ -52,7 +63,33 @@ describe("parseAddressQuery", () => {
   ])("strips the sub-dwelling designator in %s", (input, houseNumber, search) => {
     // Left in place the leading 5 reads as the street number, and "5 Queen Street" — a real,
     // wrong address — gets offered for "Suite 5 200 Queen Street".
-    expect(parseAddressQuery(input)).toEqual({ houseNumber, streetWord: expect.any(String), search });
+    expect(parseAddressQuery(input)).toMatchObject({ houseNumber, search });
+  });
+});
+
+describe("stateFromAddress / biasForAddress", () => {
+  it.each([
+    ["7/22 Fitzroy St, St Kilda VIC 3182", "VIC"],
+    ["1 Test Street, Bondi NSW 2026", "NSW"],
+    ["20 Wickham Terrace, Spring Hill Queensland 4000", "QLD"],
+  ])("reads the state from %s", (address, state) => {
+    expect(stateFromAddress(address)).toBe(state);
+  });
+
+  it("takes the LAST state named, not the first", () => {
+    // "12 Victoria Road, Bellevue Hill NSW 2023" names Victoria in the STREET; the state slot
+    // is the one that means the state.
+    expect(stateFromAddress("12 Victoria Road, Bellevue Hill NSW 2023")).toBe("NSW");
+  });
+
+  it("has no bias when the address names no state", () => {
+    expect(stateFromAddress("12 Smith Street")).toBeUndefined();
+    expect(biasForAddress("12 Smith Street")).toBeUndefined();
+    expect(biasForAddress(undefined)).toBeUndefined();
+  });
+
+  it("maps a state to its capital, which is what the geocoder is biased toward", () => {
+    expect(biasForAddress("14 Acland St, St Kilda VIC")).toEqual({ lat: -37.8136, lon: 144.9631 });
   });
 });
 
@@ -84,8 +121,20 @@ describe("matchesQuery", () => {
     expect(matchesQuery({ housenumber: "15", street: "Everson Road", city: "Gympie" }, gympie)).toBe(false);
   });
 
-  it("accepts any hit when the text pins nothing down", () => {
-    expect(matchesQuery({ street: "Smith Street" }, parseAddressQuery("ab cd"))).toBe(true);
+  it("rejects a street that merely contains the first typed word", () => {
+    // "Charles Smith Drive" is not "Smith Street"; anchoring on one word accepted it.
+    expect(matchesQuery({ housenumber: "12", street: "Charles Smith Drive" }, typed)).toBe(false);
+  });
+
+  it("does not reject on a typed suburb", () => {
+    // Photon answers "12 chapel street prahran" with "Little Chapel Street" alone, so a
+    // suburb must only rank — rejecting on it loses the street the user is heading for.
+    const withSuburb = parseAddressQuery("12 Chapel Street Prahran");
+    expect(matchesQuery({ housenumber: "12", street: "Chapel Street", suburb: "Cremorne" }, withSuburb)).toBe(true);
+  });
+
+  it("accepts any street while only a number has been typed", () => {
+    expect(matchesQuery({ housenumber: "12", street: "Anything Road" }, parseAddressQuery("12"))).toBe(true);
   });
 
   it("rejects a locality even when its name and number look like an address", () => {
@@ -147,6 +196,35 @@ describe("searchAddresses", () => {
     expect(url).toContain("bbox=112.9,-43.9,153.7,-9.0");
     // Repeated params, not comma-separated — Photon returns nothing for `layer=house,street`.
     expect(url).toContain("layer=house&layer=street");
+  });
+
+  it("sends the proximity bias when one is supplied, and omits it otherwise", async () => {
+    fetchMock.mockResolvedValue(photonResponse([]));
+    await searchAddresses("12 Smith Street", { near: { lat: -37.8136, lon: 144.9631 } });
+    expect(fetchMock.mock.calls[0][0]).toContain("lat=-37.8136&lon=144.9631");
+
+    fetchMock.mockClear();
+    await searchAddresses("12 Smith Street");
+    expect(fetchMock.mock.calls[0][0]).not.toContain("lat=");
+  });
+
+  it("ranks an exact street above one that merely contains it", async () => {
+    fetchMock.mockResolvedValue(photonResponse([
+      { housenumber: "12", street: "Little Chapel Street", suburb: "Prahran", state: "Victoria" },
+      { housenumber: "12", street: "Chapel Street", suburb: "Cremorne", state: "Victoria" },
+    ]));
+    const results = await searchAddresses("12 Chapel Street");
+    expect(results[0].label).toBe("12 Chapel Street, Cremorne VIC");
+  });
+
+  it("ranks a hit matching the typed suburb first without excluding the others", async () => {
+    fetchMock.mockResolvedValue(photonResponse([
+      { housenumber: "12", street: "Chapel Street", suburb: "Maldon", state: "Victoria" },
+      { housenumber: "12", street: "Chapel Street", suburb: "Prahran", state: "Victoria" },
+    ]));
+    const results = await searchAddresses("12 Chapel Street Prahran");
+    expect(results[0].label).toContain("Prahran");
+    expect(results).toHaveLength(2);
   });
 
   it("sends the geocoder the address without the sub-dwelling designator", async () => {

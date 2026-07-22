@@ -18,7 +18,13 @@ vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity }) }));
 
 const createPatient = vi.fn(() => "p-new");
 const updatePatient = vi.fn();
-vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ createPatient, updatePatient }) }));
+// The address field biases its suggestions by the signed-in user's own recorded state, so the
+// form now reads their profile (see useAddressBias).
+const profileForUser = vi.fn(() => ({
+  ahpra: "", abn: "", phone: "", address: "14 Acland St, St Kilda VIC 3182",
+  principalPlace: "", premises: [],
+}));
+vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ createPatient, updatePatient, profileForUser }) }));
 
 import { PatientForm } from "@/components/app/PatientForm";
 

@@ -78,3 +78,30 @@ proved the formatting and the combobox interaction and never once exercised the 
 ranking. The bug lived entirely in that gap. `src/lib/__tests__/fixtures/photon-1-smith-unfiltered.json`
 is now a REAL recorded response, and the regression test asserts against it. When a provider's
 behaviour is the risk, at least one test has to meet the provider where it actually is.
+
+## Ranking is ours too (22/07, second follow-up)
+
+Owner: "the street road search is accurate, but if I add street number before street road it is
+not accurate anymore." Correct, and a different failure from the locality one. Photon gives
+house-level features no meaningful importance score, so once a number narrows the match to
+individual dwellings the ordering is effectively arbitrary: "12 Chapel Street" led with Lilydale,
+Maldon and Serpentine; "101 Collins Street" — one of Melbourne's best-known addresses — ranked
+Drysdale and Burnie above it. Bare street queries looked fine only because street features DO
+carry importance.
+
+Three changes:
+
+1. **Proximity bias.** `lat`/`lon` from the signed-in user's own recorded address, via
+   `biasForAddress` → state → capital-city coordinates. No geolocation permission, no extra
+   network call, nothing new stored. It reorders only; interstate results still appear, which
+   matters for a clinic treating a patient from another state.
+2. **Street phrase, not first word.** Matching one word let "Charles Smith Drive" answer
+   "12 Smith Street". Matching the whole remainder would let a typed suburb reject the street it
+   names, so the phrase ends at the street-type word ("high street" from "12 High Street
+   Prahran") and never on the first token ("St Kilda Road").
+3. **Rank, then take six.** A wider `limit`, an exact-street-name preference, and typed
+   suburb/postcode as a ranking signal. Taking Photon's first few directly is what buried the
+   real address.
+
+A typed suburb ranks but never rejects: Photon answers "12 chapel street prahran" with
+"Little Chapel Street" alone, so filtering on it would lose the street the user is heading for.

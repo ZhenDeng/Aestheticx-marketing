@@ -8,6 +8,7 @@ import { identityBadge, type AccountRecord, type Identity, type Role, type Busin
 import { CooperationRelationshipsSection } from "@/components/admin/RelationshipsSection";
 import { validateNewUser, type NewPremiseInput, type NewUserInput } from "@/lib/demo/userAdmin";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
+import { useAddressBias } from "@/components/app/useAddressBias";
 
 // The platform-admin management console (accounts + create user + cooperation relationships).
 // Lives under the Admin module (/app/admin), separate from the clinical UI (constitution
@@ -244,6 +245,8 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   const [missing, setMissing] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  // The admin's own state biases suggestion ORDER only (22/07); every result stays reachable.
+  const near = useAddressBias();
 
   const clinic = accountType === "clinic";
   const isDoctor = !clinic && roles.includes("doctor");
@@ -313,6 +316,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
           value={draft[key]}
           onChange={(v) => setDraft((d) => ({ ...d, [key]: v }))}
           ariaLabel={label}
+          near={near}
           className={`mt-1 ${input(key)}`}
         />
       ) : (
@@ -407,6 +411,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
                 />
                 <AddressAutocomplete
                   value={p.address} placeholder="Street address" ariaLabel={`Premise ${i + 1} address`}
+                  near={near}
                   onChange={(v) => setPremises((rows) => rows.map((r, j) => (j === i ? { ...r, address: v } : r)))}
                   className="w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint"
                 />
