@@ -110,9 +110,10 @@ describe("matchesQuery", () => {
     expect(matchesQuery({ housenumber: "42", street: "Smith Street" }, typed)).toBe(false);
   });
 
-  it("rejects a hit with no number when a number was typed", () => {
-    // Selecting it would silently drop the number and save a different address.
-    expect(matchesQuery({ street: "Smith Street" }, typed)).toBe(false);
+  it("keeps a numberless hit when a number was typed, to be completed from the typed text", () => {
+    // OSM house-number coverage in AU is patchy — Wolli Creek carries Brodie Spark Drive but
+    // not one number on it, so rejecting these emptied the dropdown for the commonest case.
+    expect(matchesQuery({ type: "street", name: "Smith Street" }, typed)).toBe(true);
   });
 
   it("rejects a street that is not the one typed", () => {
@@ -178,6 +179,20 @@ describe("formatPhotonAddress", () => {
       .toBe("Chapel Street, Prahran VIC 3181");
   });
 
+  it("completes a numberless street with the number the user typed", () => {
+    // The real case: OSM has Brodie Spark Drive but no numbers on it. The number is the
+    // user's own; only suburb/state/postcode come from the geocoder.
+    expect(formatPhotonAddress(
+      { type: "street", name: "Brodie Spark Drive", district: "Wolli Creek", city: "Sydney", state: "New South Wales", postcode: "2205" },
+      "15",
+    )).toBe("15 Brodie Spark Drive, Wolli Creek NSW 2205");
+  });
+
+  it("prefers the geocoder's own number over the typed one", () => {
+    expect(formatPhotonAddress({ housenumber: "12A", street: "Smith Street", suburb: "Richmond" }, "12"))
+      .toBe("12A Smith Street, Richmond");
+  });
+
   it("returns null for a hit with no street name at all", () => {
     expect(formatPhotonAddress({ city: "Melbourne", state: "Victoria" })).toBeNull();
   });
@@ -215,6 +230,34 @@ describe("searchAddresses", () => {
     ]));
     const results = await searchAddresses("12 Chapel Street");
     expect(results[0].label).toBe("12 Chapel Street, Cremorne VIC");
+  });
+
+  it("completes a numberless street match rather than showing nothing", async () => {
+    // Regression: "15 Brodie Spark Drive, Wolli Creek" returned an empty dropdown because OSM
+    // carries the street but no house numbers on it.
+    fetchMock.mockResolvedValue(photonResponse([
+      { type: "street", name: "Brodie Spark Drive", district: "Wolli Creek", city: "Sydney", state: "New South Wales", postcode: "2205", countrycode: "AU" },
+    ]));
+    expect(await searchAddresses("15 Brodie Spark Drive")).toEqual([
+      { id: "15 Brodie Spark Drive, Wolli Creek NSW 2205", label: "15 Brodie Spark Drive, Wolli Creek NSW 2205" },
+    ]);
+  });
+
+  it("still refuses a hit carrying a different number", async () => {
+    // "20 Wickham Terrace" must not offer 22, even though 22 is the only numbered record.
+    fetchMock.mockResolvedValue(photonResponse([
+      { type: "house", housenumber: "22", street: "Wickham Terrace", suburb: "Spring Hill", state: "Queensland", countrycode: "AU" },
+    ]));
+    expect(await searchAddresses("20 Wickham Terrace")).toEqual([]);
+  });
+
+  it("ranks a hit that carries the number above one completed from the typed text", async () => {
+    fetchMock.mockResolvedValue(photonResponse([
+      { type: "street", name: "Smith Street", suburb: "Carlton", state: "Victoria" },
+      { type: "house", housenumber: "12", street: "Smith Street", suburb: "Richmond", state: "Victoria" },
+    ]));
+    const results = await searchAddresses("12 Smith Street");
+    expect(results[0].label).toBe("12 Smith Street, Richmond VIC");
   });
 
   it("ranks a hit matching the typed suburb first without excluding the others", async () => {

@@ -184,9 +184,14 @@ export function matchesQuery(p: PhotonProperties, parsed: ParsedAddressQuery): b
   // dropped, renamed, or quietly ignored by the provider.
   if (p.type && p.type !== "house" && p.type !== "street") return false;
   if (parsed.houseNumber) {
-    // A hit with no number cannot satisfy a numbered query: selecting it would silently drop
-    // the number the user typed and produce a different address.
-    if (leadingNumber(p.housenumber) !== parsed.houseNumber) return false;
+    const n = leadingNumber(p.housenumber);
+    // A DIFFERENT number is a different address — "20 Wickham Terrace" must never offer 22.
+    // A hit with NO number is kept: OSM house-number coverage in Australia is patchy, and
+    // whole newer suburbs carry none at all (Wolli Creek has Brodie Spark Drive but not one
+    // number on it). Rejecting those made the commonest case — typing your own full street
+    // address — return an empty dropdown. `formatPhotonAddress` completes such a hit with the
+    // number the USER typed; nothing is invented, the suburb/state/postcode just get filled in.
+    if (n !== undefined && n !== parsed.houseNumber) return false;
   }
   if (parsed.streetPhrase) {
     const street = (p.street ?? p.name ?? "").toLowerCase();
@@ -210,19 +215,27 @@ function rank(p: PhotonProperties, parsed: ParsedAddressQuery): number {
   const haystack = [p.suburb, p.district, p.city, p.town, p.village, p.locality, p.postcode]
     .filter(Boolean).join(" ").toLowerCase();
   const missedExtras = parsed.extraWords.filter((w) => !haystack.includes(w)).length;
-  return exactStreet * 10 + missedExtras;
+  // A hit that genuinely carries the number is better evidence than one completed from the
+  // typed text — but only as a last tiebreak, behind street and suburb agreement.
+  const completed = parsed.houseNumber && !p.housenumber ? 1 : 0;
+  return exactStreet * 100 + missedExtras * 10 + completed;
 }
 
 /**
  * One AU-style line — "12 Smith Street, Richmond VIC 3121" — or null when the hit carries no
- * street name at all. A hit WITHOUT a house number is kept: `layer=street` results are whole
- * streets ("Chapel Street, Prahran VIC 3181"), which are a legitimate answer when the user
- * typed no number. `matchesQuery` has already rejected them for a numbered query.
+ * street name at all.
+ *
+ * `typedNumber` completes a street-level hit with the number the user typed, producing
+ * "15 Brodie Spark Drive, Wolli Creek NSW 2205" from a street record that carries no numbers.
+ * The number is the user's own — only the suburb, state and postcode come from the geocoder,
+ * which is the whole point of the field. A hit that carries a DIFFERENT number never reaches
+ * here; `matchesQuery` rejects it.
  */
-export function formatPhotonAddress(p: PhotonProperties): string | null {
+export function formatPhotonAddress(p: PhotonProperties, typedNumber?: string): string | null {
   const street = p.street ?? p.name;
   if (!street) return null;
-  const line1 = p.housenumber ? `${p.housenumber} ${street}` : street;
+  const number = p.housenumber ?? typedNumber;
+  const line1 = number ? `${number} ${street}` : street;
   const locality = p.suburb ?? p.district ?? p.city ?? p.town ?? p.village ?? p.locality;
   const state = p.state ? (AU_STATE_ABBREVIATIONS[p.state] ?? p.state) : undefined;
   const tail = [locality, state, p.postcode].filter(Boolean).join(" ");
@@ -259,7 +272,7 @@ export async function searchAddresses(
     const seen = new Set<string>();
     const out: AddressSuggestion[] = [];
     for (const { p } of ordered) {
-      const label = formatPhotonAddress(p);
+      const label = formatPhotonAddress(p, parsed.houseNumber);
       if (!label || seen.has(label)) continue;
       seen.add(label);
       out.push({ id: label, label });
