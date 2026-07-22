@@ -68,6 +68,29 @@ test("E12b — the patient address field fills from a suggestion", async ({ page
   await expect(address).toHaveValue("12 Smith Street, Fitzroy VIC 3065");
 });
 
+test("E12d — a geocoder hit that is not the typed address is never offered", async ({ page }) => {
+  // The 22/07 regression: Photon answered "15 Gympie Road" with "Everson Road, Gympie QLD",
+  // which the dropdown presented as a real address. An empty list is the correct answer.
+  await page.route("**/photon.komoot.io/**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ features: [
+      { properties: { type: "house", housenumber: "15", street: "Everson Road", city: "Gympie", state: "Queensland", postcode: "4570", countrycode: "AU" } },
+      { properties: { type: "locality", housenumber: "15", street: "Gympie Road", city: "Brisbane", state: "Queensland", countrycode: "AU" } },
+    ] }),
+  }));
+
+  await loginAsDemo(page, DEMO.nurse);
+  await page.getByRole("navigation").getByRole("link", { name: "Patients", exact: true }).click();
+  await page.getByRole("link", { name: "New patient" }).click();
+
+  const address = page.getByRole("combobox", { name: /address/i });
+  await address.fill("15 Gympie Road");
+
+  await expect(page.getByRole("listbox", { name: /address suggestions/i })).toHaveCount(0);
+  await expect(address).toHaveValue("15 Gympie Road");
+});
+
 test("E12c — a typed address survives a geocoder outage", async ({ page }) => {
   await page.route("**/photon.komoot.io/**", (route) => route.abort());
 

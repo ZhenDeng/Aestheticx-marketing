@@ -9,3 +9,4 @@
 - [x] E2E: `e2e/e12-form-autocomplete.spec.ts` (catalog pick, address pick, geocoder outage)
 - [x] a11y: axe scan of the patient form with the suggestion list open
 - [x] Full vitest (1373) + Playwright (37) + build + lint green
+- [x] **Follow-up (22/07)**: QLD-locality regression — `layer=house&layer=street`, `matchesQuery` relevance guard, sub-dwelling stripping, whole-street results kept; recorded-response fixture test; vitest 1390 + Playwright 38 green
