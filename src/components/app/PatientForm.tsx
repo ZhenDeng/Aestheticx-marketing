@@ -6,6 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { missingFields } from "@/lib/demo/backend";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
+import { useAddressBias } from "@/components/app/useAddressBias";
 import type { Patient, PatientDraft } from "@/lib/demo/types";
 
 function dobToInput(d: PatientDraft["dateOfBirth"]): string {
@@ -30,6 +31,7 @@ export function PatientForm({ mode, initial, existing, onCreated, onCancel, comp
   const router = useRouter();
   const [draft, setDraft] = useState<PatientDraft>(initial);
   const [error, setError] = useState<string | null>(null);
+  const near = useAddressBias();
   if (!identity) return null;
 
   const invalid = missingFields(draft).size > 0;
@@ -85,7 +87,7 @@ export function PatientForm({ mode, initial, existing, onCreated, onCancel, comp
           <input className={FIELD} value={draft.phone} onChange={(e) => set("phone", e.target.value)} /></label>
         <label className="block sm:col-span-2"><span className="micro">Address *</span>
           {/* 22/07 feedback: suggestions fill the field; typed text stays valid as-is. */}
-          <AddressAutocomplete className={FIELD} value={draft.address} onChange={(v) => set("address", v)} /></label>
+          <AddressAutocomplete className={FIELD} value={draft.address} onChange={(v) => set("address", v)} near={near} /></label>
         <label className="block sm:col-span-2"><span className="micro">Email *</span>
           <input type="email" className={FIELD} value={draft.email} onChange={(e) => set("email", e.target.value)} /></label>
         <label className="block"><span className="micro">Allergies *</span>

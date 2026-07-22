@@ -10,3 +10,4 @@
 - [x] a11y: axe scan of the patient form with the suggestion list open
 - [x] Full vitest (1373) + Playwright (37) + build + lint green
 - [x] **Follow-up (22/07)**: QLD-locality regression — `layer=house&layer=street`, `matchesQuery` relevance guard, sub-dwelling stripping, whole-street results kept; recorded-response fixture test; vitest 1390 + Playwright 38 green
+- [x] **Follow-up 2 (22/07)**: numbered queries ranked arbitrarily — proximity bias from the user's own state, street-phrase matching, rank-then-take-six; vitest 1403 + Playwright 38 green

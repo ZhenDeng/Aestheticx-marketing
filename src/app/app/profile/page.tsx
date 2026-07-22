@@ -13,6 +13,7 @@ import { identityKey } from "@/lib/demo/identityPrefs";
 import { landingFor } from "@/lib/demo/authRedirect";
 import { tintStyle } from "@/lib/demo/tint";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
+import { useAddressBias } from "@/components/app/useAddressBias";
 
 // Port of iOS ProfileView (spec: auth-accounts): own details + the identity switch.
 // Selecting an identity re-tints the app and swaps to that role's landing. Billing is reached
@@ -554,6 +555,7 @@ function PremiseForm({ draft, onChange, onSave, onCancel }: {
   draft: Premise; onChange: (p: Premise) => void; onSave: (p: Premise) => void; onCancel: () => void;
 }) {
   const input = "mt-1 w-full rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint";
+  const near = useAddressBias();
   return (
     <div className="flex flex-col gap-2">
       <label className="block">
@@ -564,7 +566,7 @@ function PremiseForm({ draft, onChange, onSave, onCancel }: {
         <span className="micro">Address</span>
         {/* 22/07 feedback: suggestions fill the field; typed text stays valid as-is. */}
         <AddressAutocomplete value={draft.address} onChange={(v) => onChange({ ...draft, address: v })}
-          placeholder="Street address incl. suburb, state, postcode" className={input} />
+          near={near} placeholder="Street address incl. suburb, state, postcode" className={input} />
       </label>
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="rounded-btn border border-line px-3 py-1 text-sm text-ink-soft">Cancel</button>

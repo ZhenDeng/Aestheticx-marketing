@@ -5,10 +5,10 @@
 // plain string — rural properties, unit prefixes and new estates won't all geocode, so typed
 // text is always accepted as-is.
 import { useEffect, useRef, useState } from "react";
-import { searchAddresses, type AddressSuggestion } from "@/lib/addressSearch";
+import { searchAddresses, type AddressSuggestion, type GeoPoint } from "@/lib/addressSearch";
 import { SuggestingInput } from "@/components/app/SuggestingInput";
 
-export function AddressAutocomplete({ value, onChange, className, placeholder, ariaLabel = "Address", debounceMs = 250 }: {
+export function AddressAutocomplete({ value, onChange, className, placeholder, ariaLabel = "Address", debounceMs = 250, near }: {
   value: string;
   onChange: (address: string) => void;
   className?: string;
@@ -16,6 +16,8 @@ export function AddressAutocomplete({ value, onChange, className, placeholder, a
   ariaLabel?: string;
   /** Injectable so tests can run without timers. */
   debounceMs?: number;
+  /** Proximity hint for ranking — see `useAddressBias`. Ordering only; nothing is excluded. */
+  near?: GeoPoint;
 }) {
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -32,12 +34,12 @@ export function AddressAutocomplete({ value, onChange, className, placeholder, a
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-      void searchAddresses(value, controller.signal).then((results) => {
+      void searchAddresses(value, { signal: controller.signal, near }).then((results) => {
         if (!controller.signal.aborted) setSuggestions(results);
       });
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [value, debounceMs]);
+  }, [value, debounceMs, near]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
