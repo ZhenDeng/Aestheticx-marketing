@@ -12,6 +12,7 @@ import { activePremise, premisesAfterDelete, premisesAfterSave, premisesAfterSel
 import { identityKey } from "@/lib/demo/identityPrefs";
 import { landingFor } from "@/lib/demo/authRedirect";
 import { tintStyle } from "@/lib/demo/tint";
+import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 
 // Port of iOS ProfileView (spec: auth-accounts): own details + the identity switch.
 // Selecting an identity re-tints the app and swaps to that role's landing. Billing is reached
@@ -561,7 +562,8 @@ function PremiseForm({ draft, onChange, onSave, onCancel }: {
       </label>
       <label className="block">
         <span className="micro">Address</span>
-        <input value={draft.address} onChange={(e) => onChange({ ...draft, address: e.target.value })}
+        {/* 22/07 feedback: suggestions fill the field; typed text stays valid as-is. */}
+        <AddressAutocomplete value={draft.address} onChange={(v) => onChange({ ...draft, address: v })}
           placeholder="Street address incl. suburb, state, postcode" className={input} />
       </label>
       <div className="flex justify-end gap-2">
