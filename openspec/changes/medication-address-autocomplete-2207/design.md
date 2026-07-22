@@ -105,3 +105,20 @@ Three changes:
 
 A typed suburb ranks but never rejects: Photon answers "12 chapel street prahran" with
 "Little Chapel Street" alone, so filtering on it would lose the street the user is heading for.
+
+## Strictness had a recall cost (22/07, third follow-up)
+
+Owner: "my current address is 15 Brodie spark drive, wolli creek, it cannot be searched."
+OpenStreetMap carries the STREET but not one house number on it — whole newer Australian suburbs
+are like this. The rule "reject any hit without the typed number" therefore emptied the dropdown
+for the single commonest action: typing your own full street address.
+
+A numberless hit whose street matches is now COMPLETED with the number the user typed, giving
+"15 Brodie Spark Drive, Wolli Creek NSW 2205" from a street record. Nothing is invented — the
+number is the user's own; only suburb, state and postcode come from the geocoder, which is the
+entire value of the field. The guard that matters is untouched: a hit carrying a DIFFERENT
+number is still rejected, so "20 Wickham Terrace" never offers 22.
+
+This also un-emptied "20 Wickham Terrace" and "7 Park Road", both of which previously returned
+nothing. The lesson is that "empty beats wrong" is only half a rule — empty is also a failure
+when it is the normal outcome. Strictness has to be aimed at the wrong ANSWER, not at thin data.

@@ -11,3 +11,4 @@
 - [x] Full vitest (1373) + Playwright (37) + build + lint green
 - [x] **Follow-up (22/07)**: QLD-locality regression — `layer=house&layer=street`, `matchesQuery` relevance guard, sub-dwelling stripping, whole-street results kept; recorded-response fixture test; vitest 1390 + Playwright 38 green
 - [x] **Follow-up 2 (22/07)**: numbered queries ranked arbitrarily — proximity bias from the user's own state, street-phrase matching, rank-then-take-six; vitest 1403 + Playwright 38 green
+- [x] **Follow-up 3 (22/07)**: numberless OSM streets (Wolli Creek) returned nothing — complete a matching street with the TYPED number; different-number hits still rejected; vitest 1408 + Playwright 38 green
