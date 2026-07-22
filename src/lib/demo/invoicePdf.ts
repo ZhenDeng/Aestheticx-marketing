@@ -92,9 +92,12 @@ export function buildTaxInvoiceModel(invoice: Invoice, issuer: InvoiceParty, bil
       ...(issuer.email ? [issuer.email] : []),
     ],
     toName: billTo.name || billTo.businessName || "—",
-    // B2B matrix bill-to (a clinic receiving a service fee) states the buyer's ABN;
-    // client bill-to blocks and legacy authorisation invoices carry no ABN row.
-    toDetails: kind === "service-fee" && billTo.abn ? [`ABN ${billTo.abn}`] : [],
+    // The buyer's ABN wherever the buyer HAS one (22/07 feedback: "invoice 上面没有买方 abn").
+    // Previously service-fee only, which silently dropped it from authorisation invoices — the
+    // doctor→clinic monthly bill, just as B2B as a service fee. A client bill-to is a patient
+    // and carries none, so this stays empty there; unlike the seller's, a buyer ABN gets no
+    // em-dash fallback — that placeholder is an ATO requirement on the SELLER alone.
+    toDetails: billTo.abn ? [`ABN ${billTo.abn}`] : [],
     toAddressLines: addressLines(billTo.address),
     lines: invoice.lines.map((l) => ({
       // Matrix lines carry their own description/qty/unit (GST-inclusive retail);

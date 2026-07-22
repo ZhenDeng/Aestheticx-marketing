@@ -89,10 +89,21 @@ describe("bill-to blocks by party type", () => {
     expect(text.match(/ABN /g)?.length).toBe(1);
   });
 
-  it("legacy authorisation invoices keep their exact pre-matrix block shape", () => {
+  it("authorisation invoices state the buyer's ABN too — they are as B2B as a service fee", () => {
+    // 22/07 feedback: the doctor's monthly clinic bill omitted it because the ABN row was
+    // gated on kind === "service-fee".
     const inv = matrixInvoice({ kind: undefined, issuerRef: undefined, patientID: undefined, giftCents: undefined, totalCreditCents: undefined, counterpartyType: "clinic", counterpartyID: LUMIERE.id });
     const model = buildTaxInvoiceModel(inv, sarahParty, clinicParty);
-    expect(model.toDetails).toEqual([]); // no ABN row added to legacy TO blocks
+    expect(model.toDetails).toEqual(["ABN 82 601 443 218"]);
     expect(model.footnote).toBeUndefined();
+    const text = pdfText(renderTaxInvoicePdf(model));
+    expect(text.match(/ABN /g)?.length).toBe(2); // the seller's and the buyer's
+  });
+
+  it("omits the buyer ABN row when the buyer has none — no em-dash placeholder", () => {
+    // The em-dash fallback is an ATO requirement on the SELLER; inventing one for a buyer
+    // would imply an ABN was sought and missing rather than not applicable.
+    const model = buildTaxInvoiceModel(matrixInvoice({}), sarahParty, { ...clinicParty, abn: "" });
+    expect(model.toDetails).toEqual([]);
   });
 });
