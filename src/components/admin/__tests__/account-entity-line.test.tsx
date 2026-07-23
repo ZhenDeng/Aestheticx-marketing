@@ -96,4 +96,42 @@ describe("AccountEntityLine", () => {
     await userEvent.click(within(rowOf("Ava Lim")).getByRole("button", { name: "Deactivate" }));
     expect(setBusinessEntityActive).toHaveBeenCalledWith("clinic-lumiere", false, admin);
   });
+
+  // 22/07 feedback: the live save was fire-and-forget, so a rejected write closed the form as
+  // if it had saved and the edit silently never persisted. The form must now surface the real
+  // error and STAY OPEN — never report a success it did not get.
+  it("keeps the edit form open and shows the error when the save fails", async () => {
+    setBusinessEntity.mockRejectedValueOnce(new Error("permission-denied: Super admins only."));
+    await renderSettled();
+    await userEvent.click(within(rowOf("Ava Lim")).getByRole("button", { name: "Edit" }));
+    const legal = screen.getByDisplayValue("Lumière Clinic Pty Ltd");
+    await userEvent.clear(legal);
+    await userEvent.type(legal, "Lumière Group Pty Ltd");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/permission-denied/i)).toBeInTheDocument();
+    // The form is still on screen (not closed) so the admin can see the failure and retry.
+    expect(screen.getByDisplayValue("Lumière Group Pty Ltd")).toBeInTheDocument();
+  });
+
+  it("closes the edit form only after the save actually resolves", async () => {
+    setBusinessEntity.mockResolvedValueOnce(undefined);
+    await renderSettled();
+    await userEvent.click(within(rowOf("Ava Lim")).getByRole("button", { name: "Edit" }));
+    const legal = screen.getByDisplayValue("Lumière Clinic Pty Ltd");
+    await userEvent.clear(legal);
+    await userEvent.type(legal, "Lumière Group Pty Ltd");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(setBusinessEntity).toHaveBeenCalled();
+    // No entity input left on screen — the form closed on success.
+    expect(screen.queryByDisplayValue("Lumière Group Pty Ltd")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a failed activate/deactivate toggle on the row", async () => {
+    setBusinessEntityActive.mockRejectedValueOnce(new Error("network"));
+    await renderSettled();
+    await userEvent.click(within(rowOf("Ava Lim")).getByRole("button", { name: "Deactivate" }));
+    expect(await within(rowOf("Ava Lim")).findByText(/network/i)).toBeInTheDocument();
+  });
 });

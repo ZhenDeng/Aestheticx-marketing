@@ -494,9 +494,9 @@ function AccountEntityLine({ ownerIds, preferred }: {
   const entities = store.businessEntities().filter((e) => ownerIds.includes(e.id));
   if (entities.length === 0 && !preferred) return null;
 
-  function toggle(entity: BusinessEntity) {
+  async function toggle(entity: BusinessEntity) {
     setError(null);
-    try { store.setBusinessEntityActive(entity.id, !entity.isActive, identity!); }
+    try { await store.setBusinessEntityActive(entity.id, !entity.isActive, identity!); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not update"); }
   }
 
@@ -514,7 +514,7 @@ function AccountEntityLine({ ownerIds, preferred }: {
           <button onClick={() => setEditingId(entity.id)} className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50">
             Edit
           </button>
-          <button onClick={() => toggle(entity)} className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50">
+          <button onClick={() => void toggle(entity)} className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50">
             {entity.isActive ? "Deactivate" : "Activate"}
           </button>
         </div>
@@ -554,8 +554,9 @@ function BusinessEntityForm({ identity, entity, fixed, onDone, onCancel }: {
   const [tradingName, setTradingName] = useState(entity?.tradingName ?? "");
   const [abn, setAbn] = useState(entity?.abn ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit() {
+  async function submit() {
     setError(null);
     const entityId = entity?.id ?? id.trim();
     if (!isEdit) {
@@ -573,14 +574,17 @@ function BusinessEntityForm({ identity, entity, fixed, onDone, onCancel }: {
     if (tradingName.trim().length > 160) { setError("Trading name is too long (max 160)"); return; }
     const abnDigits = abn.replace(/\s+/g, "");
     if (abnDigits.length > 0 && !/^\d{11}$/.test(abnDigits)) { setError("ABN must be 11 digits"); return; }
+    // AWAIT the save so a failed live write keeps the form open with its real error, rather
+    // than closing as if it saved (22/07 feedback: silent no-op on save).
+    setSubmitting(true);
     try {
-      store.setBusinessEntity({
+      await store.setBusinessEntity({
         id: entityId, type, legalName: legalName.trim(),
         tradingName: tradingName.trim() || undefined, abn: abnDigits || undefined,
         isActive: entity?.isActive ?? true,
       }, identity);
       onDone();
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not save entity"); }
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save entity"); setSubmitting(false); }
   }
 
   const field = "w-full rounded-btn border border-line bg-card px-3 py-2 text-sm text-ink";
@@ -613,8 +617,8 @@ function BusinessEntityForm({ identity, entity, fixed, onDone, onCancel }: {
       </div>
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-3 flex gap-2">
-        <button onClick={submit} className="rounded-btn bg-tint px-4 py-2 text-sm font-medium text-white hover:bg-tint/90">{isEdit ? "Save" : "Add entity"}</button>
-        <button onClick={onCancel} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint/50">Cancel</button>
+        <button onClick={() => void submit()} disabled={submitting} className="rounded-btn bg-tint px-4 py-2 text-sm font-medium text-white hover:bg-tint/90 disabled:opacity-60">{submitting ? "Saving…" : isEdit ? "Save" : "Add entity"}</button>
+        <button onClick={onCancel} disabled={submitting} className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint/50 disabled:opacity-60">Cancel</button>
       </div>
     </div>
   );
