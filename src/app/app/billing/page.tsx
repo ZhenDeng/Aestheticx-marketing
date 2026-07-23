@@ -7,7 +7,9 @@ import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
 import { counterpartyMonthDetail, invoicePartiesFor, ownerDisplayLabel, isoDay } from "@/lib/demo/backend";
 import { formatAUD, computeInvoice, resolveInvoiceKind, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
-import { buildTaxInvoiceModel, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
+import { buildTaxInvoiceModel, invoiceNumber, renderTaxInvoicePdf, taxInvoicePdfFilename } from "@/lib/demo/invoicePdf";
+import { invoiceEmail, INVOICE_ATTACH_NOTE } from "@/lib/demo/invoiceEmail";
+import { shareOrMailFile } from "@/lib/shareFile";
 import { fullName } from "@/lib/demo/types";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ServiceInvoiceComposer } from "@/components/app/ServiceInvoiceComposer";
@@ -136,7 +138,7 @@ export default function BillingPage() {
         <p className="mt-4 text-sm text-ink-soft">
           Client invoicing isn&apos;t available in live mode yet — it arrives with the billing
           backend. You can invoice your clinic below, and invoices doctors generate for your
-          authorisation requests are emailed to you directly.
+          authorisation requests are sent to you by the prescribing doctor.
         </p>
       ))}
       <ServiceInvoiceComposer />
@@ -173,14 +175,14 @@ export default function BillingPage() {
                 {party?.abn && (
                   <span className="mt-0.5 block text-xs text-ink-soft">{party.businessName} · ABN {party.abn}</span>
                 )}
-                {/* 14/07 feedback: surface the post-generation email. Live: the backend
-                    queues it to the bill-to email on generation; without an address on
-                    file there is nothing to send to — say so rather than pretend. */}
+                {/* 22/07 feedback: the invoice is no longer auto-emailed by the server. The
+                    "Email invoice" action hands the PDF to the practitioner's own mail app —
+                    so surface the recipient on file, not a claim that anything was sent. */}
                 {isDoctor && (
                   <span className="mt-0.5 block text-xs text-ink-soft">
                     {inv.billTo?.email
-                      ? `Emailed to ${inv.billTo.email}`
-                      : "No billing email on file — download the PDF and send it manually."}
+                      ? `Email invoice — opens your mail app to ${inv.billTo.email}`
+                      : "No billing email on file — you'll choose the recipient in your mail app."}
                   </span>
                 )}
               </span>
@@ -192,7 +194,7 @@ export default function BillingPage() {
                     {marking === inv.id ? "Marking…" : "Mark paid"}
                   </button>
                 )}
-                <InvoiceDownload invoice={inv} />
+                <InvoiceActions invoice={inv} />
                 {/* 16/07 feedback enhancement 2: delete to correct an error — its authorisations
                     return to the un-invoiced pool so a corrected invoice can be regenerated. */}
                 {isDoctor && (
@@ -299,7 +301,7 @@ function MatrixInvoiceRow({ invoice, action }: { invoice: Invoice; action?: Reac
       </span>
       <span className="flex flex-none flex-wrap items-center justify-end gap-3">
         {action}
-        <InvoiceDownload invoice={invoice} />
+        <InvoiceActions invoice={invoice} />
       </span>
     </li>
   );
@@ -396,7 +398,7 @@ function MatrixStreams() {
                   </span>
                 </span>
                 <span className="flex flex-none items-center gap-3">
-                  <InvoiceDownload invoice={inv} />
+                  <InvoiceActions invoice={inv} />
                 </span>
               </li>
             ))}
@@ -729,14 +731,21 @@ function invoiceLineDay(dateISO: string): string {
 // 14/07 feedback: the exported PDF follows the ATO's Example 2 tax-invoice layout and is
 // rendered CLIENT-side from the invoice in state — identical in demo and live, no server
 // round-trip. (The backend still archives its own PDF copy in Storage for live audit.)
-function InvoiceDownload({ invoice }: { invoice: Invoice }) {
+function InvoiceActions({ invoice }: { invoice: Invoice }) {
   const store = useDemoStore();
   const [error, setError] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+
+  // Render the client-side ATO PDF once for whichever action is taken.
+  function renderPdf(): Uint8Array {
+    const { issuer, billTo } = invoicePartiesFor(store.state, invoice);
+    return renderTaxInvoicePdf(buildTaxInvoiceModel(invoice, issuer, billTo));
+  }
+
   function download() {
     setError(false);
     try {
-      const { issuer, billTo } = invoicePartiesFor(store.state, invoice);
-      const bytes = renderTaxInvoicePdf(buildTaxInvoiceModel(invoice, issuer, billTo));
+      const bytes = renderPdf();
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -751,9 +760,43 @@ function InvoiceDownload({ invoice }: { invoice: Invoice }) {
       setError(true);
     }
   }
+
+  // 22/07 feedback: hand the invoice to the practitioner's own mail app, prefilled and (where
+  // the platform supports it) with the PDF attached — replacing the server's silent auto-send.
+  async function email() {
+    setError(false);
+    setEmailing(true);
+    try {
+      const { billTo } = invoicePartiesFor(store.state, invoice);
+      const { subject, body } = invoiceEmail({
+        recipientName: billTo.name || billTo.businessName || undefined,
+        invoiceNumber: invoiceNumber(invoice.id),
+        periodLabel: invoice.periodLabel,
+        totalText: formatAUD(invoice.totalCents),
+      });
+      await shareOrMailFile({
+        bytes: renderPdf(),
+        filename: taxInvoicePdfFilename(invoice.id),
+        type: "application/pdf",
+        email: billTo.email || undefined,
+        subject,
+        body,
+        attachNote: INVOICE_ATTACH_NOTE,
+      });
+    } catch {
+      setError(true);
+    } finally {
+      setEmailing(false);
+    }
+  }
+
   return (
     <span className="flex items-center gap-2">
       {error && <span className="text-xs" style={{ color: "var(--color-rose)" }}>Couldn’t create the PDF</span>}
+      <button type="button" onClick={() => void email()} disabled={emailing}
+        className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint disabled:opacity-50">
+        {emailing ? "Opening…" : "Email invoice"}
+      </button>
       <button type="button" onClick={download}
         className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
         Download PDF

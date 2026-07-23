@@ -38,6 +38,11 @@ let invoices: Invoice[] = [];
 const finalizeServiceFee = vi.fn();
 let storeOverrides: Record<string, unknown> = {};
 
+// 22/07 feedback: the invoice hand-off. Mocked so a click asserts the intent without driving a
+// real share sheet / mailto navigation out of jsdom.
+const shareOrMailFile = vi.fn().mockResolvedValue("mailto");
+vi.mock("@/lib/shareFile", () => ({ shareOrMailFile: (...a: unknown[]) => shareOrMailFile(...a) }));
+
 vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/demo/auth", () => ({
   useDemoAuth: () => ({ identity: currentIdentity, availableIdentities: [currentIdentity], selectIdentity: vi.fn(), signOut: vi.fn() }),
@@ -73,6 +78,7 @@ import BillingPage from "@/app/app/billing/page";
 
 beforeEach(() => {
   finalizeServiceFee.mockReset();
+  shareOrMailFile.mockClear();
   storeOverrides = {};
   currentIdentity = sarahClinic;
   invoices = [sarahTopUp, clinicSale, sarahFeeDraft, sarahFeeFinal, legacyDoctorInvoice];
@@ -133,5 +139,28 @@ describe("doctor stream regression", () => {
     // …and with no matrix documents of his own, the new sections stay hidden.
     expect(screen.queryByTestId("client-invoices")).not.toBeInTheDocument();
     expect(screen.queryByTestId("service-fees")).not.toBeInTheDocument();
+  });
+});
+
+describe("invoice email hand-off (22/07 feedback)", () => {
+  it("hands the invoice to the mail app instead of relying on a server auto-send", async () => {
+    currentIdentity = voss;
+    render(<BillingPage />);
+    const row = screen.getByText(/june 2026/i).closest("li")!;
+
+    await userEvent.click(within(row).getByRole("button", { name: /email invoice/i }));
+
+    expect(shareOrMailFile).toHaveBeenCalledTimes(1);
+    const arg = shareOrMailFile.mock.calls[0][0] as { subject: string; filename: string; body: string };
+    expect(arg.subject).toContain("June 2026");
+    expect(arg.filename).toMatch(/\.pdf$/);
+    expect(arg.body).toContain("June 2026");
+  });
+
+  it("no longer claims the server emailed the invoice", () => {
+    currentIdentity = voss;
+    render(<BillingPage />);
+    // The old "Emailed to …" caption asserted an auto-send that no longer happens.
+    expect(screen.queryByText(/emailed to/i)).not.toBeInTheDocument();
   });
 });
