@@ -107,7 +107,7 @@ export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={gstIncluded} onChange={(e) => { setGstIncluded(e.target.checked); setIssued(null); }}
               style={{ accentColor: "var(--color-tint)" }} />
-            Prices include GST (总价含 GST)
+            Prices include GST
           </label>
         )}
       </div>
