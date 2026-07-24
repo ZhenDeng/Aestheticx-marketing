@@ -41,7 +41,7 @@ export interface InvoiceParty {
 // The billing-matrix invoice streams (change: multi-tenant-billing-matrix). A stored
 // invoice without `kind` predates the matrix and is an authorisation invoice — resolve
 // through resolveInvoiceKind, never read `kind` raw.
-export type InvoiceKind = "authorisation" | "client-sale" | "service-fee" | "top-up";
+export type InvoiceKind = "authorisation" | "client-sale" | "service-fee" | "top-up" | "client-invoice";
 
 export function resolveInvoiceKind(invoice: Invoice): InvoiceKind {
   return invoice.kind ?? "authorisation";
@@ -85,6 +85,10 @@ export interface Invoice {
   /** Top-up invoices: the promotional (non-taxable) portion and the total wallet credit. */
   giftCents?: number;
   totalCreditCents?: number;
+  /** Manual client invoice: recorded so the PDF prints the right GST statement. */
+  gstIncluded?: boolean;
+  /** Links a client invoice raised from a calendar appointment check-out. */
+  appointmentID?: string;
 }
 
 export function computeInvoice(input: {
