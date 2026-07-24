@@ -136,6 +136,49 @@ export function computeInclusiveTotals(inputs: InclusiveLineInput[]): ComputedIn
   return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
 }
 
+// --- Manual client-invoice math (spec: manual client invoicing, 2026-07-24) ---
+// A practitioner hand-types each line's description and price. Two per-invoice options
+// mirror the retail conventions already in this file: "GST included" is the inclusive
+// convention (gst = round(amount/11), like computeInclusiveTotals); "GST on top" is the
+// exclusive one (gst = round(amount*0.1), like computeInvoice/createServiceInvoice); no
+// GST leaves the line untaxed. Money stays integer cents.
+export interface ManualLineInput { id: string; description: string; amountCents: number; }
+export interface ManualGstOptions { chargeGst: boolean; gstIncluded: boolean; }
+
+export function computeManualInvoice(inputs: ManualLineInput[], opts: ManualGstOptions): ComputedInvoice {
+  if (inputs.length === 0) throw new Error("an invoice needs at least one line");
+  const lines: InvoiceLine[] = inputs.map((l) => {
+    if (!Number.isInteger(l.amountCents) || l.amountCents <= 0) {
+      throw new Error("line amount must be a positive amount of cents");
+    }
+    let feeCents: number;
+    let gstCents: number;
+    if (!opts.chargeGst) {
+      feeCents = l.amountCents;
+      gstCents = 0;
+    } else if (opts.gstIncluded) {
+      gstCents = Math.round(l.amountCents / 11);
+      feeCents = l.amountCents - gstCents;
+    } else {
+      feeCents = l.amountCents;
+      gstCents = Math.round(l.amountCents * GST_RATE);
+    }
+    return {
+      authorisationID: l.id,
+      dateISO: "",
+      patientName: "",
+      feeCents,
+      gstCents,
+      description: l.description,
+      qty: 1,
+      unitCents: l.amountCents, // the typed figure — gross when inclusive, net when on-top
+    };
+  });
+  const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);
+  const gstCents = lines.reduce((s, l) => s + l.gstCents, 0);
+  return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
+}
+
 export interface BillableAuthRow { id: string; counterpartyID: string; monthKey: string; invoiced: boolean; }
 
 export function selectableForInvoice<T extends BillableAuthRow>(
