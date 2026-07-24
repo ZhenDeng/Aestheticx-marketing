@@ -7,6 +7,7 @@ import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
+import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
@@ -1240,12 +1241,17 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
   // The owner can always manage; the nurse/clinic who BOOKED an auth teleconsult can reschedule
   // or cancel it too (15/07 feedback). Confirm + Complete/No-show stay owner-only below — the
   // booker's grant is limited to reschedule + cancel, matching the feedback's literal scope.
   const isOwner = appt.ownerID === appointmentOwnerScope(me);
   const canManage = canManageAppointment(appt, appointmentOwnerScope(me));
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
+  // Check-out → manual client invoice (spec: 2026-07-24), for an appointment with a real
+  // patient file. The composer self-guards on commercial access, so it renders nothing when
+  // this viewer can't bill the appointment's client.
+  const patient = appt.patientID ? store.state.patients[appt.patientID] : undefined;
 
   // Status actions can race (the appointment may have just been actioned elsewhere); the
   // store eager-validates so the BackendError lands here, surfaced on the existing error line.
@@ -1261,6 +1267,19 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
 
   return (
     <div className="mt-2 border-t border-line pt-2">
+      {patient && canManage && (
+        <div className="mb-3">
+          <button type="button" onClick={() => setCheckingOut((v) => !v)}
+            className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">
+            {checkingOut ? "Hide check out" : "Check out"}
+          </button>
+          {checkingOut && (
+            <div className="mt-3">
+              <ClientInvoiceComposer patient={patient} appointmentID={appt.id} />
+            </div>
+          )}
+        </div>
+      )}
       {!canManage ? (
         <p className="text-sm text-ink-soft">This appointment is managed on its owner&apos;s calendar — view only.</p>
       ) : canMark ? (
