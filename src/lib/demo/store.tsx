@@ -61,6 +61,7 @@ interface StoreValue {
   availabilityWindowsForDoctor: (doctorID: string) => ReturnType<typeof backend.availabilityWindowsForDoctor>;
   doctorsWithAvailability: () => ReturnType<typeof backend.doctorsWithAvailability>;
   treatmentAvailabilityForOwner: (ownerID: string) => import("./backend").TreatmentAvailabilityResult;
+  treatmentBlocksForOwnerOnDay: (ownerID: string, dateISO: string) => import("./types").TreatmentBlock[];
   setTreatmentDaySchedule: (ownerID: string, weekday: number, patch: Partial<import("./types").DaySchedule>) => void;
   addTreatmentBlock: (ownerID: string, input: { dateISO: string; startMinute: number; endMinute: number }) => void;
   removeTreatmentBlock: (ownerID: string, blockID: string) => void;
@@ -610,6 +611,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
       doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
       treatmentAvailabilityForOwner: (ownerID) => backend.treatmentAvailabilityForOwner(state, ownerID),
+      treatmentBlocksForOwnerOnDay: (ownerID, dateISO) => backend.treatmentBlocksForOwnerOnDay(state, ownerID, dateISO),
       // Config edits mirror the WHOLE availability config to the backend setTreatmentAvailability
       // callable (the web has no granular callables). Compute eagerly to validate (throw
       // synchronously) + capture the config for the mirror; apply via a functional updater.

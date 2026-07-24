@@ -1261,6 +1261,12 @@ export function treatmentAvailabilityForOwner(state: DemoState, ownerID: string)
   return state.treatmentAvailabilityByOwner[ownerID] ?? defaultTreatmentAvailability(ownerID);
 }
 
+// Treatment blocks for one owner on one day — the calendar renders these as busy bands
+// (2026-07-24: Availability blocks now sync to the calendar view).
+export function treatmentBlocksForOwnerOnDay(state: DemoState, ownerID: string, dateISO: string): TreatmentBlock[] {
+  return treatmentAvailabilityForOwner(state, ownerID).blocks.filter((b) => b.dateISO === dateISO);
+}
+
 export type TreatmentAvailabilityResult = ReturnType<typeof treatmentAvailabilityForOwner>;
 
 export function isTimeAvailableForTreatment(

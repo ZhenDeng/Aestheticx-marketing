@@ -322,6 +322,7 @@ function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmpt
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
         ))}
         <BusyBlocks ownerID={ownerID} dateISO={dateISO} />
+        <BlockedBands ownerID={ownerID} dateISO={dateISO} />
         {appts.map((a) => (
           <TimelineBlock key={a.id} appt={a} me={me} layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
             selected={a.id === selectedId} onSelect={onSelect} />
@@ -361,6 +362,31 @@ function BusyBlocks({ ownerID, dateISO }: { ownerID: string; dateISO: string }) 
             {height >= TEXT_MIN_PX && (
               <span className="micro block px-1.5 pt-0.5 text-ink-faint">Busy · external calendar</span>
             )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// Availability treatment blocks as muted, non-interactive bands (2026-07-24: blocks added
+// under Availability → Treatment now show on the calendar). Solid muted fill distinguishes
+// them from the external-calendar "Busy" hatch; pointer-events-none so empty-slot taps pass through.
+function BlockedBands({ ownerID, dateISO }: { ownerID: string; dateISO: string }) {
+  const store = useDemoStore();
+  const blocks = store.treatmentBlocksForOwnerOnDay(ownerID, dateISO)
+    .map((b) => ({ id: b.id, start: Math.max(b.startMinute, WIN_START), end: Math.min(b.endMinute, WIN_END) }))
+    .filter((b) => b.end > b.start);
+  if (blocks.length === 0) return null;
+  return (
+    <>
+      {blocks.map((b) => {
+        const height = (b.end - b.start) * PX_PER_MIN;
+        return (
+          <div key={b.id} aria-hidden
+            className="pointer-events-none absolute inset-x-0 overflow-hidden rounded-[6px]"
+            style={{ top: (b.start - WIN_START) * PX_PER_MIN, height, background: "var(--color-paper-deep)", border: "1px solid var(--color-line)" }}>
+            {height >= TEXT_MIN_PX && <span className="micro block px-1.5 pt-0.5 text-ink-faint">Blocked</span>}
           </div>
         );
       })}
@@ -871,6 +897,7 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
                     style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
                 ))}
                 <BusyBlocks ownerID={ownerID} dateISO={iso} />
+                <BlockedBands ownerID={ownerID} dateISO={iso} />
                 {dayAppts.map((a) => (
                   <WeekBlock key={a.id} appt={a} me={me} days={days} dayIndex={dayIndex}
                     layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
