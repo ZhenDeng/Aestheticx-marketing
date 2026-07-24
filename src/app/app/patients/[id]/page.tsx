@@ -8,6 +8,10 @@ import { useDemoStore } from "@/lib/demo/store";
 import { patientPermissions, notePreview, canSendAftercare, imageAttachments } from "@/lib/demo/backend";
 import { patientAccessLevel } from "@/lib/demo/isolation";
 import { PatientAccountSection } from "@/components/app/PatientAccount";
+import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
+import { InvoiceActions } from "@/components/app/InvoiceActions";
+import { resolveInvoiceKind, formatAUD } from "@/lib/demo/invoicing";
+import { invoiceNumber } from "@/lib/demo/invoicePdf";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
@@ -17,7 +21,7 @@ import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { emergencyKindLabel } from "@/lib/demo/direction";
-import { displayName, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment } from "@/lib/demo/types";
+import { displayName, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment, type Patient } from "@/lib/demo/types";
 import { unitSuffix } from "@/lib/demo/catalog";
 
 const APPT_STATUS_LABEL: Record<AppointmentStatus, string> = {
@@ -36,6 +40,37 @@ function apptTime(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
+// Manual client invoicing (spec: 2026-07-24): compose a tax invoice for this client — from
+// the patient file, in both demo and live. The composer self-guards on commercial access;
+// the heading is gated on the same check so it never stands over an empty box. Demo persists
+// issued invoices and lists them here (live hands off the PDF only).
+function ClientInvoiceSection({ patient }: { patient: Patient }) {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  if (!identity || store.patientAccess(patient, identity) === "none") return null;
+  const issued = store.status === "demo"
+    ? store.state.invoices.filter((i) => resolveInvoiceKind(i) === "client-invoice" && i.patientID === patient.id)
+    : [];
+  return (
+    <section className="mt-8">
+      <h2 className="font-display text-xl text-ink">Invoice client</h2>
+      <p className="mt-1 text-sm text-ink-soft">Type each line and price, choose GST, then generate a tax invoice.</p>
+      <div className="mt-3">
+        <ClientInvoiceComposer patient={patient} />
+      </div>
+      {issued.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {issued.map((inv) => (
+            <li key={inv.id} className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
+              <span className="text-sm text-ink">{invoiceNumber(inv.id)} · {inv.periodLabel} · <span className="font-medium">{formatAUD(inv.totalCents)}</span></span>
+              <InvoiceActions invoice={inv} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -93,6 +128,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         <h1 className="mt-4 font-display text-3xl text-ink">{displayName(patient)}</h1>
         <p className="mt-1 text-sm text-ink-soft">Clinic client — commercial access only. The clinical record stays with the clinic.</p>
         <PatientAccountSection patient={patient} />
+        <ClientInvoiceSection patient={patient} />
       </div>
     );
   }
@@ -104,6 +140,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const emergencies = store.activeEmergencyAuthorisations(id);
   const forms = store.formsForPatient(id);
   const apptHistory = store.appointmentsForPatient(id);
+  // Appointments checked out into a client invoice (spec: 2026-07-24) — billing sits with history.
+  const invoicedApptIDs = new Set(
+    store.state.invoices.filter((i) => resolveInvoiceKind(i) === "client-invoice" && i.appointmentID).map((i) => i.appointmentID!),
+  );
   const canEdit = perms.canEditDetails;
   const canDelete = perms.canDelete;
   const canMerge = perms.canMerge;
@@ -302,6 +342,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         {/* Billing matrix: wallet balance + top-up + checkout, gated inside the component
             by the isolation guard (renders nothing without commercial access). */}
         <PatientAccountSection patient={patient} />
+        {/* Manual client invoicing — works in demo and live (spec: 2026-07-24). */}
+        <ClientInvoiceSection patient={patient} />
       </div>
 
       <aside>
@@ -417,7 +459,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                 <li key={a.id}>
                   <p className="flex items-baseline justify-between gap-2">
                     <span className="text-sm text-ink">{dayLabel(a.dateISO)} · {apptTime(a.startMinute)}–{apptTime(a.endMinute)}</span>
-                    <span className="micro flex-none" style={{ color: apptStatusColor(a.status) }}>{APPT_STATUS_LABEL[a.status]}</span>
+                    <span className="flex flex-none items-center gap-2">
+                      {invoicedApptIDs.has(a.id) && <span className="micro rounded-full border border-line px-2 py-0.5 text-ink-soft">Invoiced</span>}
+                      <span className="micro" style={{ color: apptStatusColor(a.status) }}>{APPT_STATUS_LABEL[a.status]}</span>
+                    </span>
                   </p>
                   {a.appointmentNote && <p className="text-sm text-ink-soft">{a.appointmentNote}</p>}
                 </li>

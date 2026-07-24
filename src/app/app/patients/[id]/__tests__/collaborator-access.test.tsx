@@ -35,6 +35,7 @@ const storeState = {
   walletByPatientID: {},
   requests: {},
   accountsByID: {},
+  invoices: [],
 };
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
