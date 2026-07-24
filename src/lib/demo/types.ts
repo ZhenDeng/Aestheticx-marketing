@@ -513,6 +513,7 @@ export type AuditAction =
   | "client_checkout"
   | "service_fee_finalized"
   | "service_invoice_issued"
+  | "client_invoice_issued"
   | "user_created"
   | "user_deleted"
   | "admin_patient_access";

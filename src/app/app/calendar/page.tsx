@@ -7,6 +7,7 @@ import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
+import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
 import { PatientForm } from "@/components/app/PatientForm";
 import { LeadFields, leadFromDraft, emptyLeadDraft, type LeadDraft } from "@/components/app/LeadFields";
@@ -321,6 +322,7 @@ function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmpt
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
         ))}
         <BusyBlocks ownerID={ownerID} dateISO={dateISO} />
+        <BlockedBands ownerID={ownerID} dateISO={dateISO} />
         {appts.map((a) => (
           <TimelineBlock key={a.id} appt={a} me={me} layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
             selected={a.id === selectedId} onSelect={onSelect} />
@@ -360,6 +362,31 @@ function BusyBlocks({ ownerID, dateISO }: { ownerID: string; dateISO: string }) 
             {height >= TEXT_MIN_PX && (
               <span className="micro block px-1.5 pt-0.5 text-ink-faint">Busy · external calendar</span>
             )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// Availability treatment blocks as muted, non-interactive bands (2026-07-24: blocks added
+// under Availability → Treatment now show on the calendar). Solid muted fill distinguishes
+// them from the external-calendar "Busy" hatch; pointer-events-none so empty-slot taps pass through.
+function BlockedBands({ ownerID, dateISO }: { ownerID: string; dateISO: string }) {
+  const store = useDemoStore();
+  const blocks = store.treatmentBlocksForOwnerOnDay(ownerID, dateISO)
+    .map((b) => ({ id: b.id, start: Math.max(b.startMinute, WIN_START), end: Math.min(b.endMinute, WIN_END) }))
+    .filter((b) => b.end > b.start);
+  if (blocks.length === 0) return null;
+  return (
+    <>
+      {blocks.map((b) => {
+        const height = (b.end - b.start) * PX_PER_MIN;
+        return (
+          <div key={b.id} aria-hidden
+            className="pointer-events-none absolute inset-x-0 overflow-hidden rounded-[6px]"
+            style={{ top: (b.start - WIN_START) * PX_PER_MIN, height, background: "var(--color-paper-deep)", border: "1px solid var(--color-line)" }}>
+            {height >= TEXT_MIN_PX && <span className="micro block px-1.5 pt-0.5 text-ink-faint">Blocked</span>}
           </div>
         );
       })}
@@ -870,6 +897,7 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
                     style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
                 ))}
                 <BusyBlocks ownerID={ownerID} dateISO={iso} />
+                <BlockedBands ownerID={ownerID} dateISO={iso} />
                 {dayAppts.map((a) => (
                   <WeekBlock key={a.id} appt={a} me={me} days={days} dayIndex={dayIndex}
                     layout={cols.get(a.id) ?? { id: a.id, col: 0, cols: 1 }}
@@ -1240,12 +1268,17 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
   // The owner can always manage; the nurse/clinic who BOOKED an auth teleconsult can reschedule
   // or cancel it too (15/07 feedback). Confirm + Complete/No-show stay owner-only below — the
   // booker's grant is limited to reschedule + cancel, matching the feedback's literal scope.
   const isOwner = appt.ownerID === appointmentOwnerScope(me);
   const canManage = canManageAppointment(appt, appointmentOwnerScope(me));
   const canMark = appt.status === "awaitingConfirmation" || appt.status === "confirmed";
+  // Check-out → manual client invoice (spec: 2026-07-24), for an appointment with a real
+  // patient file. The composer self-guards on commercial access, so it renders nothing when
+  // this viewer can't bill the appointment's client.
+  const patient = appt.patientID ? store.state.patients[appt.patientID] : undefined;
 
   // Status actions can race (the appointment may have just been actioned elsewhere); the
   // store eager-validates so the BackendError lands here, surfaced on the existing error line.
@@ -1261,6 +1294,19 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
 
   return (
     <div className="mt-2 border-t border-line pt-2">
+      {patient && canManage && (
+        <div className="mb-3">
+          <button type="button" onClick={() => setCheckingOut((v) => !v)}
+            className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">
+            {checkingOut ? "Hide check out" : "Check out"}
+          </button>
+          {checkingOut && (
+            <div className="mt-3">
+              <ClientInvoiceComposer patient={patient} appointmentID={appt.id} />
+            </div>
+          )}
+        </div>
+      )}
       {!canManage ? (
         <p className="text-sm text-ink-soft">This appointment is managed on its owner&apos;s calendar — view only.</p>
       ) : canMark ? (

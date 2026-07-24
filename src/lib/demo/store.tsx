@@ -61,6 +61,7 @@ interface StoreValue {
   availabilityWindowsForDoctor: (doctorID: string) => ReturnType<typeof backend.availabilityWindowsForDoctor>;
   doctorsWithAvailability: () => ReturnType<typeof backend.doctorsWithAvailability>;
   treatmentAvailabilityForOwner: (ownerID: string) => import("./backend").TreatmentAvailabilityResult;
+  treatmentBlocksForOwnerOnDay: (ownerID: string, dateISO: string) => import("./types").TreatmentBlock[];
   setTreatmentDaySchedule: (ownerID: string, weekday: number, patch: Partial<import("./types").DaySchedule>) => void;
   addTreatmentBlock: (ownerID: string, input: { dateISO: string; startMinute: number; endMinute: number }) => void;
   removeTreatmentBlock: (ownerID: string, blockID: string) => void;
@@ -142,6 +143,9 @@ interface StoreValue {
   // longer matrix-gated: available in both modes.
   serviceInvoicingEnabled: boolean;
   createServiceInvoice: (input: import("./backend").CreateServiceInvoiceInput, identity: Identity) => void;
+  // Manual client invoice (spec: manual client invoicing, 2026-07-24). Returns the invoice
+  // for PDF hand-off; demo persists it, live builds it transiently (no server record yet).
+  createClientInvoice: (input: import("./backend").CreateClientInvoiceInput, identity: Identity) => import("./invoicing").Invoice;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
@@ -462,6 +466,15 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
+      createClientInvoice: (input, id) => {
+        // Build once (eager-validate + stable id), persist that exact invoice in demo,
+        // and hand it back either way so the caller can render the PDF. Live never persists
+        // yet — the client-invoice backend callable is a follow-up.
+        const now = writeNow();
+        const invoice = backend.buildClientInvoice(state, input, id, now);
+        if (!live) setState((s) => backend.recordClientInvoice(s, invoice, id, now));
+        return invoice;
+      },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
       submitRequest: (input) => {
@@ -598,6 +611,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       availabilityWindowsForDoctor: (doctorID) => backend.availabilityWindowsForDoctor(state, doctorID),
       doctorsWithAvailability: () => backend.doctorsWithAvailability(state),
       treatmentAvailabilityForOwner: (ownerID) => backend.treatmentAvailabilityForOwner(state, ownerID),
+      treatmentBlocksForOwnerOnDay: (ownerID, dateISO) => backend.treatmentBlocksForOwnerOnDay(state, ownerID, dateISO),
       // Config edits mirror the WHOLE availability config to the backend setTreatmentAvailability
       // callable (the web has no granular callables). Compute eagerly to validate (throw
       // synchronously) + capture the config for the mirror; apply via a functional updater.

@@ -24,7 +24,8 @@ vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: currentIdent
 vi.mock("@/lib/demo/store", () => ({
   useDemoStore: () => ({
     status: "ready" as const,
-    state: { patients: currentPatients },
+    state: { patients: currentPatients, invoices: [] },
+    patientAccess: () => "none",
     visibleNotesForPatient: () => [],
     activeAuthorisations: () => [],
     activeEmergencyAuthorisations: () => [],

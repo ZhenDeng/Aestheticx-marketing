@@ -41,7 +41,7 @@ export interface InvoiceParty {
 // The billing-matrix invoice streams (change: multi-tenant-billing-matrix). A stored
 // invoice without `kind` predates the matrix and is an authorisation invoice — resolve
 // through resolveInvoiceKind, never read `kind` raw.
-export type InvoiceKind = "authorisation" | "client-sale" | "service-fee" | "top-up";
+export type InvoiceKind = "authorisation" | "client-sale" | "service-fee" | "top-up" | "client-invoice";
 
 export function resolveInvoiceKind(invoice: Invoice): InvoiceKind {
   return invoice.kind ?? "authorisation";
@@ -85,6 +85,10 @@ export interface Invoice {
   /** Top-up invoices: the promotional (non-taxable) portion and the total wallet credit. */
   giftCents?: number;
   totalCreditCents?: number;
+  /** Manual client invoice: recorded so the PDF prints the right GST statement. */
+  gstIncluded?: boolean;
+  /** Links a client invoice raised from a calendar appointment check-out. */
+  appointmentID?: string;
 }
 
 export function computeInvoice(input: {
@@ -129,6 +133,49 @@ export function computeInclusiveTotals(inputs: InclusiveLineInput[]): ComputedIn
       description: l.description,
       qty: l.qty,
       unitCents: l.unitCents,
+    };
+  });
+  const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);
+  const gstCents = lines.reduce((s, l) => s + l.gstCents, 0);
+  return { lines, subtotalCents, gstCents, totalCents: subtotalCents + gstCents };
+}
+
+// --- Manual client-invoice math (spec: manual client invoicing, 2026-07-24) ---
+// A practitioner hand-types each line's description and price. Two per-invoice options
+// mirror the retail conventions already in this file: "GST included" is the inclusive
+// convention (gst = round(amount/11), like computeInclusiveTotals); "GST on top" is the
+// exclusive one (gst = round(amount*0.1), like computeInvoice/createServiceInvoice); no
+// GST leaves the line untaxed. Money stays integer cents.
+export interface ManualLineInput { id: string; description: string; amountCents: number; }
+export interface ManualGstOptions { chargeGst: boolean; gstIncluded: boolean; }
+
+export function computeManualInvoice(inputs: ManualLineInput[], opts: ManualGstOptions): ComputedInvoice {
+  if (inputs.length === 0) throw new Error("an invoice needs at least one line");
+  const lines: InvoiceLine[] = inputs.map((l) => {
+    if (!Number.isInteger(l.amountCents) || l.amountCents <= 0) {
+      throw new Error("line amount must be a positive amount of cents");
+    }
+    let feeCents: number;
+    let gstCents: number;
+    if (!opts.chargeGst) {
+      feeCents = l.amountCents;
+      gstCents = 0;
+    } else if (opts.gstIncluded) {
+      gstCents = Math.round(l.amountCents / 11);
+      feeCents = l.amountCents - gstCents;
+    } else {
+      feeCents = l.amountCents;
+      gstCents = Math.round(l.amountCents * GST_RATE);
+    }
+    return {
+      authorisationID: l.id,
+      dateISO: "",
+      patientName: "",
+      feeCents,
+      gstCents,
+      description: l.description,
+      qty: 1,
+      unitCents: l.amountCents, // the typed figure — gross when inclusive, net when on-top
     };
   });
   const subtotalCents = lines.reduce((s, l) => s + l.feeCents, 0);

@@ -55,7 +55,7 @@ import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf, effectiveRelationshipKinds, RELATIONSHIP_KINDS } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, computeInclusiveTotals, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
+import { computeInvoice, computeInclusiveTotals, computeManualInvoice, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
 import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
@@ -1259,6 +1259,12 @@ export function defaultTreatmentAvailability(ownerID: string): TreatmentAvailabi
 
 export function treatmentAvailabilityForOwner(state: DemoState, ownerID: string): TreatmentAvailability {
   return state.treatmentAvailabilityByOwner[ownerID] ?? defaultTreatmentAvailability(ownerID);
+}
+
+// Treatment blocks for one owner on one day — the calendar renders these as busy bands
+// (2026-07-24: Availability blocks now sync to the calendar view).
+export function treatmentBlocksForOwnerOnDay(state: DemoState, ownerID: string, dateISO: string): TreatmentBlock[] {
+  return treatmentAvailabilityForOwner(state, ownerID).blocks.filter((b) => b.dateISO === dateISO);
 }
 
 export type TreatmentAvailabilityResult = ReturnType<typeof treatmentAvailabilityForOwner>;
@@ -2843,6 +2849,70 @@ export function createServiceInvoice(state: DemoState, input: CreateServiceInvoi
     },
     now,
   );
+}
+
+// --- Manual client invoice (spec: manual client invoicing, 2026-07-24) ---
+// A practitioner/clinic hand-types the lines and bills the CLIENT directly. Issuer is the
+// OWNING silo (patient.owner) exactly like checkoutClient — the client belongs to that
+// book — but there is deliberately NO service-fee split: this interim tool issues one
+// client-facing document. Live mode never persists (the store returns buildClientInvoice's
+// result for PDF hand-off); demo appends via recordClientInvoice.
+export interface CreateClientInvoiceInput {
+  patientID: string;
+  lines: { description: string; amountCents: number }[];
+  chargeGst: boolean;
+  gstIncluded: boolean;
+  appointmentID?: string;
+}
+
+export function buildClientInvoice(state: DemoState, input: CreateClientInvoiceInput, identity: Identity, now: number): Invoice {
+  const patient = state.patients[input.patientID];
+  if (!patient) throw new BackendError("notFound");
+  if (patientAccessLevel(state, identity, patient) === "none") throw new BackendError("notPermitted");
+  if (input.lines.length === 0) throw new BackendError("validationFailed");
+  const manualLines = input.lines.map((line, i) => {
+    if (!line.description.trim()) throw new BackendError("validationFailed");
+    if (!Number.isInteger(line.amountCents) || line.amountCents <= 0) throw new BackendError("validationFailed");
+    return { id: `${makeID("cil")}-${i}`, description: line.description.trim(), amountCents: line.amountCents };
+  });
+  const computed = computeManualInvoice(manualLines, { chargeGst: input.chargeGst, gstIncluded: input.gstIncluded });
+  return {
+    id: makeID("inv"),
+    doctorID: "",
+    counterpartyID: patient.id,
+    counterpartyType: "client",
+    periodLabel: isoDay(now),
+    ...computed,
+    authorisationIDs: [],
+    createdAt: now,
+    paid: false,
+    kind: "client-invoice",
+    issuerRef: patient.owner,
+    patientID: patient.id,
+    gstIncluded: input.chargeGst ? input.gstIncluded : undefined,
+    ...(input.appointmentID ? { appointmentID: input.appointmentID } : {}),
+    issuer: issuerPartyFor(state, patient.owner),
+    billTo: clientBillTo(patient),
+  };
+}
+
+export function recordClientInvoice(state: DemoState, invoice: Invoice, identity: Identity, now: number): DemoState {
+  return appendAuditEntry(
+    { ...state, invoices: [...state.invoices, invoice] },
+    {
+      actor: identity,
+      action: "client_invoice_issued",
+      targetType: "invoice",
+      targetID: invoice.id,
+      summary: `client invoice ${formatAUD(invoice.totalCents)} · ${ownerDisplayLabel(state, invoice.issuerRef!)}`,
+    },
+    now,
+  );
+}
+
+export function createClientInvoice(state: DemoState, input: CreateClientInvoiceInput, identity: Identity, now: number): { state: DemoState; invoice: Invoice } {
+  const invoice = buildClientInvoice(state, input, identity, now);
+  return { state: recordClientInvoice(state, invoice, identity, now), invoice };
 }
 
 // The practitioner reviews and finalizes their drafted service-fee invoice (spec:
