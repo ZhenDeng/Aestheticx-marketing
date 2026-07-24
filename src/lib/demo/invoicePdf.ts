@@ -67,6 +67,9 @@ export interface TaxInvoiceModel {
   subtotalText: string;
   gstText: string;
   totalText: string;
+  /** The ATO taxable-sale statement — rendered only when GST was charged. Null on a
+   *  no-GST invoice, which must not imply the seller is registered for GST. */
+  taxStatement: string | null;
   /** Non-taxable gift-credit note rendered as a final spanning grid row with dashed
    *  numeric cells (spec: patient-wallet) — present only on top-up invoices with a gift. */
   footnote?: string;
@@ -111,6 +114,8 @@ export function buildTaxInvoiceModel(invoice: Invoice, issuer: InvoiceParty, bil
     subtotalText: formatAUD(invoice.subtotalCents),
     gstText: formatAUD(invoice.gstCents),
     totalText: formatAUD(invoice.totalCents),
+    // Only assert GST when some was charged — a no-GST invoice must not claim registration.
+    taxStatement: invoice.gstCents > 0 ? "The total price includes GST." : null,
     ...(giftCents > 0
       ? {
           footnote: `Promotional Gift Credit Applied: ${formatAUD(giftCents)} (Non-Taxable). Total Wallet Value Loaded: ${formatAUD(invoice.totalCreditCents ?? invoice.totalCents + giftCents)}.`,
@@ -302,9 +307,11 @@ export function renderTaxInvoicePdf(model: TaxInvoiceModel): Uint8Array {
   });
   writer.setY(bandTop + bandH);
 
-  // The Example 2 taxable-sale statement (requirement 7), kept verbatim.
-  writer.setY(writer.currentY() + 14);
-  writer.text("The total price includes GST.", 10, INK);
+  // The Example 2 taxable-sale statement (requirement 7) — only when GST applies.
+  if (model.taxStatement) {
+    writer.setY(writer.currentY() + 14);
+    writer.text(model.taxStatement, 10, INK);
+  }
 
   return buildPdfFile(writer.pages.map((ops) => ops.join("\n")));
 }
