@@ -142,6 +142,9 @@ interface StoreValue {
   // longer matrix-gated: available in both modes.
   serviceInvoicingEnabled: boolean;
   createServiceInvoice: (input: import("./backend").CreateServiceInvoiceInput, identity: Identity) => void;
+  // Manual client invoice (spec: manual client invoicing, 2026-07-24). Returns the invoice
+  // for PDF hand-off; demo persists it, live builds it transiently (no server record yet).
+  createClientInvoice: (input: import("./backend").CreateClientInvoiceInput, identity: Identity) => import("./invoicing").Invoice;
   recordForm: (input: import("./backend").RecordFormInput, identity: Identity) => void;
   deleteForm: (patientID: string, formId: string, identity: Identity) => void;
   profileForUser: (userID: string) => ReturnType<typeof backend.profileForUser>;
@@ -461,6 +464,15 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
+      },
+      createClientInvoice: (input, id) => {
+        // Build once (eager-validate + stable id), persist that exact invoice in demo,
+        // and hand it back either way so the caller can render the PDF. Live never persists
+        // yet — the client-invoice backend callable is a follow-up.
+        const now = writeNow();
+        const invoice = backend.buildClientInvoice(state, input, id, now);
+        if (!live) setState((s) => backend.recordClientInvoice(s, invoice, id, now));
+        return invoice;
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),
       openRequestsForPatient: (pid, nid) => backend.openRequestsForPatient(state, pid, nid),
