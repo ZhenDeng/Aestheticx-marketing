@@ -263,7 +263,9 @@ export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEn
 // union + the backend `auditLog` writer. Used to filter an unknown wire value to a safe member.
 const AUDIT_ACTIONS: readonly AuditAction[] = [
   "request_created", "request_resubmitted", "request_withdrawn", "request_edit_requested",
-  "request_approved", "invoice_generated", "invoice_marked_paid", "user_created", "user_deleted", "admin_patient_access",
+  "request_approved", "invoice_generated", "invoice_marked_paid", "invoice_deleted", "wallet_topup",
+  "client_checkout", "service_fee_finalized", "service_invoice_issued", "client_invoice_issued",
+  "user_created", "user_deleted", "admin_patient_access",
   "clinic_employment_granted", "clinic_employment_revoked",
 ];
 
