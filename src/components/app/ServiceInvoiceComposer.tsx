@@ -42,7 +42,7 @@ export function ServiceInvoiceComposer() {
   // practising independently today is still the clinic's employee. Doctors gain clinic
   // identities from employee-kind relationships (heldIdentities mirrors the claims grant).
   const clinicOptions: { id: string; name: string }[] = [];
-  for (const held of heldIdentities(identity, availableIdentities, store.cooperationRelationships())) {
+  for (const held of heldIdentities(identity, availableIdentities, store.cooperationRelationships(), store.clinicEmployments())) {
     if (held.context.kind !== "clinic") continue;
     const clinic = held.context.clinic;
     if (!clinicOptions.some((c) => c.id === clinic.id)) {

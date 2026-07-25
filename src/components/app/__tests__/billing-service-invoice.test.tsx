@@ -56,6 +56,7 @@ vi.mock("@/lib/demo/store", () => ({
       customTimeframeCount: () => 0,
       clinicBusinessStats: () => null,
       cooperationRelationships: () => Object.values(state.cooperationRelationshipsByID),
+      clinicEmployments: () => state.clinicEmployments,
       patientAccess: (p: Patient, id: Identity) => patientAccessLevel(state, id, p),
       setScriptPrice: vi.fn(),
       generateInvoice: vi.fn(),

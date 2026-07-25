@@ -68,6 +68,7 @@ vi.mock("@/lib/demo/store", () => ({
     // so the composer and client picker stay dormant).
     serviceInvoicingEnabled: true,
     cooperationRelationships: () => [],
+    clinicEmployments: () => [],
     patientAccess: () => "none" as const,
     createServiceInvoice: vi.fn(),
     ...storeOverrides,

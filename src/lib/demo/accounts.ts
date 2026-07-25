@@ -11,6 +11,7 @@ export const LUMIERE: ClinicRef = {
 
 const sarah: UserRef = { id: "u-sarah", name: "Sarah Chen" };
 const ruby: UserRef = { id: "u-ruby", name: "Ruby Walsh" };
+const nadia: UserRef = { id: "u-nadia", name: "Nadia Okafor" };
 const voss: UserRef = { id: "u-voss", name: "Dr Elena Voss" };
 const ava: UserRef = { id: "u-ava", name: "Ava Lim" };
 const priya: UserRef = { id: "u-admin", name: "Priya Nair" };
@@ -46,6 +47,13 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     // Lets the demo exercise the admin separation; user administration stays live-only.
     label: "Priya Nair — Platform Admin",
     identities: [{ user: priya, role: "superAdmin", context: { kind: "independent" } }],
+  },
+  {
+    // Independent nurse with NO baked clinic identity (unlike Sarah/Ruby): the grant-backed,
+    // removable Employment example (spec: 2026-07-25) — appended last so the existing
+    // DEMO_ACCOUNTS[n] index references (Voss at 2, etc.) elsewhere in the codebase stay valid.
+    label: "Nadia Okafor — Nurse",
+    identities: [{ user: nadia, role: "nurse", context: { kind: "independent" } }],
   },
 ];
 

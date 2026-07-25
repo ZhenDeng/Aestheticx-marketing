@@ -34,7 +34,10 @@ describe("heldIdentities", () => {
   it("resolves the demo account's full identity set when availableIdentities is empty (demo mode)", () => {
     // Sarah's demo account holds two nurse identities (independent + clinic).
     const sarah = DEMO_ACCOUNTS.find((a) => a.identities.some((i) => i.user.id === "u-sarah"))!;
-    expect(heldIdentities(sarah.identities[0], [])).toBe(sarah.identities);
+    // heldIdentities always builds a fresh array (base is spread before the derivation loops
+    // run, even when there's nothing to derive) — same content as sarah.identities, not the
+    // same reference.
+    expect(heldIdentities(sarah.identities[0], [])).toEqual(sarah.identities);
   });
 
   it("falls back to just the active identity for an unknown account", () => {

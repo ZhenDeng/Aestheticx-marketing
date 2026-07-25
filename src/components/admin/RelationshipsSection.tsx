@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { effectiveRelationshipKinds, RELATIONSHIP_KINDS, type AccountRecord, type CooperationRelationship, type CounterpartyType, type Identity, type RelationshipKind } from "@/lib/demo/types";
+import { effectiveRelationshipKinds, RELATIONSHIP_KINDS, type AccountRecord, type ClinicEmployment, type CooperationRelationship, type CounterpartyType, type Identity, type RelationshipKind } from "@/lib/demo/types";
 import type { ClinicOption, SetCooperationRelationshipInput } from "@/lib/demo/backend";
 
 // Cooperation relationships (spec 2026-07-08 cooperation-relationships, constitution §17):
@@ -38,6 +38,9 @@ export function CooperationRelationshipsSection() {
   const accounts = store.accounts();
   const nurses = accounts.filter((a) => a.roles.includes("nurse"));
   const clinics = store.clinics();
+  // Optional-call guard (matches the defensive pattern in profile/page.tsx): older test
+  // mocks of useDemoStore predate Task 3's clinicEmployments() and don't define it.
+  const clinicEmployments = store.clinicEmployments?.() ?? [];
 
   // Prescribing: every counterparty the doctor can issue authorisations to — nurse
   // relationships always, clinic relationships only when their kind set includes
@@ -134,21 +137,27 @@ export function CooperationRelationshipsSection() {
               ) : (
                 <ul>
                   {g.rels.map((r) => <RelationshipRow key={r.id} rel={r} identity={identity} title={r.doctorName} />)}
-                  {g.members.map((m) => (
-                    <li key={m.id} className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-ink">{m.name || m.email || m.id}</span>
-                        <span className="micro block">
-                          {m.roles.filter((role) => role !== "doctor").map((role) => role === "clinicAdmin" ? "Clinic admin" : role === "nurse" ? "Nurse" : role).join(" · ")}
-                        </span>
-                      </span>
-                      {/* Membership derives from the account's claims, not from a cooperation
-                          relationship — nothing to edit from this list. */}
-                      <span className="micro flex-none rounded-full border border-line px-2 py-0.5 text-ink-soft">Member account</span>
-                    </li>
-                  ))}
+                  {g.members.map((m) => {
+                    const employment = clinicEmployments.find((e) => e.nurseID === m.id && e.clinicID === g.clinicID);
+                    return (
+                      <EmploymentMemberRow
+                        key={m.id}
+                        member={m}
+                        clinicID={g.clinicID}
+                        clinicName={g.name}
+                        employment={employment}
+                        identity={identity}
+                      />
+                    );
+                  })}
                 </ul>
               )}
+              <AddEmployeeControl
+                clinicID={g.clinicID}
+                clinicName={g.name}
+                nurses={accounts.filter((a) => a.roles.includes("nurse") && !(a.clinicIDs ?? []).includes(g.clinicID))}
+                identity={identity}
+              />
             </div>
           ))}
         </div>
@@ -547,5 +556,111 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
         </button>
       </div>
     </section>
+  );
+}
+
+// One nurse member row in the Employment view. A grant-backed membership (an admin
+// ClinicEmployment) is removable; a baked seed membership stays a read-only "Member account".
+function EmploymentMemberRow({ member, clinicID, clinicName, employment, identity }: {
+  member: AccountRecord;
+  clinicID: string;
+  clinicName: string;
+  employment: ClinicEmployment | undefined;
+  identity: Identity;
+}) {
+  const store = useDemoStore();
+  const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  function remove() {
+    setError(null);
+    try {
+      store.setClinicEmployment(
+        { nurseID: member.id, nurseName: member.name || member.email || member.id, clinicID, clinicName, employed: false },
+        identity,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setConfirming(false);
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-ink">{member.name || member.email || member.id}</span>
+        <span className="micro block">
+          {member.roles.filter((role) => role !== "doctor").map((role) => role === "clinicAdmin" ? "Clinic admin" : role === "nurse" ? "Nurse" : role).join(" · ")}
+        </span>
+        {error && <span className="micro block" style={{ color: "var(--color-rose)" }}>{error}</span>}
+      </span>
+      {employment ? (
+        confirming ? (
+          <span className="flex items-center gap-2">
+            <span className="micro" style={{ color: "var(--color-rose)" }}>Remove from clinic?</span>
+            <button onClick={remove} className="micro rounded-btn px-2.5 py-1 text-card" style={{ background: "var(--color-rose)" }}>Confirm</button>
+            <button onClick={() => setConfirming(false)} className="micro rounded-btn border border-line px-2.5 py-1 text-ink-soft">Cancel</button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            className="micro flex-none rounded-btn border px-2.5 py-1 hover:opacity-80"
+            style={{ borderColor: "var(--color-rose)", color: "var(--color-rose)" }}
+          >
+            Remove
+          </button>
+        )
+      ) : (
+        <span className="micro flex-none rounded-full border border-line px-2 py-0.5 text-ink-soft">Member account</span>
+      )}
+    </li>
+  );
+}
+
+// "Add employee" control on a clinic card: employs one of the clinic's non-member nurses.
+function AddEmployeeControl({ clinicID, clinicName, nurses, identity }: {
+  clinicID: string;
+  clinicName: string;
+  nurses: AccountRecord[];
+  identity: Identity;
+}) {
+  const store = useDemoStore();
+  const [choice, setChoice] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  if (nurses.length === 0) {
+    return <p className="micro px-4 py-3 text-ink-soft">No nurses to add.</p>;
+  }
+  const selected = nurses.some((n) => n.id === choice) ? choice : nurses[0].id;
+
+  function add() {
+    setError(null);
+    const nurse = nurses.find((n) => n.id === selected);
+    if (!nurse) { setError("Pick a nurse."); return; }
+    try {
+      store.setClinicEmployment(
+        { nurseID: nurse.id, nurseName: nurse.name || nurse.email || nurse.id, clinicID, clinicName, employed: true },
+        identity,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 border-t border-line px-4 py-3">
+      <label className="block">
+        <span className="micro">Add employee</span>
+        <select
+          value={selected}
+          onChange={(e) => setChoice(e.target.value)}
+          className="mt-1 block rounded-field border border-line bg-card px-2.5 py-1.5 text-sm text-ink"
+        >
+          {nurses.map((n) => <option key={n.id} value={n.id}>{n.name || n.email || n.id}</option>)}
+        </select>
+      </label>
+      <button onClick={add} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>Add</button>
+      {error && <p className="micro w-full" style={{ color: "var(--color-rose)" }}>{error}</p>}
+    </div>
   );
 }

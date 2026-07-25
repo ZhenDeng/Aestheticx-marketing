@@ -145,7 +145,9 @@ export function assembleState(rows: HydrationRows): DemoState {
   // address in profileByUser.
   // Billing matrix (price lists / service fees / wallets): no Firestore schema yet — the
   // feature is demo-mode-first (live UI gates it off), so hydrate empty slices.
-  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, clinicsByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {} };
+  // clinicEmployments (spec: 2026-07-25 nurse-clinic-employment): no Firestore schema yet —
+  // live derives employment from the `clinics` claims map directly, so hydrate empty.
+  return { patients, notesByPatient, authorisations, requests, appointments, usages: [], formsByPatient, invoices, scriptPricing, noteTemplatesByOwner, followUpTasksByID, followUpSettingsByUser, appointmentReminderByUser, bookingTokensByUser, availabilityWindows, treatmentAvailabilityByOwner, doctorStatusByID, externalBusyByOwner, lastCalledDoctorByUser, profileByUser, addressByIdentity: {}, accountsByID, emergencyAuthorisationsByID, cooperationRelationshipsByID, relationshipAuditByID, auditLogByID, productsByID, businessEntitiesByID, clinicsByID, priceListByOwner: {}, serviceFeeCentsByPair: {}, walletByPatientID: {}, clinicEmployments: [] };
 }
 
 async function runQuery(path: string, ...constraints: QueryConstraint[]): Promise<Row[]> {

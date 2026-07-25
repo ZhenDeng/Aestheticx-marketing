@@ -91,6 +91,10 @@ interface StoreValue {
   relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
   setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
   removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
+  /** Nurse↔clinic employment (spec: 2026-07-25): the active grants + a super-admin
+   *  grant/revoke. Demo-writable; live best-effort mirrors to the setClinicMembership callable. */
+  clinicEmployments: () => ReturnType<typeof backend.clinicEmploymentsList>;
+  setClinicEmployment: (input: import("./backend").SetClinicEmploymentInput, actor: Identity) => void;
   // Admin-editable catalog (Tier 3 #5B): the full product list + super-admin upsert / active toggle.
   catalogProducts: () => ReturnType<typeof backend.catalogProductsList>;
   setProduct: (input: import("./backend").SetProductInput, actor: Identity) => void;
@@ -855,6 +859,19 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         void (async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorRemoveCooperationRelationship(relationshipID); setRefreshTick((t) => t + 1); }
           catch (e) { setLastSyncError(syncErrorMessage(e)); }
+        })();
+      },
+      clinicEmployments: () => backend.clinicEmploymentsList(state),
+      setClinicEmployment: (input, actor) => {
+        // Eager-validate + apply (throws before the async live branch); demo-writable.
+        const next = backend.setClinicEmployment(state, input, actor, writeNow());
+        if (!live) { setState(() => next); return; }
+        void (async () => {
+          try {
+            const m = await import("@/lib/firebase/mirror");
+            await m.mirrorSetClinicMembership(input);
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         })();
       },
       catalogProducts: () => backend.catalogProductsList(state),

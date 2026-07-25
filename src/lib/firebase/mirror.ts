@@ -60,6 +60,17 @@ export async function mirrorRemoveCooperationRelationship(relationshipId: string
   await httpsCallable(functions(), "removeCooperationRelationship")({ relationshipId });
 }
 
+// Nurse clinic membership (spec: 2026-07-25). `employed` maps to the claim kind: an
+// "employee" grant or its removal. Backend callable `setClinicMembership` is a follow-up in
+// the functions repo — until it ships, live calls reject and surface via the sync-error banner.
+export async function mirrorSetClinicMembership(input: import("@/lib/demo/backend").SetClinicEmploymentInput): Promise<void> {
+  await httpsCallable(functions(), "setClinicMembership")({
+    userId: input.nurseID,
+    clinicId: input.clinicID,
+    kind: input.employed ? "employee" : null,
+  });
+}
+
 // Admin-editable catalog (Tier 3 #5B): the superAdmin setProduct/deactivateProduct callables.
 export async function mirrorSetProduct(input: import("@/lib/demo/backend").SetProductInput): Promise<void> {
   await httpsCallable(functions(), "setProduct")({

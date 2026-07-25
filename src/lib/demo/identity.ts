@@ -1,7 +1,7 @@
 // Pure helpers over an account's set of identities. An account can hold several identities
 // (e.g. doctor + clinicAdmin); the auth context tracks one *active* identity plus the full set.
 import { DEMO_ACCOUNTS } from "./accounts";
-import { effectiveRelationshipKinds, type CooperationRelationship, type Identity } from "./types";
+import { effectiveRelationshipKinds, type ClinicEmployment, type CooperationRelationship, type Identity } from "./types";
 
 /**
  * The full set of identities the signed-in account holds, cross-mode. Live mode resolves them
@@ -16,17 +16,17 @@ export function heldIdentities(
   active: Identity,
   available: Identity[],
   demoRelationships: CooperationRelationship[] = [],
+  clinicEmployments: ClinicEmployment[] = [],
 ): Identity[] {
   if (available.length) return available;
   const base = DEMO_ACCOUNTS.find((a) => a.identities.some((i) => i.user.id === active.user.id))?.identities ?? [active];
-  if (demoRelationships.length === 0) return base;
   const identities = [...base];
 
-  // Live clinic identities come from server-verified membership claims. Demo mode has no
-  // claims service, so mirror the same outcome from its in-memory relationship source:
-  // an active doctor↔clinic relationship whose kind set includes employee grants the
-  // doctor an employee clinic identity. A prescriber-only relationship is an external
-  // cooperation — it gates authorisation requests but confers no membership.
+  // Doctor employee-kind clinic identities. Live clinic identities come from server-verified
+  // membership claims; the demo mirrors that from the in-memory cooperation-relationship source:
+  // an active doctor↔clinic relationship whose kind set includes "employee" grants the doctor an
+  // employee clinic identity, while a prescriber-only relationship gates authorisation requests
+  // but confers no membership.
   for (const relationship of demoRelationships) {
     if (relationship.status !== "active" || relationship.counterpartyType !== "clinic") continue;
     if (!effectiveRelationshipKinds(relationship)?.includes("employee")) continue;
@@ -39,12 +39,27 @@ export function heldIdentities(
     identities.push({
       user: active.user,
       role: "doctor",
-      context: {
-        kind: "clinic",
-        clinic: { id: relationship.counterpartyID, name: relationship.counterpartyName },
-      },
+      context: { kind: "clinic", clinic: { id: relationship.counterpartyID, name: relationship.counterpartyName } },
     });
   }
+
+  // Nurse clinic employment (spec: 2026-07-25) — the demo analogue of a live `clinics`
+  // "employee" claim. Grants for the active nurse become clinic-context nurse identities,
+  // deduped against any the account already holds (e.g. a baked seed membership).
+  for (const employment of clinicEmployments) {
+    if (employment.nurseID !== active.user.id) continue;
+    const duplicate = identities.some((identity) =>
+      identity.role === "nurse"
+      && identity.context.kind === "clinic"
+      && identity.context.clinic.id === employment.clinicID);
+    if (duplicate) continue;
+    identities.push({
+      user: active.user,
+      role: "nurse",
+      context: { kind: "clinic", clinic: { id: employment.clinicID, name: employment.clinicName } },
+    });
+  }
+
   return identities;
 }
 

@@ -361,6 +361,36 @@ export function buildSeedState(): DemoState {
   }
   state = { ...state, accountsByID };
 
+  // One admin-granted nurse employment so the demo Employment view has a removable member
+  // and Nadia can invoice Lumière out of the box (spec: 2026-07-25). Nadia is an independent
+  // nurse with NO baked clinic identity, so this grant is the sole source of her Lumière
+  // membership — removing it in the admin UI fully and consistently revokes her. Sarah/Ruby
+  // stay read-only baked members (their clinic identity is fixed in accounts.ts, not
+  // grant-backed) so removing a grant can never desync them from their baked identity.
+  state = {
+    ...state,
+    clinicEmployments: [
+      { id: "u-nadia_clinic-lumiere", nurseID: "u-nadia", nurseName: "Nadia Okafor", clinicID: LUMIERE.id, clinicName: LUMIERE.name, grantedAt: SEED_NOW },
+    ],
+  };
+
+  // Fold each seeded grant's clinicID into its nurse's clinicIDs — mirrors setClinicEmployment's
+  // grant branch, which updates clinicEmployments and clinicIDs atomically. Seeding the two
+  // separately (accountsByID above derives clinicIDs from baked identity contexts only) would
+  // otherwise leave a grant-only nurse like Nadia with an empty clinicIDs: the admin Employment
+  // view and createServiceInvoice both key off clinicIDs, not clinicEmployments directly.
+  for (const employment of state.clinicEmployments) {
+    const account = state.accountsByID[employment.nurseID];
+    if (!account || (account.clinicIDs ?? []).includes(employment.clinicID)) continue;
+    state = {
+      ...state,
+      accountsByID: {
+        ...state.accountsByID,
+        [employment.nurseID]: { ...account, clinicIDs: [...(account.clinicIDs ?? []), employment.clinicID] },
+      },
+    };
+  }
+
   // Cooperation relationships (spec 2026-07-08): seed the demo cast's active pairs so the gated
   // request pickers still show Dr Voss. Sarah acts independently (nurse counterparty) and
   // Ruby/Ava/Sarah act in Lumière (clinic counterparty) — cover both.
