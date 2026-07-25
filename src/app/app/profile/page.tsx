@@ -71,6 +71,7 @@ export default function ProfilePage() {
     me,
     availableIdentities,
     typeof store.cooperationRelationships === "function" ? store.cooperationRelationships() : [],
+    typeof store.clinicEmployments === "function" ? store.clinicEmployments() : [],
   );
   // AHPRA belongs to the ACCOUNT (a practitioner registration), not the active identity —
   // a super admin who also holds a clinician role sees it without switching identities.
