@@ -2045,8 +2045,9 @@ export interface SetClinicEmploymentInput {
 export function setClinicEmployment(state: DemoState, input: SetClinicEmploymentInput, actor: Identity, now: number): DemoState {
   if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
   const account = state.accountsByID[input.nurseID];
-  if (!account || !account.roles.includes("nurse")) throw new BackendError("validationFailed");
-  if (!state.clinicsByID[input.clinicID]) throw new BackendError("validationFailed");
+  if (!account) throw new BackendError("notFound");
+  if (!account.roles.includes("nurse")) throw new BackendError("validationFailed");
+  if (!state.clinicsByID[input.clinicID]) throw new BackendError("notFound");
 
   const id = clinicEmploymentId(input.nurseID, input.clinicID);
   const currentClinicIDs = account.clinicIDs ?? [];

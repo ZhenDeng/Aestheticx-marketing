@@ -264,6 +264,7 @@ export function mapRelationshipAudit(id: string, data: Doc): RelationshipAuditEn
 const AUDIT_ACTIONS: readonly AuditAction[] = [
   "request_created", "request_resubmitted", "request_withdrawn", "request_edit_requested",
   "request_approved", "invoice_generated", "invoice_marked_paid", "user_created", "user_deleted", "admin_patient_access",
+  "clinic_employment_granted", "clinic_employment_revoked",
 ];
 
 // auditLog/{id} (superAdmin-read only) written by the backend. Tolerant of missing fields;
