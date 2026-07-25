@@ -416,6 +416,20 @@ export interface AccountRecord {
   mustChangePassword: boolean;
 }
 
+// Nurse↔clinic employment (spec: 2026-07-25). A super-admin-granted clinic membership for
+// a nurse — the demo analogue of a live `clinics: { [id]: "employee" }` claim. Deliberately
+// NOT a CooperationRelationship (that model is doctor-centric with prescribing semantics).
+// Presence = employed; a revoke removes the record. `clinicName` is denormalised so
+// heldIdentities can build the clinic identity without a directory lookup.
+export interface ClinicEmployment {
+  id: string; // `${nurseID}_${clinicID}` — deterministic, idempotent grant key
+  nurseID: string;
+  nurseName: string;
+  clinicID: string;
+  clinicName: string;
+  grantedAt: number;
+}
+
 export interface RepeatUsage {
   authorisationID: string;
   patientID: string;
@@ -516,6 +530,8 @@ export type AuditAction =
   | "client_invoice_issued"
   | "user_created"
   | "user_deleted"
+  | "clinic_employment_granted"
+  | "clinic_employment_revoked"
   | "admin_patient_access";
 
 // One durable platform-audit-log entry (constitution §21). Mirrors the backend `auditLog`
@@ -622,6 +638,10 @@ export interface DemoState {
   // and their append-only change audit.
   cooperationRelationshipsByID: Record<string, CooperationRelationship>;
   relationshipAuditByID: Record<string, RelationshipAuditEntry>;
+  // Nurse↔clinic employment grants (spec: 2026-07-25). Active grants only; a revoke removes
+  // the record. Folded into accountsByID[nurse].clinicIDs on grant so the Employment view +
+  // createServiceInvoice (both read clinicIDs) pick it up with no further change.
+  clinicEmployments: ClinicEmployment[];
   // Platform audit log (constitution §21). Append-only; durable in live (hydrated from the
   // Firestore `auditLog` collection, superAdmin-read only) and in-session in demo. Admin
   // patient-file access (constitution §16) is one action among many recorded here.

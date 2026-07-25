@@ -39,6 +39,7 @@ import type {
   TreatmentMedication,
   UserProfile,
   UserProfileEdit,
+  ClinicEmployment,
   CooperationRelationship,
   CounterpartyType,
   RelationshipKind,
@@ -96,6 +97,7 @@ export function emptyState(): DemoState {
     emergencyAuthorisationsByID: {},
     cooperationRelationshipsByID: {},
     relationshipAuditByID: {},
+    clinicEmployments: [],
     auditLogByID: {},
     productsByID: {}, // Tier 3 #5B: live hydrates the catalog; empty → selection falls back to PRODUCT_CATALOG.
     businessEntitiesByID: {}, // Tier 3 #4: live hydrates entities; empty → invoice snapshots / legacy fallback cover display.
@@ -2016,6 +2018,76 @@ export function cooperatingDoctors(state: DemoState, identity: Identity): { doct
 export function cooperationRelationshipsList(state: DemoState): CooperationRelationship[] {
   return Object.values(state.cooperationRelationshipsByID)
     .sort((a, b) => a.doctorName.localeCompare(b.doctorName) || a.counterpartyName.localeCompare(b.counterpartyName));
+}
+
+export function clinicEmploymentId(nurseID: string, clinicID: string): string {
+  return `${nurseID}_${clinicID}`;
+}
+
+export function clinicEmploymentsList(state: DemoState): ClinicEmployment[] {
+  return [...state.clinicEmployments].sort(
+    (a, b) => a.clinicName.localeCompare(b.clinicName) || a.nurseName.localeCompare(b.nurseName),
+  );
+}
+
+export interface SetClinicEmploymentInput {
+  nurseID: string;
+  nurseName: string;
+  clinicID: string;
+  clinicName: string;
+  employed: boolean;
+}
+
+// Grant/revoke a nurse's clinic membership (spec: 2026-07-25). Super-admin only; the target
+// must be a nurse and the clinic must exist. A grant upserts the ClinicEmployment (idempotent
+// on the deterministic id) and adds the clinicID to the nurse's clinicIDs; a revoke removes
+// both. The clinicIDs fold is what unlocks the Employment view + createServiceInvoice.
+export function setClinicEmployment(state: DemoState, input: SetClinicEmploymentInput, actor: Identity, now: number): DemoState {
+  if (actor.role !== "superAdmin") throw new BackendError("notPermitted");
+  const account = state.accountsByID[input.nurseID];
+  if (!account || !account.roles.includes("nurse")) throw new BackendError("validationFailed");
+  if (!state.clinicsByID[input.clinicID]) throw new BackendError("validationFailed");
+
+  const id = clinicEmploymentId(input.nurseID, input.clinicID);
+  const currentClinicIDs = account.clinicIDs ?? [];
+
+  if (input.employed) {
+    const employment: ClinicEmployment = {
+      id,
+      nurseID: input.nurseID,
+      nurseName: input.nurseName,
+      clinicID: input.clinicID,
+      clinicName: input.clinicName,
+      grantedAt: now,
+    };
+    const clinicEmployments = state.clinicEmployments.some((e) => e.id === id)
+      ? state.clinicEmployments.map((e) => (e.id === id ? employment : e))
+      : [...state.clinicEmployments, employment];
+    const clinicIDs = currentClinicIDs.includes(input.clinicID) ? currentClinicIDs : [...currentClinicIDs, input.clinicID];
+    const next = {
+      ...state,
+      clinicEmployments,
+      accountsByID: { ...state.accountsByID, [input.nurseID]: { ...account, clinicIDs } },
+    };
+    return appendAuditEntry(
+      next,
+      { actor, action: "clinic_employment_granted", targetType: "account", targetID: input.nurseID, summary: `employed ${input.nurseName} at ${input.clinicName}` },
+      now,
+    );
+  }
+
+  const clinicEmployments = state.clinicEmployments.filter((e) => e.id !== id);
+  const clinicIDs = currentClinicIDs.filter((c) => c !== input.clinicID);
+  const next = {
+    ...state,
+    clinicEmployments,
+    accountsByID: { ...state.accountsByID, [input.nurseID]: { ...account, clinicIDs } },
+  };
+  return appendAuditEntry(
+    next,
+    { actor, action: "clinic_employment_revoked", targetType: "account", targetID: input.nurseID, summary: `removed ${input.nurseName} from ${input.clinicName}` },
+    now,
+  );
 }
 
 // A clinic entry in the admin console's pickers. `unnamed` marks a clinic whose doc has a

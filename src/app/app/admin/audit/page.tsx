@@ -23,6 +23,8 @@ const ACTION_LABEL: Record<AuditAction, string> = {
   client_invoice_issued: "Client invoice issued",
   user_created: "User created",
   user_deleted: "User deleted",
+  clinic_employment_granted: "Clinic employment granted",
+  clinic_employment_revoked: "Clinic employment revoked",
   admin_patient_access: "Patient file access",
 };
 
