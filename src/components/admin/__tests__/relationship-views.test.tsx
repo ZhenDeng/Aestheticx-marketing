@@ -106,8 +106,10 @@ describe("Employment view", () => {
     expect(within(clinicCard).getByText("Yinghua Xu")).toBeInTheDocument();
     expect(within(clinicCard).getByText("Ava Lim")).toBeInTheDocument();
     expect(within(clinicCard).getAllByText("Member account").length).toBe(2);
-    // The independent nurse belongs to no clinic — not staff.
-    expect(within(clinicCard).queryByText("Indie Nurse")).not.toBeInTheDocument();
+    // The independent nurse belongs to no clinic — she is not listed as staff,
+    // only offered in the clinic's Add-employee picker (an <option>, not a member row).
+    const indie = within(clinicCard).getByText("Indie Nurse");
+    expect(indie.tagName).toBe("OPTION");
   });
 
   it("excludes prescriber-only doctors from a clinic's staff", async () => {
