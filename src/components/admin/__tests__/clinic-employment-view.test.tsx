@@ -83,4 +83,24 @@ describe("Employment view — nurse clinic employment", () => {
     expect(within(rubyRow).queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
     expect(within(rubyRow).getByText(/member account/i)).toBeInTheDocument();
   });
+
+  it("shows the Add-employee picker on a staffless clinic card too", async () => {
+    clinicDirectory = [...clinicDirectory, { id: "clinic-bare", label: "Bare Clinic" }];
+    await openEmployment();
+    const bareCard = screen.getByText("Bare Clinic").closest("div")!;
+    expect(within(bareCard).getByLabelText(/add employee/i)).toBeInTheDocument();
+  });
+
+  it("offers only non-member nurses in the Add-employee picker", async () => {
+    accounts = [
+      { id: "u-ruby", name: "Ruby Walsh", email: "", roles: ["nurse"], clinicIDs: ["clinic-lumiere"], mustChangePassword: false }, // already a member
+      { id: "u-indie", name: "Indie Nurse", email: "", roles: ["nurse"], clinicIDs: [], mustChangePassword: false },              // not a member
+    ];
+    await openEmployment();
+    const card = screen.getByText("Lumière Clinic").closest("div")!;
+    const select = within(card).getByLabelText(/add employee/i);
+    const options = within(select).getAllByRole("option");
+    expect(options.length).toBe(1);
+    expect(options[0]).toHaveTextContent("Indie Nurse");
+  });
 });

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { effectiveRelationshipKinds, RELATIONSHIP_KINDS, type AccountRecord, type CooperationRelationship, type CounterpartyType, type Identity, type RelationshipKind } from "@/lib/demo/types";
+import { effectiveRelationshipKinds, RELATIONSHIP_KINDS, type AccountRecord, type ClinicEmployment, type CooperationRelationship, type CounterpartyType, type Identity, type RelationshipKind } from "@/lib/demo/types";
 import type { ClinicOption, SetCooperationRelationshipInput } from "@/lib/demo/backend";
 
 // Cooperation relationships (spec 2026-07-08 cooperation-relationships, constitution §17):
@@ -565,7 +565,7 @@ function EmploymentMemberRow({ member, clinicID, clinicName, employment, identit
   member: AccountRecord;
   clinicID: string;
   clinicName: string;
-  employment: import("@/lib/demo/types").ClinicEmployment | undefined;
+  employment: ClinicEmployment | undefined;
   identity: Identity;
 }) {
   const store = useDemoStore();
