@@ -362,11 +362,15 @@ export function buildSeedState(): DemoState {
   state = { ...state, accountsByID };
 
   // One admin-granted nurse employment so the demo Employment view has a removable member
-  // and Ruby can invoice Lumière out of the box (spec: 2026-07-25).
+  // and Nadia can invoice Lumière out of the box (spec: 2026-07-25). Nadia is an independent
+  // nurse with NO baked clinic identity, so this grant is the sole source of her Lumière
+  // membership — removing it in the admin UI fully and consistently revokes her. Sarah/Ruby
+  // stay read-only baked members (their clinic identity is fixed in accounts.ts, not
+  // grant-backed) so removing a grant can never desync them from their baked identity.
   state = {
     ...state,
     clinicEmployments: [
-      { id: "u-ruby_clinic-lumiere", nurseID: "u-ruby", nurseName: "Ruby Walsh", clinicID: LUMIERE.id, clinicName: LUMIERE.name, grantedAt: SEED_NOW },
+      { id: "u-nadia_clinic-lumiere", nurseID: "u-nadia", nurseName: "Nadia Okafor", clinicID: LUMIERE.id, clinicName: LUMIERE.name, grantedAt: SEED_NOW },
     ],
   };
 
