@@ -33,6 +33,11 @@ vi.mock("@/lib/firebase/auth", () => ({
 const hydrate = vi.hoisted(() => vi.fn(async () => emptyState()));
 vi.mock("@/lib/firebase/hydrate", () => ({ hydrate }));
 
+// Controllable server-authoritative write (26/07 feedback): the callable itself must raise
+// the Syncing overlay, not just the post-write rehydrate.
+const setScriptPriceCall = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("@/lib/firebase/invoices", () => ({ setScriptPrice: setScriptPriceCall }));
+
 import { DemoStoreProvider, useDemoStore } from "@/lib/demo/store";
 import { DemoAuthProvider } from "@/lib/demo/auth";
 
@@ -47,6 +52,8 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   hydrate.mockReset();
   hydrate.mockResolvedValue(emptyState());
+  setScriptPriceCall.mockReset();
+  setScriptPriceCall.mockResolvedValue(undefined);
   identities = [LIVE_IDENTITY];
 });
 
@@ -99,6 +106,39 @@ describe("useDemoStore refresh re-hydrate", () => {
     await waitFor(() => expect(result.current.status).toBe("ready"));
     // The overlay flag must not wedge on — this is the "syncing never ends" bug.
     await waitFor(() => expect(result.current.refreshing).toBe(false));
+  });
+
+  it("raises `refreshing` the moment a server-authoritative write starts (26/07: dead button window)", async () => {
+    // Before this fix: click → callable in flight for seconds with ZERO feedback → only the
+    // post-write rehydrate raised the overlay. The overlay must cover the callable itself.
+    const { result } = renderHook(() => useDemoStore(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    let release!: () => void;
+    setScriptPriceCall.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { release = () => resolve(); }),
+    );
+    act(() => result.current.setScriptPrice("clinic-1", 2500, LIVE_IDENTITY));
+
+    // Overlay is up WHILE the callable runs — no rehydrate has started yet.
+    await waitFor(() => expect(result.current.refreshing).toBe(true));
+    expect(hydrate).toHaveBeenCalledTimes(1); // still only the initial load
+
+    act(() => release());
+    // Write settles → post-write rehydrate runs and settles → overlay ends.
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    expect(result.current.status).toBe("ready");
+  });
+
+  it("drops the write overlay and reports via the banner when the callable fails", async () => {
+    const { result } = renderHook(() => useDemoStore(), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    setScriptPriceCall.mockRejectedValueOnce(new Error("deadline exceeded"));
+    act(() => result.current.setScriptPrice("clinic-1", 2500, LIVE_IDENTITY));
+
+    await waitFor(() => expect(result.current.lastSyncError).not.toBeNull());
+    await waitFor(() => expect(result.current.refreshing).toBe(false)); // never wedges on
   });
 
   it("keeps rendered data on a failed refresh and reports through the sync-error banner", async () => {
