@@ -374,6 +374,23 @@ export function buildSeedState(): DemoState {
     ],
   };
 
+  // Fold each seeded grant's clinicID into its nurse's clinicIDs — mirrors setClinicEmployment's
+  // grant branch, which updates clinicEmployments and clinicIDs atomically. Seeding the two
+  // separately (accountsByID above derives clinicIDs from baked identity contexts only) would
+  // otherwise leave a grant-only nurse like Nadia with an empty clinicIDs: the admin Employment
+  // view and createServiceInvoice both key off clinicIDs, not clinicEmployments directly.
+  for (const employment of state.clinicEmployments) {
+    const account = state.accountsByID[employment.nurseID];
+    if (!account || (account.clinicIDs ?? []).includes(employment.clinicID)) continue;
+    state = {
+      ...state,
+      accountsByID: {
+        ...state.accountsByID,
+        [employment.nurseID]: { ...account, clinicIDs: [...(account.clinicIDs ?? []), employment.clinicID] },
+      },
+    };
+  }
+
   // Cooperation relationships (spec 2026-07-08): seed the demo cast's active pairs so the gated
   // request pickers still show Dr Voss. Sarah acts independently (nurse counterparty) and
   // Ruby/Ava/Sarah act in Lumière (clinic counterparty) — cover both.
