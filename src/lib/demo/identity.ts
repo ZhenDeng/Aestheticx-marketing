@@ -22,7 +22,11 @@ export function heldIdentities(
   const base = DEMO_ACCOUNTS.find((a) => a.identities.some((i) => i.user.id === active.user.id))?.identities ?? [active];
   const identities = [...base];
 
-  // Doctor employee-kind clinic identities (unchanged).
+  // Doctor employee-kind clinic identities. Live clinic identities come from server-verified
+  // membership claims; the demo mirrors that from the in-memory cooperation-relationship source:
+  // an active doctor↔clinic relationship whose kind set includes "employee" grants the doctor an
+  // employee clinic identity, while a prescriber-only relationship gates authorisation requests
+  // but confers no membership.
   for (const relationship of demoRelationships) {
     if (relationship.status !== "active" || relationship.counterpartyType !== "clinic") continue;
     if (!effectiveRelationshipKinds(relationship)?.includes("employee")) continue;
