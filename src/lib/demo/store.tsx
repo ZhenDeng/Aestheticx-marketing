@@ -20,8 +20,9 @@ interface StoreValue {
   state: DemoState;
   now: number;
   status: Status;
-  // True while an action-triggered refresh re-hydrates — the shell overlays the page
-  // (20/07 feedback); status stays "ready" so pages don't unmount into "Loading…".
+  // True while an action-triggered refresh re-hydrates OR a server-authoritative write's
+  // callable is in flight (26/07 feedback) — the shell overlays the page; status stays
+  // "ready" so pages don't unmount into "Loading…".
   refreshing: boolean;
   lastSyncError: string | null;
   rehydrate: () => void;
@@ -203,6 +204,16 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
   // True while a REFRESH re-hydrate runs (action-triggered, same identity set already
   // hydrated) — the shell overlays the page instead of unmounting it (20/07 feedback).
   const [refreshing, setRefreshing] = useState(false);
+  // In-flight server-authoritative writes (26/07 feedback): the fire-and-forget callable
+  // branches gave no feedback until the post-write rehydrate raised `refreshing`, so buttons
+  // sat dead for the callable's seconds. The overlay must cover the callable itself.
+  const [pendingWrites, setPendingWrites] = useState(0);
+  const runLiveWrite = useCallback((fn: () => Promise<void>) => {
+    setPendingWrites((n) => n + 1);
+    void (async () => {
+      try { await fn(); } finally { setPendingWrites((n) => n - 1); }
+    })();
+  }, []);
   // `${uid}|${identitySetKey}` of the last COMPLETED hydrate — how a re-run knows it is
   // a refresh rather than a first load or an identity switch.
   const hydratedKeyRef = useRef<string | null>(null);
@@ -377,7 +388,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       state,
       now,
       status,
-      refreshing,
+      refreshing: refreshing || pendingWrites > 0,
       lastSyncError,
       rehydrate: () => setRefreshTick((t) => t + 1),
       searchPatients: (q, id) => backend.searchPatients(state, q, id),
@@ -395,45 +406,45 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       billableAuthorisations: (did) => backend.billableAuthorisations(state, did),
       setScriptPrice: (cid, priceCents, id) => {
         if (!live) { setState((s) => backend.setScriptPrice(s, id.user.id, cid, priceCents)); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try { const m = await import("@/lib/firebase/invoices"); await m.setScriptPrice(cid, priceCents); setRefreshTick((t) => t + 1); }
           catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       generateInvoice: (input, id) => {
         if (!live) { setState((s) => backend.generateInvoice(s, input, id, writeNow()).state); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
             await m.generateInvoice({ counterpartyID: input.counterpartyID, counterpartyType: input.counterpartyType, periodLabel: input.periodLabel, authorisationIDs: input.authIDs });
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       // Delete an invoice to correct an error (16/07 enhancement 2). Same demo-reducer /
       // live-callable split — invoices are Function-only docs; the callable returns the
       // member authorisations to the un-invoiced pool transactionally.
       deleteInvoice: (invoiceID, id) => {
         if (!live) { setState((s) => backend.deleteInvoice(s, invoiceID, id, writeNow())); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
             await m.deleteInvoice(invoiceID);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       // Mark an invoice paid (Tier 3 #6). Same demo-reducer / live-callable split as generateInvoice —
       // invoices are Function-only Firestore docs, so live routes through the markInvoicePaid callable.
       markInvoicePaid: (invoiceID, id) => {
         if (!live) { setState((s) => backend.markInvoicePaid(s, invoiceID, id, writeNow())); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
             await m.markInvoicePaid(invoiceID);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       // Billing matrix: demo-mode reducers only. Live callers never reach these — the UI
       // gates every surface behind matrixEnabled — but a friendly sync error covers a
@@ -458,7 +469,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       serviceInvoicingEnabled: true,
       createServiceInvoice: (input, id) => {
         if (!live) { setState((s) => backend.createServiceInvoice(s, input, id, writeNow())); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try {
             const m = await import("@/lib/firebase/invoices");
             await m.createServiceInvoice({
@@ -468,7 +479,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
             });
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       createClientInvoice: (input, id) => {
         // Build once (eager-validate + stable id), persist that exact invoice in demo,
@@ -848,41 +859,41 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         // Eager-validate (throws before the async live branch); relationships are demo-writable.
         const next = backend.setCooperationRelationship(state, input, actor, writeNow());
         if (!live) { setState(() => next); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetCooperationRelationship(input); setRefreshTick((t) => t + 1); }
           catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       removeCooperationRelationship: (relationshipID, actor) => {
         const next = backend.removeCooperationRelationship(state, relationshipID, actor, writeNow());
         if (!live) { setState(() => next); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorRemoveCooperationRelationship(relationshipID); setRefreshTick((t) => t + 1); }
           catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       clinicEmployments: () => backend.clinicEmploymentsList(state),
       setClinicEmployment: (input, actor) => {
         // Eager-validate + apply (throws before the async live branch); demo-writable.
         const next = backend.setClinicEmployment(state, input, actor, writeNow());
         if (!live) { setState(() => next); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try {
             const m = await import("@/lib/firebase/mirror");
             await m.mirrorSetClinicMembership(input);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       catalogProducts: () => backend.catalogProductsList(state),
       setProduct: (input, actor) => {
         // Eager-validate (throws before the async live branch); catalog is demo-writable.
         const next = backend.setProduct(state, input, actor);
         if (!live) { setState(() => next); return; }
-        void (async () => {
+        runLiveWrite(async () => {
           try { const m = await import("@/lib/firebase/mirror"); await m.mirrorSetProduct(input); setRefreshTick((t) => t + 1); }
           catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       setProductActive: (id, isActive, actor) => {
         const next = backend.setProductActive(state, id, isActive, actor);
@@ -890,14 +901,14 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         // Live: deactivate → the deactivateProduct callable; reactivate → setProduct(isActive:true)
         // with the stored fields (there is no reactivate callable — setProduct is the upsert path).
         const prod = state.productsByID[id];
-        void (async () => {
+        runLiveWrite(async () => {
           try {
             const m = await import("@/lib/firebase/mirror");
             if (isActive && prod) await m.mirrorSetProduct({ id: prod.id, category: prod.category, brand: prod.brand, name: prod.name, unit: prod.unit, isActive: true });
             else await m.mirrorDeactivateProduct(id);
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }
-        })();
+        });
       },
       businessEntities: () => backend.businessEntitiesList(state),
       setBusinessEntity: async (input, actor) => {
@@ -970,7 +981,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorUpdateProfile(identity.user.id, edits),
         ),
     }),
-    [state, now, writeNow, status, refreshing, lastSyncError, applyAndMirror, live],
+    [state, now, writeNow, status, refreshing, pendingWrites, lastSyncError, applyAndMirror, runLiveWrite, live],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
