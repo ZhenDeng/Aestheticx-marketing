@@ -20,7 +20,7 @@ type RelationshipView = "prescribing" | "employment";
 
 export function CooperationRelationshipsSection() {
   const store = useDemoStore();
-  const { identity } = useDemoAuth();
+  const { identity, mode } = useDemoAuth();
   const [view, setView] = useState<RelationshipView>("prescribing");
   const [creating, setCreating] = useState(false);
   // The full doctor directory, fetched once for the create form's picker (accounts() already
@@ -147,6 +147,7 @@ export function CooperationRelationshipsSection() {
                         clinicName={g.name}
                         employment={employment}
                         identity={identity}
+                        live={mode === "live"}
                       />
                     );
                   })}
@@ -559,18 +560,26 @@ function CreateRelationshipForm({ doctorOptions, nurses, clinics, identity, onDo
   );
 }
 
-// One nurse member row in the Employment view. A grant-backed membership (an admin
-// ClinicEmployment) is removable; a baked seed membership stays a read-only "Member account".
-function EmploymentMemberRow({ member, clinicID, clinicName, employment, identity }: {
+// One nurse member row in the Employment view. Live mode: every nurse member is removable —
+// membership lives in the `clinics` claims map (clinicEmployments hydrates empty), and the
+// setClinicMembership callable's revoke is claims-driven and idempotent, so removal never
+// depends on a web-side grant record. Demo mode: only a grant-backed membership (an admin
+// ClinicEmployment) is removable — a baked seed membership (Sarah/Ruby) stays a read-only
+// "Member account", since its clinic identity is fixed in DEMO_ACCOUNTS and a store-side
+// revoke would desync it. clinicAdmin-only members stay read-only in both modes (the
+// callable rejects non-nurse targets).
+function EmploymentMemberRow({ member, clinicID, clinicName, employment, identity, live }: {
   member: AccountRecord;
   clinicID: string;
   clinicName: string;
   employment: ClinicEmployment | undefined;
   identity: Identity;
+  live: boolean;
 }) {
   const store = useDemoStore();
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const removable = employment !== undefined || (live && member.roles.includes("nurse"));
 
   function remove() {
     setError(null);
@@ -594,7 +603,7 @@ function EmploymentMemberRow({ member, clinicID, clinicName, employment, identit
         </span>
         {error && <span className="micro block" style={{ color: "var(--color-rose)" }}>{error}</span>}
       </span>
-      {employment ? (
+      {removable ? (
         confirming ? (
           <span className="flex items-center gap-2">
             <span className="micro" style={{ color: "var(--color-rose)" }}>Remove from clinic?</span>
