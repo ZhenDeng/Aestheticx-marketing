@@ -361,6 +361,15 @@ export function buildSeedState(): DemoState {
   }
   state = { ...state, accountsByID };
 
+  // One admin-granted nurse employment so the demo Employment view has a removable member
+  // and Ruby can invoice Lumière out of the box (spec: 2026-07-25).
+  state = {
+    ...state,
+    clinicEmployments: [
+      { id: "u-ruby_clinic-lumiere", nurseID: "u-ruby", nurseName: "Ruby Walsh", clinicID: LUMIERE.id, clinicName: LUMIERE.name, grantedAt: SEED_NOW },
+    ],
+  };
+
   // Cooperation relationships (spec 2026-07-08): seed the demo cast's active pairs so the gated
   // request pickers still show Dr Voss. Sarah acts independently (nurse counterparty) and
   // Ruby/Ava/Sarah act in Lumière (clinic counterparty) — cover both.
