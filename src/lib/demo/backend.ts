@@ -2077,6 +2077,11 @@ export function setClinicEmployment(state: DemoState, input: SetClinicEmployment
     );
   }
 
+  // No grant to revoke — e.g. a baked clinic member (Sarah/Ruby) whose clinicIDs entry came
+  // from their fixed accounts.ts identity, not this store. Returning state unchanged stops the
+  // revoke path from stripping a legitimate baked clinicIDs entry or logging a spurious revoke.
+  if (!state.clinicEmployments.some((e) => e.id === id)) return state;
+
   const clinicEmployments = state.clinicEmployments.filter((e) => e.id !== id);
   const clinicIDs = currentClinicIDs.filter((c) => c !== input.clinicID);
   const next = {

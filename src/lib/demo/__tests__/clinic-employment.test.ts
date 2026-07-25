@@ -69,6 +69,14 @@ describe("setClinicEmployment", () => {
       .toThrow(BackendError);
   });
 
+  it("revoking a pair that was never granted returns state unchanged (no clinicIDs strip, no audit)", () => {
+    const before = stateWithNonMemberNurse();
+    const after = setClinicEmployment(before, { ...grant, employed: false }, admin, 1000);
+    expect(after).toBe(before);
+    expect(after.accountsByID["u-indie"].clinicIDs).toEqual([]);
+    expect(Object.values(after.auditLogByID).some((e) => e.action === "clinic_employment_revoked")).toBe(false);
+  });
+
   it("unlocks invoicing: the nurse can only createServiceInvoice after being employed", () => {
     const before = stateWithNonMemberNurse();
     expect(() => createServiceInvoice(before, { clinicID: "clinic-lumiere", lines: [{ description: "June nursing", amountCents: 100000 }] }, indieNurse, 1000))
