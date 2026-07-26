@@ -254,6 +254,7 @@ function InvoiceClientSection() {
                 </span>
                 <span className="flex flex-none items-center gap-3">
                   <button type="button" onClick={() => setOpenClientID((c) => (c === p.id ? null : p.id))}
+                    aria-expanded={openClientID === p.id}
                     className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
                     {openClientID === p.id ? "Close" : "Invoice"}
                   </button>

@@ -14,7 +14,7 @@ import { shareOrMailFile } from "@/lib/shareFile";
 // Shared by the billing page and the client-invoice composer.
 export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   const store = useDemoStore();
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [emailing, setEmailing] = useState(false);
 
   // Render the client-side ATO PDF once for whichever action is taken.
@@ -24,7 +24,7 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   }
 
   function download() {
-    setError(false);
+    setError(null);
     try {
       const bytes = renderPdf();
       const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -37,15 +37,16 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
       a.remove();
       // Defer revocation: revoking synchronously can abort the download (directionPdf precedent).
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setError(true);
+    } catch (e) {
+      console.error("Invoice PDF download failed:", e);
+      setError("Couldn’t create the PDF");
     }
   }
 
   // 22/07 feedback: hand the invoice to the practitioner's own mail app, prefilled and (where
   // the platform supports it) with the PDF attached — replacing the server's silent auto-send.
   async function email() {
-    setError(false);
+    setError(null);
     setEmailing(true);
     try {
       const { billTo } = invoicePartiesFor(store.state, invoice);
@@ -64,8 +65,9 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
         body,
         attachNote: INVOICE_ATTACH_NOTE,
       });
-    } catch {
-      setError(true);
+    } catch (e) {
+      console.error("Invoice email hand-off failed:", e);
+      setError("Couldn’t open your mail app with the invoice");
     } finally {
       setEmailing(false);
     }
@@ -73,7 +75,7 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
 
   return (
     <span className="flex items-center gap-2">
-      {error && <span className="text-xs" style={{ color: "var(--color-rose)" }}>Couldn’t create the PDF</span>}
+      {error && <span className="text-xs" style={{ color: "var(--color-rose)" }}>{error}</span>}
       <button type="button" onClick={() => void email()} disabled={emailing}
         className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint disabled:opacity-50">
         {emailing ? "Opening…" : "Email invoice"}

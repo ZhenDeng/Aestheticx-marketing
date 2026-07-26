@@ -124,6 +124,9 @@ describe("matrix mark-paid affordance", () => {
     // Two unpaid client docs render (sale + manual invoice); rows keep the fixture order.
     await userEvent.click(within(section).getAllByRole("button", { name: /mark paid/i })[0]);
     expect(markInvoicePaid).toHaveBeenCalledWith(clinicSale.id, ava);
+    // The manual client-invoice row carries the same settle affordance.
+    await userEvent.click(within(section).getAllByRole("button", { name: /mark paid/i })[1]);
+    expect(markInvoicePaid).toHaveBeenCalledWith(clinicManualInvoice.id, ava);
   });
 });
 
