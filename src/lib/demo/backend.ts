@@ -344,12 +344,18 @@ export function searchPatients(state: DemoState, query: string, identity: Identi
 
   switch (classifySearch(trimmed)) {
     case "name": {
+      // The list renders displayName (with the preferred name), so search must match the
+      // preferred name too — searching what's on screen must never miss (26/07 QA).
       const needle = trimmed.toLowerCase();
-      return scope.filter((p) => fullName(p).toLowerCase().includes(needle));
+      return scope.filter(
+        (p) => fullName(p).toLowerCase().includes(needle) || (p.preferredName ?? "").toLowerCase().includes(needle),
+      );
     }
     case "phone": {
+      // Digit-substring, not exact-number equality (26/07 QA departure from iOS parity):
+      // fragments must match, consistent with the substring name search.
       const digits = [...trimmed].filter((c) => c >= "0" && c <= "9").join("");
-      return scope.filter((p) => [...p.phone].filter((c) => c >= "0" && c <= "9").join("") === digits);
+      return scope.filter((p) => [...p.phone].filter((c) => c >= "0" && c <= "9").join("").includes(digits));
     }
     case "dateOfBirth": {
       const parts = trimmed.split("/").map((s) => parseInt(s, 10)).filter((n) => !Number.isNaN(n));
