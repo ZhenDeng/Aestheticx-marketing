@@ -41,6 +41,56 @@ function apptColor(a: Appointment): string {
   }
 }
 
+// 26/07 feedback: the day/week time grids are taller than the viewport, so the whole page
+// scrolled and the calendar header (toolbar + weekday row) scrolled away with it. Fit the
+// grid pane to the viewport space below its top edge instead: the toolbar stays put and the
+// grid scrolls internally. Content BELOW the pane (day view's follow-ups + reminder
+// settings) stays ordinary page flow past the fold — the grid never forces page scrolling,
+// those sections scroll like any page. Measured (not a hardcoded calc) so it is exact
+// across breakpoints and when banners (pending bookings, slot chooser, forms) change the
+// offset; re-measured every render — setState bails when the value is unchanged.
+const GRID_BOTTOM_GAP = 32; // matches the shell main's bottom padding (py-8)
+function useViewportFitMaxHeight(): { ref: React.RefObject<HTMLDivElement | null>; maxHeight: number | undefined } {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const measure = () => {
+      const el = ref.current;
+      if (!el) return;
+      // innerHeight can read 0 in embedded/hidden webviews — fall back to the root element.
+      const viewportH = window.innerHeight || document.documentElement.clientHeight;
+      if (!viewportH) return; // nothing sensible to fit against yet; keep the previous value
+      // Top edge in document coordinates (viewport-relative top + current scroll), so an
+      // already-scrolled page doesn't inflate the pane height.
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const next = Math.max(240, viewportH - top - GRID_BOTTOM_GAP);
+      setMaxHeight((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+  return { ref, maxHeight };
+}
+
+// Drag auto-scroll targets the grid's own scroll pane now that the rail scrolls internally —
+// window scrolling no longer moves it. Window fallback covers a block outside a pane.
+function paneOf(el: Element | null): HTMLElement | null {
+  return (el?.closest("[data-cal-scroll]") as HTMLElement | null) ?? null;
+}
+function paneScroll(pane: HTMLElement | null): number {
+  return pane ? pane.scrollTop : window.scrollY;
+}
+function paneScrollBy(pane: HTMLElement | null, v: number): void {
+  if (pane) pane.scrollTop += v;
+  else window.scrollBy(0, v);
+}
+function paneEdgeVelocity(pane: HTMLElement | null, clientY: number): number {
+  if (!pane) return edgeScrollVelocity(clientY, window.innerHeight);
+  const r = pane.getBoundingClientRect();
+  return edgeScrollVelocity(clientY - r.top, r.height);
+}
+
 function timeLabel(minute: number): string {
   const h = Math.floor(minute / 60);
   const m = minute % 60;
@@ -296,6 +346,7 @@ function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmpt
   onSelect: (id: string | null) => void; onEmptyTap: (startMinute: number) => void;
 }) {
   const railHeight = (WIN_END - WIN_START) * PX_PER_MIN;
+  const { ref: gridPaneRef, maxHeight: gridPaneMaxHeight } = useViewportFitMaxHeight();
   const cols = new Map<string, DayColumn>(
     layoutDay(appts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
   );
@@ -309,14 +360,17 @@ function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmpt
   }
 
   return (
-    <div className="mt-6 grid" style={{ gridTemplateColumns: "3rem 1fr" }}>
-      <div className="relative" style={{ height: railHeight }}>
+    // 26/07 feedback: viewport-fit scroll pane — the toolbar above stays put, the rail scrolls.
+    <div ref={gridPaneRef} data-cal-scroll className="mt-6 overflow-auto overscroll-contain" style={{ maxHeight: gridPaneMaxHeight }}>
+    <div className="grid" style={{ gridTemplateColumns: "3rem 1fr" }}>
+      {/* mt-2 keeps the half-height 07:00 label clear of the pane's clipped top edge */}
+      <div className="relative mt-2" style={{ height: railHeight }}>
         {HOURS_IN.map((h) => (
           <div key={h} className="pointer-events-none absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
         ))}
       </div>
-      <div className="relative border-l border-line" style={{ height: railHeight }} onClick={onColumnClick}>
+      <div className="relative mt-2 border-l border-line" style={{ height: railHeight }} onClick={onColumnClick}>
         {HOURS_IN.map((h) => (
           <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
             style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }} />
@@ -328,6 +382,7 @@ function DayTimeline({ appts, me, ownerID, dateISO, selectedId, onSelect, onEmpt
             selected={a.id === selectedId} onSelect={onSelect} />
         ))}
       </div>
+    </div>
     </div>
   );
 }
@@ -403,9 +458,9 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   const [topDy, setTopDy] = useState(0);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   // `dy` lives in the ref (not state) so onPointerUp commits the latest delta, not a stale render's.
-  // clientY + startScrollY feed the edge auto-scroll loop: scrolling moves the drop time under a
-  // stationary pointer, so the scroll delta joins the pointer delta.
-  const drag = useRef<{ startY: number; moved: boolean; dy: number; clientY: number; startScrollY: number } | null>(null);
+  // clientY + pane/startScroll feed the edge auto-scroll loop: scrolling the grid pane moves the
+  // drop time under a stationary pointer, so the scroll delta joins the pointer delta.
+  const drag = useRef<{ startY: number; moved: boolean; dy: number; clientY: number; pane: HTMLElement | null; startScroll: number } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const topResize = useRef<{ startY: number; dy: number } | null>(null);
   const scrollLoop = useRef<number | null>(null);
@@ -416,17 +471,17 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   }, []);
   useEffect(() => stopScrollLoop, [stopScrollLoop]); // unmount safety
 
-  // While a move drag sits in an edge zone, scroll the window and refresh the compensated
+  // While a move drag sits in an edge zone, scroll the grid pane and refresh the compensated
   // delta — pointermove doesn't fire for a stationary pointer, so the loop does both.
   function startScrollLoop() {
     if (scrollLoop.current !== null) return;
     const step = () => {
       const st = drag.current;
       if (!st || !st.moved) { scrollLoop.current = null; return; }
-      const v = edgeScrollVelocity(st.clientY, window.innerHeight);
+      const v = paneEdgeVelocity(st.pane, st.clientY);
       if (v !== 0) {
-        window.scrollBy(0, v);
-        st.dy = (st.clientY - st.startY) + (window.scrollY - st.startScrollY);
+        paneScrollBy(st.pane, v);
+        st.dy = (st.clientY - st.startY) + (paneScroll(st.pane) - st.startScroll);
         setDragDy(st.dy);
       }
       scrollLoop.current = requestAnimationFrame(step);
@@ -453,12 +508,13 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
 
   function onPointerDown(e: React.PointerEvent) {
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no active pointer (e.g. tests) — capture is best-effort */ }
-    drag.current = { startY: e.clientY, moved: false, dy: 0, clientY: e.clientY, startScrollY: window.scrollY };
+    const pane = paneOf(e.currentTarget);
+    drag.current = { startY: e.clientY, moved: false, dy: 0, clientY: e.clientY, pane, startScroll: paneScroll(pane) };
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return;
     drag.current.clientY = e.clientY;
-    const dy = (e.clientY - drag.current.startY) + (window.scrollY - drag.current.startScrollY);
+    const dy = (e.clientY - drag.current.startY) + (paneScroll(drag.current.pane) - drag.current.startScroll);
     drag.current.dy = dy;
     if (Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
     if (draggable && drag.current.moved) {
@@ -623,7 +679,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const drag = useRef<{
     startX: number; startY: number; moved: boolean; dx: number; dy: number; colW: number;
-    clientY: number; startScrollY: number;
+    clientY: number; pane: HTMLElement | null; startScroll: number;
   } | null>(null);
   const resize = useRef<{ startY: number; dy: number } | null>(null);
   const topResize = useRef<{ startY: number; dy: number } | null>(null);
@@ -642,10 +698,10 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
     const step = () => {
       const st = drag.current;
       if (!st || !st.moved) { scrollLoop.current = null; return; }
-      const v = edgeScrollVelocity(st.clientY, window.innerHeight);
+      const v = paneEdgeVelocity(st.pane, st.clientY);
       if (v !== 0) {
-        window.scrollBy(0, v);
-        st.dy = (st.clientY - st.startY) + (window.scrollY - st.startScrollY);
+        paneScrollBy(st.pane, v);
+        st.dy = (st.clientY - st.startY) + (paneScroll(st.pane) - st.startScroll);
         setMove({ dx: st.dx, dy: st.dy });
       }
       scrollLoop.current = requestAnimationFrame(step);
@@ -673,16 +729,17 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
     // Reconstruct the full column width from the chip's own rect (chip width = colW/cols),
     // which is always available and transform/scroll-invariant (unlike offsetParent).
     const colW = e.currentTarget.getBoundingClientRect().width * layout.cols;
+    const pane = paneOf(e.currentTarget);
     drag.current = {
       startX: e.clientX, startY: e.clientY, moved: false, dx: 0, dy: 0, colW,
-      clientY: e.clientY, startScrollY: window.scrollY,
+      clientY: e.clientY, pane, startScroll: paneScroll(pane),
     };
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return;
     drag.current.clientY = e.clientY;
     const dx = e.clientX - drag.current.startX;
-    const dy = (e.clientY - drag.current.startY) + (window.scrollY - drag.current.startScrollY);
+    const dy = (e.clientY - drag.current.startY) + (paneScroll(drag.current.pane) - drag.current.startScroll);
     drag.current.dx = dx; drag.current.dy = dy;
     if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) drag.current.moved = true;
     if (draggable && drag.current.moved) {
@@ -834,6 +891,7 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
   const [slotForm, setSlotForm] = useState<{ iso: string; start?: number; block?: boolean } | null>(null);
   const selected = appts.find((a) => a.id === selectedId) ?? null;
   const showForm = showNew || slotForm !== null;
+  const { ref: gridPaneRef, maxHeight: gridPaneMaxHeight } = useViewportFitMaxHeight();
   function closeForm() { setShowNew(false); setSlotForm(null); }
 
   function onColumnClick(iso: string, e: React.MouseEvent) {
@@ -864,20 +922,22 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
       )}
 
       {/* 15/07 feedback: no left-right scroll on mobile — the min width only kicks in at sm+; below
-          that the flexible minmax(0,1fr) day columns compress to the viewport. */}
-      <div className="mt-6 overflow-x-auto">
+          that the flexible minmax(0,1fr) day columns compress to the viewport.
+          26/07 feedback: the pane is viewport-fit and scrolls the grid internally; the weekday
+          header row is sticky inside it, so the calendar header never leaves the screen. */}
+      <div ref={gridPaneRef} data-cal-scroll className="mt-6 overflow-auto overscroll-contain" style={{ maxHeight: gridPaneMaxHeight }}>
         <div className="grid sm:min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
-          {/* header row */}
-          <div />
+          {/* header row — sticky within the scroll pane; opaque so chips pass beneath it. */}
+          <div className="sticky top-0 z-20 bg-paper" />
           {days.map((iso) => (
             <button key={iso} onClick={() => openDay(iso)}
-              className="border-b border-line px-1 pb-2 text-center text-sm hover:text-tint"
+              className="sticky top-0 z-20 border-b border-line bg-paper px-1 pb-2 text-center text-sm hover:text-tint"
               style={iso === todayISO ? { color: "var(--color-tint)", fontWeight: 600 } : { color: "var(--color-ink-soft)" }}>
               {dayHeaderLabel(iso)}
             </button>
           ))}
-          {/* hour rail */}
-          <div className="relative" style={{ height: railHeight }}>
+          {/* hour rail — mt-2 keeps the half-height 07:00 label clear of the sticky header row */}
+          <div className="relative mt-2" style={{ height: railHeight }}>
             {HOURS_IN.map((h) => (
               <div key={h} className="absolute right-1 -translate-y-1/2 text-xs text-ink-soft"
                 style={{ top: (h * 60 - WIN_START) * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
@@ -890,7 +950,7 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
               layoutDay(dayAppts.map((a) => ({ id: a.id, startMinute: a.startMinute, endMinute: a.endMinute }))).map((c) => [c.id, c]),
             );
             return (
-              <div key={iso} className="relative border-l border-line" style={{ height: railHeight }}
+              <div key={iso} className="relative mt-2 border-l border-line" style={{ height: railHeight }}
                 onClick={(e) => onColumnClick(iso, e)}>
                 {HOURS_IN.map((h) => (
                   <div key={h} className="pointer-events-none absolute left-0 right-0 border-t border-line/60"
