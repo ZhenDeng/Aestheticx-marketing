@@ -135,15 +135,34 @@ describe("searchPatients", () => {
     expect(searchPatients(state, "zzz", sarahIndependent)).toHaveLength(0);
   });
 
+  // 26/07 QA: the list renders displayName ("Claire 'Coco' Donovan"), so the on-screen
+  // nickname must find the patient too — searching what you can see must never miss.
+  it("finds a patient by the displayed preferred name", () => {
+    const state = stateWith({ ...nursePatient("p1", "u-sarah"), preferredName: "Coco" });
+    expect(searchPatients(state, "coco", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+  });
+  it("still finds by full given+last name when a preferred name is set", () => {
+    const state = stateWith({ ...nursePatient("p1", "u-sarah"), preferredName: "Coco" });
+    expect(searchPatients(state, "claire donovan", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+  });
+
   // Spec (appointments — add-appointment patient search): match by phone number.
   it("finds a patient by phone regardless of digit grouping", () => {
     const state = stateWith(nursePatient("p1", "u-sarah")); // stored as "0432 901 343"
     expect(searchPatients(state, "0432 901 343", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
     expect(searchPatients(state, "0432901343", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
   });
-  it("requires the full phone number (exact digit match, iOS parity)", () => {
+  // 26/07 QA: deliberate departure from the original iOS exact-match parity — a fragment
+  // must match (digit-substring), consistent with the substring name search; requiring the
+  // complete number silently returned nothing with no UI hint.
+  it("finds a patient by a phone fragment", () => {
     const state = stateWith(nursePatient("p1", "u-sarah"));
-    expect(searchPatients(state, "0432 901", sarahIndependent)).toHaveLength(0);
+    expect(searchPatients(state, "0432 901", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+    expect(searchPatients(state, "901 343", sarahIndependent).map((p) => p.id)).toEqual(["p1"]);
+  });
+  it("returns nothing for digits the phone does not contain", () => {
+    const state = stateWith(nursePatient("p1", "u-sarah"));
+    expect(searchPatients(state, "099999", sarahIndependent)).toHaveLength(0);
   });
   it("scopes phone search to visible patients", () => {
     const state = stateWith(nursePatient("p1", "u-other"));
