@@ -82,11 +82,10 @@ describe("nurse Invoice page", () => {
     render(<BillingPage />);
     const section = screen.getByText("Invoice a client").closest("section")!;
     // Clinic identity ⇒ the clinic book. Amara "Mara" Boyd is Lumière-owned in the seed.
-    const links = within(section).getAllByRole("link");
-    expect(links.length).toBeGreaterThan(0);
-    const amara = links.find((l) => l.textContent?.includes("Boyd"));
-    expect(amara).toBeTruthy();
-    expect(amara!.getAttribute("href")).toMatch(/^\/app\/patients\//);
+    // Each row carries an inline Invoice button plus the link to the client's file.
+    const row = within(section).getByText(/Boyd/).closest("li")!;
+    expect(within(row).getByRole("button", { name: "Invoice" })).toBeInTheDocument();
+    expect(within(row).getByRole("link").getAttribute("href")).toMatch(/^\/app\/patients\//);
   });
 
   it("scopes the client list to the active identity (independent book when independent)", () => {
@@ -97,13 +96,14 @@ describe("nurse Invoice page", () => {
     expect(within(section).queryByText(/Boyd/)).not.toBeInTheDocument();
   });
 
-  it("live mode: client invoicing explains itself while the clinic composer stays available", () => {
+  it("live mode: the client picker stays available alongside the clinic composer", () => {
+    // 26/07: the manual client composer works in live (PDF hand-off), so the picker no
+    // longer hides behind the matrix gate and the old explainer paragraph is gone.
     matrixEnabled = false;
     render(<BillingPage />);
-    expect(screen.queryByText("Invoice a client")).not.toBeInTheDocument();
-    // The composer is no longer matrix-gated — its callable shipped (backend PR #115).
+    expect(screen.getByText("Invoice a client")).toBeInTheDocument();
     expect(screen.getByText("Invoice the clinic")).toBeInTheDocument();
-    expect(screen.getByText(/client invoicing isn.t available in live mode yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/client invoicing isn.t available in live mode yet/i)).not.toBeInTheDocument();
   });
 });
 

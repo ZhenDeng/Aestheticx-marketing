@@ -76,6 +76,16 @@ describe("ClientInvoiceComposer", () => {
     expect(inv.gstIncluded).toBeUndefined();
   });
 
+  it("names the client it bills and in the issued confirmation", async () => {
+    const claire = findPatient("Claire Donovan");
+    render(<ClientInvoiceComposer patient={claire} />);
+    expect(screen.getByText(/billing to/i)).toHaveTextContent("Billing to Claire Donovan");
+    await userEvent.type(screen.getByLabelText("Line 1 description"), "Consult");
+    await userEvent.type(screen.getByLabelText("Line 1 amount"), "100");
+    await userEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    expect(screen.getByText(/invoice issued to claire donovan/i)).toBeInTheDocument();
+  });
+
   it("renders nothing without commercial access to the patient", () => {
     const amara = findPatient("Amara Boyd"); // clinic-owned; Sarah's INDEPENDENT id has no reach
     const { container } = render(<ClientInvoiceComposer patient={amara} />);

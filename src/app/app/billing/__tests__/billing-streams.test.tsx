@@ -28,6 +28,7 @@ function inv(partial: Partial<Invoice>): Invoice {
 }
 
 const sarahTopUp = inv({ kind: "top-up", issuerRef: { kind: "nurse", id: "u-sarah" }, patientID: "p1", issuer: sarahParty, billTo: claireParty, giftCents: 100000, totalCreditCents: 500000, paid: true });
+const clinicManualInvoice = inv({ kind: "client-invoice", issuerRef: { kind: "clinic", id: LUMIERE.id }, patientID: "p2", issuer: clinicParty, billTo: claireParty, periodLabel: "2026-07-20", subtotalCents: 30000, gstCents: 3000, totalCents: 33000 });
 const clinicSale = inv({ kind: "client-sale", issuerRef: { kind: "clinic", id: LUMIERE.id }, patientID: "p2", issuer: clinicParty, billTo: claireParty });
 const sarahFeeDraft = inv({ kind: "service-fee", draft: true, issuerRef: { kind: "nurse", id: "u-sarah" }, counterpartyID: LUMIERE.id, counterpartyType: "clinic", issuer: sarahParty, billTo: clinicParty, subtotalCents: 15000, gstCents: 1500, totalCents: 16500 });
 const sarahFeeFinal = inv({ kind: "service-fee", draft: false, issuerRef: { kind: "nurse", id: "u-sarah" }, counterpartyID: LUMIERE.id, counterpartyType: "clinic", issuer: sarahParty, billTo: clinicParty, subtotalCents: 15000, gstCents: 1500, totalCents: 16500 });
@@ -82,18 +83,26 @@ beforeEach(() => {
   shareOrMailFile.mockClear();
   storeOverrides = {};
   currentIdentity = sarahClinic;
-  invoices = [sarahTopUp, clinicSale, sarahFeeDraft, sarahFeeFinal, legacyDoctorInvoice];
+  invoices = [sarahTopUp, clinicSale, clinicManualInvoice, sarahFeeDraft, sarahFeeFinal, legacyDoctorInvoice];
 });
 
 describe("nurse streams", () => {
   it("lists issued client documents with kind chips, scoped to the ACTIVE identity's silo", () => {
     render(<BillingPage />);
     const section = screen.getByTestId("client-invoices");
-    // Clinic-context Sarah sees the clinic-issued sale but NOT her independent-book
-    // top-up (client documents stay in the silo that owns the client).
-    expect(within(section).getAllByText(/claire donovan/i)).toHaveLength(1);
+    // Clinic-context Sarah sees the clinic-issued sale + manual invoice but NOT her
+    // independent-book top-up (client documents stay in the silo that owns the client).
+    expect(within(section).getAllByText(/claire donovan/i)).toHaveLength(2);
     expect(within(section).queryByText(/top-up/i)).not.toBeInTheDocument();
     expect(within(section).getByText(/client sale/i)).toBeInTheDocument();
+  });
+
+  it("includes manually issued client invoices, named after the client", () => {
+    render(<BillingPage />);
+    const section = screen.getByTestId("client-invoices");
+    // The manual document renders with its kind chip and the client's name + total.
+    expect(within(section).getByText("Client invoice")).toBeInTheDocument();
+    expect(within(section).getByText("$330.00")).toBeInTheDocument();
   });
 
   it("shows the drafted service fee with a Finalize action that calls the store", async () => {
@@ -112,7 +121,8 @@ describe("matrix mark-paid affordance", () => {
     currentIdentity = ava;
     render(<BillingPage />);
     const section = screen.getByTestId("client-invoices");
-    await userEvent.click(within(section).getByRole("button", { name: /mark paid/i }));
+    // Two unpaid client docs render (sale + manual invoice); rows keep the fixture order.
+    await userEvent.click(within(section).getAllByRole("button", { name: /mark paid/i })[0]);
     expect(markInvoicePaid).toHaveBeenCalledWith(clinicSale.id, ava);
   });
 });
@@ -122,7 +132,7 @@ describe("clinic admin streams", () => {
     currentIdentity = ava;
     render(<BillingPage />);
     const clientSection = screen.getByTestId("client-invoices");
-    expect(within(clientSection).getByText(/claire donovan/i)).toBeInTheDocument();
+    expect(within(clientSection).getAllByText(/claire donovan/i).length).toBeGreaterThan(0);
     const received = screen.getByTestId("received-service-fees");
     expect(within(received).getByText(/sarah chen/i)).toBeInTheDocument();
     expect(within(received).getByText("$165.00")).toBeInTheDocument();
