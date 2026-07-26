@@ -490,14 +490,20 @@ function AccountEntityLine({ ownerIds, preferred }: {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 26/07 feedback: the toggle awaits a live callable the row shows no other sign of —
+  // without a pending state the button sat dead for the callable's seconds and
+  // double-clicks fired duplicate callables. Keyed by entity id (the strip is a list).
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   if (!identity || identity.role !== "superAdmin") return null;
   const entities = store.businessEntities().filter((e) => ownerIds.includes(e.id));
   if (entities.length === 0 && !preferred) return null;
 
   async function toggle(entity: BusinessEntity) {
     setError(null);
+    setTogglingId(entity.id);
     try { await store.setBusinessEntityActive(entity.id, !entity.isActive, identity!); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not update"); }
+    finally { setTogglingId(null); }
   }
 
   return (
@@ -514,8 +520,12 @@ function AccountEntityLine({ ownerIds, preferred }: {
           <button onClick={() => setEditingId(entity.id)} className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50">
             Edit
           </button>
-          <button onClick={() => void toggle(entity)} className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50">
-            {entity.isActive ? "Deactivate" : "Activate"}
+          <button
+            onClick={() => void toggle(entity)}
+            disabled={togglingId === entity.id}
+            className="micro flex-none rounded-btn border border-line px-2.5 py-1 text-ink-soft hover:border-tint/50 disabled:opacity-60"
+          >
+            {togglingId === entity.id ? "Updating…" : entity.isActive ? "Deactivate" : "Activate"}
           </button>
         </div>
       ))}

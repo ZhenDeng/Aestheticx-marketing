@@ -128,6 +128,25 @@ describe("AccountEntityLine", () => {
     expect(screen.queryByDisplayValue("Lumière Group Pty Ltd")).not.toBeInTheDocument();
   });
 
+  // 26/07 feedback (dead-button audit): the toggle awaited the live callable with no pending
+  // state — the button kept its label, stayed enabled (double-clicks fired duplicate
+  // callables), and nothing changed on screen until the post-write rehydrate.
+  it("disables the toggle and shows Updating… while the callable is in flight", async () => {
+    let release!: () => void;
+    setBusinessEntityActive.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { release = () => resolve(); }),
+    );
+    await renderSettled();
+    await userEvent.click(within(rowOf("Ava Lim")).getByRole("button", { name: "Deactivate" }));
+
+    const pending = within(rowOf("Ava Lim")).getByRole("button", { name: "Updating…" });
+    expect(pending).toBeDisabled();
+    expect(setBusinessEntityActive).toHaveBeenCalledTimes(1);
+
+    await act(async () => { release(); });
+    expect(within(rowOf("Ava Lim")).getByRole("button", { name: "Deactivate" })).toBeEnabled();
+  });
+
   it("surfaces a failed activate/deactivate toggle on the row", async () => {
     setBusinessEntityActive.mockRejectedValueOnce(new Error("network"));
     await renderSettled();

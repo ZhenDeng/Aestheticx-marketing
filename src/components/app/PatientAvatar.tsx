@@ -65,6 +65,9 @@ export function PatientAvatarPicker({ patient, identity, canEdit, size = 72 }: {
   const live = store.status !== "demo";
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // 26/07 feedback (dead-button audit): the live Storage upload takes seconds — without a
+  // pending state the old photo/monogram just sat there until the write landed.
+  const [busy, setBusy] = useState(false);
 
   if (!canEdit) return <PatientAvatar patient={patient} size={size} />;
 
@@ -73,6 +76,7 @@ export function PatientAvatarPicker({ patient, identity, canEdit, size = 72 }: {
     const invalid = avatarFileError(file);
     if (invalid) { setError(invalid); return; }
     setError(null);
+    setBusy(true);
     try {
       if (live) {
         const { uploadPatientAvatar } = await import("@/lib/firebase/storage");
@@ -89,17 +93,24 @@ export function PatientAvatarPicker({ patient, identity, canEdit, size = 72 }: {
       }
     } catch {
       setError("The photo could not be saved. Please try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <div className="flex flex-col items-center gap-1">
       <button
-        type="button" onClick={() => inputRef.current?.click()} aria-label="Change patient photo"
-        className="relative flex-none rounded-full" style={{ width: size, height: size }}
+        type="button" onClick={() => inputRef.current?.click()} disabled={busy}
+        aria-label={busy ? "Uploading photo…" : "Change patient photo"}
+        className={`relative flex-none rounded-full ${busy ? "opacity-60" : ""}`} style={{ width: size, height: size }}
       >
         <PatientAvatar patient={patient} size={size} />
-        <span aria-hidden className="absolute bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full border-2 border-card bg-ink text-xs text-card">✎</span>
+        <span aria-hidden className="absolute bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full border-2 border-card bg-ink text-xs text-card">
+          {busy
+            ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-card" style={{ borderTopColor: "transparent" }} />
+            : "✎"}
+        </span>
       </button>
       <input
         ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
