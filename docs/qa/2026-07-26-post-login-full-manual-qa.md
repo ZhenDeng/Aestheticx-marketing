@@ -29,7 +29,9 @@
 ### Ground rules
 
 - **The demo resets on any full page reload** (F5, address-bar edits). Navigate only with in-app links; if you refresh mid-scenario, restart the scenario.
+- **The demo also resets on any account switch** (Sign out → re-enter reseeds the data — verified 26/07: the store lives in the `/app` layout). Consequence: every cross-account round-trip in this plan (2.3's resubmit loop, 4.3's Ava-receives-Ruby's-invoice, 6.4's re-enter-as-Nadia check) is **live-only**; in demo, test each account against the seeded state.
 - Switch accounts with **Sign out** in the header, never the browser back button.
+- **Pasting an `/app/...` URL is a full load** — it resets the sandbox and bounces to `/demo?next=…`. To test the role route guards (0.2/0.3), use that `next` round-trip: enter the demo from `/demo?next=%2Fapp%2Fadmin` and check where you land after sign-in.
 - The header chip must always read **"Demo · resets on refresh"** in demo and **"Live"** in live. If it's wrong, stop — you're testing the wrong environment.
 
 ### Known demo/live differences — do NOT file these as bugs
@@ -44,6 +46,10 @@
 | Consult call | Simulated ("In call (simulated)"), no incoming ring | Real video + incoming-ring banner |
 | Consent signing link | Local link + "Demo link" banner | Tokenised single-use link |
 | Audit log | Current session only | Durable history |
+| Cross-account round-trips (2.3 resubmit loop, 4.3 received fees, 6.4 identity re-check) | **Not testable** — data reseeds on account switch | Full round-trips work |
+| No-email aftercare guard (1.5) | **Not constructible** — email is required on the patient form and every seeded patient has one | Testable on a real patient without an email |
+| Ad-hoc consult panel (3.7) | **Not testable** — needs a doctor's always-accept ON while a nurse session is active; the flag resets on switch | Testable with two accounts |
+| Invoice-row ABN caption (4.1) | Never shows — no seeded counterparty has an entity ABN | Shows for entity-holding counterparties |
 
 ---
 
@@ -94,7 +100,7 @@
 | Step | Expected |
 |---|---|
 | Open Patients | Rows show avatar, name, DOB · phone; patients with an alert show an **Alert** chip |
-| Search by partial name, then by DOB as `dd/mm/yyyy`, then by phone fragment | Each filters correctly; clearing restores the full list |
+| Search by partial name, by the **displayed preferred name** (e.g. "Coco"), by DOB as `dd/mm/yyyy`, then by a **phone fragment** | Each filters correctly; clearing restores the full list. (Preferred-name and phone-fragment matching shipped with the 26/07 search fix — older builds required given/last name and the full phone number.) |
 
 ### 1.3 Create & edit a patient ★
 | Step | Expected |
@@ -117,7 +123,7 @@
 | Patient file → **Send aftercare** | 8 category toggles (Anti-wrinkle, Skinbooster, HA filler, Biostimulator filler, Biostimulator rejuvenation, Fat dissolve, Filler dissolve (Hylase), PRP/PRF); toggling rebuilds the editable body |
 | Tick "Attach this treatment's medication details" | Latest treatment note's medications are appended |
 | Click **Email · N categories** | Your **mail app opens** with a pre-filled draft to the patient; the app shows "Recorded on the patient file…" and an aftercare note lands in the Notes list |
-| Try a patient with no email | Button disabled + "No email address on file for this patient…" |
+| Try a patient with no email *(live only — see the differences table)* | Button disabled + "No email address on file for this patient…" |
 
 **Fail if:** the app claims to have *sent* an email itself — sending always happens in your mail client.
 
@@ -161,8 +167,8 @@
 |---|---|
 | Dashboard | "Requests awaiting your review" tile; Upcoming authorisation calls section (doctor only) |
 | Open Authorisations | Sarah's request: patient card (name links to the file, alert + allergies visible), item list, and **Approve / Require edit / Start consult** — there is **no flat reject** |
-| **Require edit** with a comment | Request returns to Sarah as Needs edit |
-| (As Sarah) **Edit & resubmit** | Doctor sees it again as pending |
+| **Require edit** with a comment | Request leaves the pending inbox |
+| (As Sarah) **Edit & resubmit** → (as Voss) re-review | **Live only** — the demo reseeds on the account switch, so the Needs-edit state never reaches Sarah's session |
 | (As Voss) **Approve** | Per-medication authorisations issued — 5 repeats, 6-month expiry — visible under the patient's **Active authorisations** |
 
 ### 2.4 Clause 68C Direction document ★
@@ -234,7 +240,7 @@
 | As **Voss**: **Always accept authorisation requests** switch | Persists across navigation ("Stays on across sessions until you switch it off"); there is **no** "I'm online now" switch (removed 20/07) |
 | As Voss: **Publish a window** (date/start/end) | Appears under Your windows with "N open · N booked · N slots"; **Withdraw** works on an unbooked window; a booked window refuses ("has bookings and can't be withdrawn") |
 | As **Sarah**: Book a consult | Doctor select (cooperating doctors only), date → **Open slots** chips → book for an existing patient or via **New patient (no file yet)** lead fields |
-| Ad-hoc consult (doctor has always-accept on) | **Now / Pick a time** radios; past time refused; booking lands on both calendars |
+| Ad-hoc consult (doctor has always-accept on) *(live only — see the differences table)* | **Now / Pick a time** radios; past time refused; booking lands on both calendars. On the day grid a 10-min teleconsult renders as a thin unlabeled band — zoom/hover to confirm rather than assuming it's missing |
 | Book the same slot twice (second tab / second account) | Second attempt fails with the slot-taken error, not a silent double-book |
 
 ### 3.8 Bookings tab
@@ -269,7 +275,7 @@ Open any generated invoice PDF and check:
 |---|---|
 | Open Invoice as a clinic-employed nurse | **Invoice the clinic** composer: "Billed to Lumière Clinic", free-text lines with "Amount ex GST", subtotal/GST/total preview |
 | **Issue invoice** | "Service invoice issued — it appears under Service fees below." |
-| As **Ava Lim** → Invoice | The invoice shows under **Received service fees** (read-only + PDF/email) |
+| As **Ava Lim** → Invoice | **Live only** — in demo the reseed on account switch discards Ruby's invoice; live, it shows under **Received service fees** (read-only + PDF/email) |
 | As an independent-only nurse with no clinic identity (fresh Nadia) | The composer does **not** render |
 
 ### 4.4 Wallet & matrix streams (demo-only)
@@ -329,7 +335,8 @@ Open any generated invoice PDF and check:
 |---|---|
 | Switch to **Employment** | One card: Lumière Clinic. Rows: Dr Voss (if employee-kind), Ava Lim **Member account**, Ruby & Sarah **Member account** (read-only), **Nadia Okafor with a red Remove** |
 | **Remove** Nadia → Confirm | She leaves the list; **Add employee** picker now offers Nadia |
-| **Add employee** → Nadia → Add | She's back with a Remove button. Then sign out → enter as **Nadia**: Profile shows a **Practise as** Lumière identity; in it, the Invoice tab shows the service-invoice composer |
+| **Add employee** → Nadia → Add | She's back with a Remove button |
+| Sign out → enter as **Nadia**: Practise-as shows a Lumière identity + the service-invoice composer | **Live only** — the demo reseeds on the switch, so the grant is gone by the time Nadia signs in. (Verified live 26/07: grant and revoke both propagate without re-login.) In demo, Nadia's *seeded* grant already provides the identity + composer — verify those directly |
 
 **Fail if:** Ruby or Sarah ever gets a Remove button, or removing Nadia doesn't strip her Lumière identity on next entry.
 
