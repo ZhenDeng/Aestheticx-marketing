@@ -21,7 +21,7 @@ function patientOwnedBy(owner: Patient["owner"]): Patient {
   };
 }
 
-function stateWithCooperation(active: boolean): DemoState {
+function stateWithCooperation(active: boolean, relationshipKinds?: ("employee" | "prescriber")[]): DemoState {
   const s = emptyState();
   return {
     ...s,
@@ -31,6 +31,7 @@ function stateWithCooperation(active: boolean): DemoState {
         counterpartyType: "clinic", counterpartyID: LUMIERE.id, counterpartyName: LUMIERE.name,
         status: active ? "active" : "inactive", authRequestsAllowed: true, invoiceApplies: true,
         priceCentsOverride: null, createdAt: 0, updatedAt: 0,
+        ...(relationshipKinds ? { relationshipKinds } : {}),
       },
     },
   };
@@ -69,6 +70,16 @@ describe("patientAccessLevel", () => {
     expect(patientAccessLevel(stateWithCooperation(true), voss, p)).toBe("collaborator");
     expect(patientAccessLevel(stateWithCooperation(false), voss, p)).toBe("none");
     expect(patientAccessLevel(state, voss, p)).toBe("none");
+  });
+
+  // 26/07 owner decision: collaborator commercial access requires an EMPLOYEE-kind
+  // relationship. A prescriber-only doctor authorises externally — they must not see or
+  // invoice the clinic's client book. Absent kinds keep the pre-kind employee default.
+  it("denies a prescriber-only relationship collaborator access to the clinic's clients", () => {
+    const p = patientOwnedBy({ kind: "clinic", id: LUMIERE.id });
+    expect(patientAccessLevel(stateWithCooperation(true, ["prescriber"]), voss, p)).toBe("none");
+    expect(patientAccessLevel(stateWithCooperation(true, ["employee"]), voss, p)).toBe("collaborator");
+    expect(patientAccessLevel(stateWithCooperation(true, ["employee", "prescriber"]), voss, p)).toBe("collaborator");
   });
 
   it("clinical grants do not leak commercial access: a prescriber is not owner/collaborator of a private client", () => {

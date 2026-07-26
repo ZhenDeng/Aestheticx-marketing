@@ -6,9 +6,12 @@
 //   "owner"        the owning silo itself: the independent doctor/nurse who owns the
 //                  client, or any user whose ACTIVE identity context is the owning
 //                  clinic (clinic admin + clinic staff).
-//   "collaborator" a doctor holding an ACTIVE cooperation relationship with the owning
-//                  clinic: may view and operate (run a checkout) on the clinic's
-//                  clients, but the clinic stays the client-facing commercial party.
+//   "collaborator" a doctor holding an ACTIVE, EMPLOYEE-kind cooperation relationship
+//                  with the owning clinic: may view and operate (run a checkout) on the
+//                  clinic's clients, but the clinic stays the client-facing commercial
+//                  party. A prescriber-only relationship grants nothing here (owner
+//                  decision 26/07): that doctor authorises externally and must not see
+//                  or invoice the clinic's client book.
 //   "none"         everyone else.
 //
 // Deliberately separate from patientPermissions (the CLINICAL access matrix): a
@@ -16,7 +19,7 @@
 // commercial rights from it, and the platform admin's audit oversight lives in the
 // admin shell, never in billing. Per-identity, not per-user: the same nurse acting
 // under her clinic identity has no access to her independent book (and vice versa).
-import type { DemoState, Identity, Patient } from "./types";
+import { effectiveRelationshipKinds, type DemoState, type Identity, type Patient } from "./types";
 import { relationshipFor } from "./cooperation";
 
 export type PatientAccessLevel = "none" | "collaborator" | "owner";
@@ -36,7 +39,10 @@ export function patientAccessLevel(state: DemoState, identity: Identity, patient
       if (identity.context.kind === "clinic" && identity.context.clinic.id === patient.owner.id) return "owner";
       if (identity.role === "doctor") {
         const rel = relationshipFor(state.cooperationRelationshipsByID, userID, "clinic", patient.owner.id);
-        if (rel?.status === "active") return "collaborator";
+        // EMPLOYEE-kind only (owner decision 26/07): a prescriber-only doctor authorises
+        // for the clinic externally and must not see or invoice the clinic's client book.
+        // Absent kinds default to ["employee"] (pre-kind docs — effectiveRelationshipKinds).
+        if (rel?.status === "active" && effectiveRelationshipKinds(rel)?.includes("employee")) return "collaborator";
       }
       return "none";
     }
