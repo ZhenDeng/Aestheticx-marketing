@@ -28,22 +28,36 @@ export function NoteAttachmentsInput({ patientID, value, onChange }: {
   onChange: Dispatch<SetStateAction<NoteAttachment[]>>;
 }) {
   const [error, setError] = useState<string | null>(null);
+  // 26/07 feedback (dead-button audit): reading a multi-select of large files takes seconds —
+  // count the reads still pending so the picker announces progress instead of sitting inert.
+  const [reading, setReading] = useState(0);
 
   async function add(files: FileList | null) {
     if (!files?.length) return;
     setError(null);
-    const added: NoteAttachment[] = [];
-    for (const file of Array.from(files)) {
-      if (file.size > MAX_BYTES) {
-        setError(`${file.name} is over the 25 MB limit.`);
-        continue;
+    const picked = Array.from(files);
+    setReading(picked.length);
+    try {
+      for (const file of picked) {
+        if (file.size > MAX_BYTES) {
+          setError(`${file.name} is over the 25 MB limit.`);
+          setReading((n) => n - 1);
+          continue;
+        }
+        const isImage = file.type.startsWith("image/");
+        const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".") + 1) : "bin";
+        const fileID = `patients/${patientID}/${isImage ? "photos" : "files"}/${crypto.randomUUID()}.${ext}`;
+        const attachment = { fileID, displayName: file.name, mimeType: file.type, dataUrl: await readAsDataUrl(file) };
+        // Surface each attachment as soon as its own read resolves (functional update —
+        // see the onChange prop contract above) rather than one batch at the end.
+        onChange((prev) => [...prev, attachment]);
+        setReading((n) => n - 1);
       }
-      const isImage = file.type.startsWith("image/");
-      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".") + 1) : "bin";
-      const fileID = `patients/${patientID}/${isImage ? "photos" : "files"}/${crypto.randomUUID()}.${ext}`;
-      added.push({ fileID, displayName: file.name, mimeType: file.type, dataUrl: await readAsDataUrl(file) });
+    } catch {
+      setError("A file could not be read. Please try again.");
+    } finally {
+      setReading(0);
     }
-    if (added.length) onChange((prev) => [...prev, ...added]);
   }
 
   function rename(fileID: string, displayName: string) {
@@ -55,9 +69,9 @@ export function NoteAttachmentsInput({ patientID, value, onChange }: {
 
   return (
     <div className="mt-3">
-      <label className="inline-block cursor-pointer rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">
-        Attach photo or file
-        <input type="file" accept={ACCEPT} multiple className="hidden"
+      <label className={`inline-block rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft ${reading > 0 ? "pointer-events-none opacity-60" : "cursor-pointer hover:border-tint"}`}>
+        {reading > 0 ? `Reading ${reading} file${reading === 1 ? "" : "s"}…` : "Attach photo or file"}
+        <input type="file" accept={ACCEPT} multiple className="hidden" disabled={reading > 0}
                onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
       </label>
       {error && <p className="mt-1 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}

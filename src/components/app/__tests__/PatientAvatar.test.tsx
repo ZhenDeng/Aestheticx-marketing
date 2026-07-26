@@ -8,9 +8,14 @@ import type { Identity, Patient } from "@/lib/demo/types";
 // picked bytes as a data URL.
 
 const setPatientAvatar = vi.fn();
+let storeStatus: "demo" | "ready" = "demo";
 vi.mock("@/lib/demo/store", () => ({
-  useDemoStore: () => ({ status: "demo" as const, setPatientAvatar }),
+  useDemoStore: () => ({ status: storeStatus, setPatientAvatar }),
 }));
+// Controllable live Storage upload (26/07 dead-button audit): the picker must show a
+// pending state for the whole upload, not sit inert until the avatar swaps.
+const uploadPatientAvatar = vi.hoisted(() => vi.fn(async () => "patients/p1/avatar/x.png"));
+vi.mock("@/lib/firebase/storage", () => ({ uploadPatientAvatar, fileDownloadUrl: vi.fn(async () => "https://example.test/a.png") }));
 
 import { PatientAvatar, PatientAvatarPicker } from "@/components/app/PatientAvatar";
 
@@ -23,7 +28,12 @@ function patient(over: Partial<Patient> = {}): Patient {
 }
 const nurse: Identity = { user: { id: "u-sarah", name: "Sarah" }, role: "nurse", context: { kind: "independent" } };
 
-beforeEach(() => setPatientAvatar.mockClear());
+beforeEach(() => {
+  setPatientAvatar.mockClear();
+  uploadPatientAvatar.mockClear();
+  uploadPatientAvatar.mockResolvedValue("patients/p1/avatar/x.png");
+  storeStatus = "demo";
+});
 
 describe("PatientAvatar", () => {
   it("shows the given+last monogram when there is no photo", () => {
@@ -51,6 +61,29 @@ describe("PatientAvatarPicker", () => {
   it("exposes the change-photo control when canEdit is true", () => {
     render(<PatientAvatarPicker patient={patient()} identity={nurse} canEdit />);
     expect(screen.getByRole("button", { name: /change patient photo/i })).toBeInTheDocument();
+  });
+
+  // 26/07 feedback (dead-button audit): the live Storage upload ran for seconds with no
+  // pending state — the old photo/monogram just sat there until the write landed.
+  it("disables the picker and shows an uploading state while the live upload runs", async () => {
+    storeStatus = "ready";
+    let release!: () => void;
+    uploadPatientAvatar.mockImplementationOnce(
+      () => new Promise<string>((resolve) => { release = () => resolve("patients/p1/avatar/x.png"); }),
+    );
+    render(<PatientAvatarPicker patient={patient()} identity={nurse} canEdit />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" }));
+
+    const pending = await screen.findByRole("button", { name: /uploading photo/i });
+    expect(pending).toBeDisabled();
+    expect(setPatientAvatar).not.toHaveBeenCalled(); // still mid-upload
+
+    release();
+    await vi.waitFor(() =>
+      expect(setPatientAvatar).toHaveBeenCalledWith("p1", { avatarFileId: "patients/p1/avatar/x.png" }, nurse),
+    );
+    expect(screen.getByRole("button", { name: /change patient photo/i })).toBeEnabled();
   });
 
   it("stores a picked photo as a data URL in demo mode", async () => {

@@ -184,6 +184,7 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
   // never renders for a different (or cleared) avatar object.
   const [resolved, setResolved] = useState<{ fileId: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const fileId = profile.avatarFileId;
   useEffect(() => {
@@ -207,6 +208,9 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
     const invalid = avatarFileError(file);
     if (invalid) { setError(invalid); return; }
     setError(null);
+    // 26/07 feedback (dead-button audit): the live Storage upload takes seconds — without a
+    // pending state the old photo/monogram just sat there until the write landed.
+    setBusy(true);
     try {
       if (live) {
         const { uploadUserAvatar } = await import("@/lib/firebase/storage");
@@ -226,6 +230,8 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
       }
     } catch {
       setError("The photo could not be saved. Please try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -233,8 +239,9 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <button
-        type="button" onClick={() => inputRef.current?.click()} aria-label="Change profile photo"
-        className="relative h-24 w-24 rounded-full"
+        type="button" onClick={() => inputRef.current?.click()} disabled={busy}
+        aria-label={busy ? "Uploading photo…" : "Change profile photo"}
+        className={`relative h-24 w-24 rounded-full ${busy ? "opacity-60" : ""}`}
       >
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element -- data URLs / tokenised Storage URLs
@@ -244,7 +251,11 @@ function AvatarPicker({ me, profile }: { me: Identity; profile: UserProfile }) {
             {initials(me.user.name)}
           </span>
         )}
-        <span aria-hidden className="absolute bottom-0 right-0 grid h-7 w-7 place-items-center rounded-full border-2 border-card bg-ink text-xs text-card">✎</span>
+        <span aria-hidden className="absolute bottom-0 right-0 grid h-7 w-7 place-items-center rounded-full border-2 border-card bg-ink text-xs text-card">
+          {busy
+            ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-card" style={{ borderTopColor: "transparent" }} />
+            : "✎"}
+        </span>
       </button>
       <input
         ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"

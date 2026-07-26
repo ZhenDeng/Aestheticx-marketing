@@ -223,12 +223,16 @@ function ExternalCalendarCard({ ownerID }: { ownerID: string }) {
   const [error, setError] = useState<string | null>(null);
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [busyWorking, setBusyWorking] = useState(false);
+  // 26/07 feedback (dead-button audit): the authUrl callable takes seconds — without a
+  // pending state the button sat inert and repeat clicks fired duplicate callables.
+  const [linking, setLinking] = useState(false);
   const isLive = store.status !== "demo";
   const cal = store.state.externalBusyByOwner[ownerID];
 
   async function linkGoogle() {
     setError(null);
     setConsentUrl(null);
+    setLinking(true);
     try {
       const url = await store.googleCalendarAuthUrl();
       if (!url) {
@@ -246,6 +250,8 @@ function ExternalCalendarCard({ ownerID }: { ownerID: string }) {
       }
     } catch {
       setError("Could not start Google linking. Please try again.");
+    } finally {
+      setLinking(false);
     }
   }
 
@@ -280,9 +286,9 @@ function ExternalCalendarCard({ ownerID }: { ownerID: string }) {
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         {isLive && (
-          <button onClick={() => void linkGoogle()}
-                  className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
-            Link Google Calendar
+          <button onClick={() => void linkGoogle()} disabled={linking}
+                  className="rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-60" style={{ background: "var(--color-tint)" }}>
+            {linking ? "Opening Google…" : "Link Google Calendar"}
           </button>
         )}
         <button onClick={() => void syncNow()} disabled={busyWorking}
@@ -326,6 +332,7 @@ function BookConsult({ me }: { me: Identity }) {
   const [slotReload, setSlotReload] = useState(0);
   const [adHocQuery, setAdHocQuery] = useState("");
   const [requesting, setRequesting] = useState(false);
+  const [booking, setBooking] = useState(false);
   const [slotNewPatient, setSlotNewPatient] = useState(false);
   const [slotLeadDraft, setSlotLeadDraft] = useState<LeadDraft>(emptyLeadDraft());
   const [adHocNewPatient, setAdHocNewPatient] = useState(false);
@@ -387,8 +394,12 @@ function BookConsult({ me }: { me: Identity }) {
 
   // Books the picked slot for an existing patient file XOR a new-patient lead.
   async function book(patient: { patientID: string; patientName: string } | { lead: AppointmentLead }) {
-    if (!effectiveDoctorID || slot === null) return;
+    if (!effectiveDoctorID || slot === null || booking) return;
     setError(null);
+    // 26/07 feedback (dead-button audit): the live bookAuthSlot callable takes seconds —
+    // mirror requestAdHoc's `requesting` pattern so the picker never looks frozen and a
+    // double-click can't race the same slot into a slotTaken loss.
+    setBooking(true);
     const at = slot;
     const forName = "lead" in patient
       ? `${`${patient.lead.givenName} ${patient.lead.lastName}`.trim()} (new patient)`
@@ -403,6 +414,7 @@ function BookConsult({ me }: { me: Identity }) {
         : "That slot is no longer available — pick another.");
       setSlot(null);
     } finally {
+      setBooking(false);
       setSlotReload((t) => t + 1); // reflect the booking (or a lost race) in the open list
     }
   }
@@ -545,10 +557,10 @@ function BookConsult({ me }: { me: Identity }) {
           {slotNewPatient ? (
             <div className="mt-2">
               <LeadFields value={slotLeadDraft} onChange={setSlotLeadDraft} />
-              <button disabled={leadFromDraft(slotLeadDraft) === null}
+              <button disabled={booking || leadFromDraft(slotLeadDraft) === null}
                 onClick={() => { const lead = leadFromDraft(slotLeadDraft); if (lead) void book({ lead }); }}
                 className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card disabled:opacity-40" style={{ background: "var(--color-tint)" }}>
-                Book for new patient
+                {booking ? "Booking…" : "Book for new patient"}
               </button>
             </div>
           ) : (
@@ -559,8 +571,9 @@ function BookConsult({ me }: { me: Identity }) {
                 {matches.map((p) => (
                   <li key={p.id}>
                     <button onClick={() => book({ patientID: p.id, patientName: `${p.givenName} ${p.lastName}` })}
-                      className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint">
-                      {p.givenName} {p.lastName}
+                      disabled={booking}
+                      className="w-full rounded-inner border border-line px-3 py-1.5 text-left text-sm text-ink hover:border-tint disabled:opacity-60">
+                      {booking ? "Booking…" : `${p.givenName} ${p.lastName}`}
                     </button>
                   </li>
                 ))}
