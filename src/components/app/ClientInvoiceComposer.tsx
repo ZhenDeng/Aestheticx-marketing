@@ -5,7 +5,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { computeManualInvoice, formatAUD, type Invoice } from "@/lib/demo/invoicing";
 import { InvoiceActions } from "@/components/app/InvoiceActions";
-import type { Patient } from "@/lib/demo/types";
+import { fullName, type Patient } from "@/lib/demo/types";
 
 interface DraftLine { key: number; description: string; amount: string; }
 
@@ -80,6 +80,7 @@ export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
 
   return (
     <div className="rounded-card border border-line bg-card p-5 shadow-card">
+      <p className="mb-3 text-sm text-ink-soft">Billing to <span className="font-medium text-ink">{fullName(patient)}</span></p>
       <div className="flex flex-col gap-2">
         {lines.map((line, i) => (
           <div key={line.key} className="grid grid-cols-1 gap-2 rounded-field border border-line p-2.5 sm:grid-cols-[2fr_1fr_auto]">
@@ -149,7 +150,7 @@ export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
         </button>
         {issued && (
           <>
-            <span className="text-sm" style={{ color: "var(--color-umber)" }}>Invoice issued — {formatAUD(issued.totalCents)}.</span>
+            <span className="text-sm" style={{ color: "var(--color-umber)" }}>Invoice issued to {fullName(patient)} — {formatAUD(issued.totalCents)}.</span>
             <InvoiceActions invoice={issued} />
           </>
         )}

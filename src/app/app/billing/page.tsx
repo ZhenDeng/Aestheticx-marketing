@@ -10,6 +10,7 @@ import { formatAUD, computeInvoice, resolveInvoiceKind, scriptsFromBillable, aut
 import { fullName } from "@/lib/demo/types";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ServiceInvoiceComposer } from "@/components/app/ServiceInvoiceComposer";
+import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { InvoiceActions } from "@/components/app/InvoiceActions";
 
 export default function BillingPage() {
@@ -128,17 +129,10 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* 20/07 feedback (spec: manual-service-invoicing): the nurse page is populated —
-          a client picker into the checkout flow — and any employed practitioner can
-          hand-write a service invoice to their clinic. Both ride the matrix layer, so
-          live mode explains itself instead of rendering a bare heading. */}
-      {me.role === "nurse" && (store.matrixEnabled ? <InvoiceClientSection /> : (
-        <p className="mt-4 text-sm text-ink-soft">
-          Client invoicing isn&apos;t available in live mode yet — it arrives with the billing
-          backend. You can invoice your clinic below, and invoices doctors generate for your
-          authorisation requests are sent to you by the prescribing doctor.
-        </p>
-      ))}
+      {/* Client selection (spec: invoice-client visibility + selection, 2026-07-26): every
+          clinical role picks a client here and invoices inline — in live mode too, since
+          the manual composer only hands off a PDF there (nothing persisted). */}
+      <InvoiceClientSection />
       <ServiceInvoiceComposer />
 
       {/* Billing matrix streams: client invoices, service fees (drafts to finalize),
@@ -216,24 +210,34 @@ export default function BillingPage() {
   );
 }
 
-// The nurse's way into client invoicing (spec: manual-service-invoicing): checkout on the
-// client file IS the invoice flow, so this section lists every client the active identity
-// may check out (own book independently; the clinic book in clinic context — the
-// isolation gate, not a new rule) and links straight there.
+// Client selection into invoicing (spec: invoice-client visibility + selection,
+// 2026-07-26): lists every client the active identity may bill (own book independently;
+// the clinic book in clinic context — the isolation gate, not a new rule). Each row
+// expands the manual composer inline; the link still opens the full file (where the
+// nurse checkout flow lives in demo).
 function InvoiceClientSection() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const me = identity!;
+  const [openClientID, setOpenClientID] = useState<string | null>(null);
   const clients = Object.values(store.state.patients)
     .filter((p) => store.patientAccess(p, me) !== "none")
     .sort((a, b) => fullName(a).localeCompare(fullName(b)));
+  const checkout = me.role === "nurse" && store.matrixEnabled;
 
   return (
     <section className="mt-6">
       <h2 className="font-display text-xl text-ink">Invoice a client</h2>
       <p className="mt-1 text-sm text-ink-soft">
-        Open a client&apos;s account to check out — checkout issues the invoice.
+        {checkout
+          ? "Pick a client to invoice below, or open their account to check out — checkout issues the invoice."
+          : "Pick a client to invoice below, or open their file."}
       </p>
+      {!store.matrixEnabled && (
+        <p className="mt-1 text-sm text-ink-soft">
+          Live invoices generate a PDF for your mail app — they aren&apos;t stored in the app yet.
+        </p>
+      )}
       {clients.length === 0 ? (
         <p className="mt-2 text-sm text-ink-soft">
           No clients you can invoice yet — clients appear here once they are in
@@ -242,17 +246,27 @@ function InvoiceClientSection() {
       ) : (
         <ul className="mt-2 flex flex-col gap-1.5">
           {clients.map((p) => (
-            <li key={p.id}>
-              <Link
-                href={`/app/patients/${p.id}`}
-                className="flex items-center justify-between rounded-inner border border-line bg-card px-4 py-3 hover:border-tint"
-              >
+            <li key={p.id} className="rounded-inner border border-line bg-card px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 text-sm font-medium text-ink">
                   {fullName(p)}
                   <span className="micro ml-2">{ownerDisplayLabel(store.state, p.owner)}</span>
                 </span>
-                <span className="flex-none text-sm text-ink-soft">Check out ›</span>
-              </Link>
+                <span className="flex flex-none items-center gap-3">
+                  <button type="button" onClick={() => setOpenClientID((c) => (c === p.id ? null : p.id))}
+                    className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                    {openClientID === p.id ? "Close" : "Invoice"}
+                  </button>
+                  <Link href={`/app/patients/${p.id}`} className="flex-none text-sm text-ink-soft hover:text-ink">
+                    {checkout ? "Check out ›" : "Open file ›"}
+                  </Link>
+                </span>
+              </div>
+              {openClientID === p.id && (
+                <div className="mt-3">
+                  <ClientInvoiceComposer patient={p} />
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -263,7 +277,7 @@ function InvoiceClientSection() {
 
 // ——— Billing matrix streams (change: multi-tenant-billing-matrix, design-ui.md §4) ———
 
-const KIND_LABEL: Record<string, string> = { "client-sale": "Client sale", "top-up": "Top-up", "service-fee": "Service fee" };
+const KIND_LABEL: Record<string, string> = { "client-sale": "Client sale", "top-up": "Top-up", "service-fee": "Service fee", "client-invoice": "Client invoice" };
 
 function KindChip({ kind }: { kind: string }) {
   return <span className="micro rounded-full border border-line px-2 py-0.5 text-ink-soft">{KIND_LABEL[kind] ?? kind}</span>;
@@ -317,7 +331,7 @@ function MatrixStreams() {
   const all = store.invoicesFor(me);
   const clientDocs = !store.matrixEnabled ? [] : all.filter((i) => {
     const k = resolveInvoiceKind(i);
-    return k === "client-sale" || k === "top-up";
+    return k === "client-sale" || k === "top-up" || k === "client-invoice";
   });
   const feesIssued = all.filter((i) => resolveInvoiceKind(i) === "service-fee" && i.issuerRef?.id === me.user.id);
   const feesReceived = all.filter((i) => resolveInvoiceKind(i) === "service-fee" && i.issuerRef?.id !== me.user.id);
