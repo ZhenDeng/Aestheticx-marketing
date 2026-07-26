@@ -150,7 +150,13 @@ export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
         </button>
         {issued && (
           <>
-            <span className="text-sm" style={{ color: "var(--color-umber)" }}>Invoice issued to {fullName(patient)} — {formatAUD(issued.totalCents)}.</span>
+            <span className="text-sm" style={{ color: "var(--color-umber)" }}>
+              {/* Live builds the invoice transiently for the PDF hand-off — nothing is stored,
+                  so the confirmation must not read like a filed record (26/07 review). */}
+              {store.status === "demo"
+                ? <>Invoice issued to {fullName(patient)} — {formatAUD(issued.totalCents)}.</>
+                : <>Invoice created for {fullName(patient)} — {formatAUD(issued.totalCents)}. Not saved in the app yet — download or email it now.</>}
+            </span>
             <InvoiceActions invoice={issued} />
           </>
         )}

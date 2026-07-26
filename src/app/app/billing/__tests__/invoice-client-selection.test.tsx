@@ -89,6 +89,12 @@ describe("Invoice a client — selection", () => {
     expect(screen.getByRole("heading", { name: "Invoice a client" })).toBeInTheDocument();
   });
 
+  it("shows the empty state for an identity with no invoiceable clients", () => {
+    currentIdentity = { user: { id: "u-nobody", name: "Dr Nobody" }, role: "doctor", context: { kind: "independent" } };
+    render(<BillingPage />);
+    expect(screen.getByText(/no clients you can invoice yet/i)).toHaveTextContent(/your book/);
+  });
+
   it("renders in live mode with the not-stored note instead of the old explainer", () => {
     storeMode = { status: "ready", matrixEnabled: false };
     render(<BillingPage />);
