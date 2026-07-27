@@ -77,9 +77,12 @@ field — keeps its current behaviour. The web always sends an explicit boolean.
 
 Gated identically to reschedule (`canManageAppointment` OR `isAuthSlotBooker`,
 mirroring `rescheduleTx`'s check), then delegates to the existing
-`notifyBookingClient(appointmentId, 'rescheduled')`. Returns `{ ok: true }`.
-Because `notifyBookingClient` reads the appointment fresh, the email carries
-the appointment's current time with no extra plumbing.
+`notifyBookingClient(appointmentId, 'rescheduled')`. Returns
+`{ ok: true, sent: boolean }` — `sent` is false (not a thrown error) when the
+appointment has no client contact, so the UI can say "no contact on file"
+honestly instead of claiming success. Because `notifyBookingClient` reads the
+appointment fresh, the email carries the appointment's current time with no
+extra plumbing.
 
 Exported from `index.ts` alongside the other appointment callables, in the same
 `australia-southeast1` region as its siblings.
@@ -117,18 +120,16 @@ must state its intent, so a new call site cannot silently inherit auto-email.
 
 **`src/app/app/calendar/page.tsx`**
 
-One new piece of page-level state:
+No page-level state here — the prompt's state lives in the new
+`RescheduleNotifyProvider` context described below, not in `page.tsx` (already
+~73 KB and better off without another stateful concern). `CalendarInner` wraps
+its tree in the provider; each call site below calls `useRescheduleNotify()`
+and invokes it immediately after a successful `store.rescheduleAppointment(...)`
+call, inside the existing `try`. The prompt stores only the appointment id; the
+modal reads the appointment from the store at render time, so it always shows
+the committed time and cannot show a stale one.
 
-```ts
-const [notifyPrompt, setNotifyPrompt] = useState<{ apptID: string } | null>(null)
-```
-
-Every successful reschedule in this page sets it. The prompt stores only the
-id; the modal reads the appointment from the store at render time, so it always
-shows the committed time and cannot show a stale one.
-
-Call sites to route through it (all currently call `store.rescheduleAppointment`
-directly):
+Call sites routed through it (all call `store.rescheduleAppointment` directly):
 
 | Line | Gesture |
 |------|---------|
@@ -142,26 +143,34 @@ directly):
 | 1384 | Detail panel — the explicit "Reschedule" button |
 
 Line 1384 is not a drag, but it triggers the identical email with the identical
-surprise, so it gets the same prompt. `PendingBookings.tsx:57` is out of scope:
-approving a pending booking sends a *confirmation* email, which is the intended
-behaviour of that action.
+surprise, so it gets the same prompt.
+
+**`src/components/app/PendingBookings.tsx:57` is a ninth site, not out of
+scope.** Its own `store.rescheduleAppointment` call moves a pending booking
+from the inbox and is subject to the exact same regression as the eight sites
+above: once the store mirrors `notifyClient: false`, this call site silently
+stopped notifying the client unless it also calls `useRescheduleNotify()`.
+`PendingBookings` already renders inside `RescheduleNotifyProvider` (from
+`CalendarInner`), so it's wired the same way — call the prompt immediately
+after the successful reschedule, inside `PendingRow`'s existing `try`. (Approve
+and Decline are unrelated: those callables send their own confirmation/decline
+emails unconditionally and are correctly out of scope.)
 
 **New component `src/components/app/RescheduleNotify.tsx`**
 
 The state and the modal live together in one small module rather than in
-`page.tsx`, which is already ~73 KB and does not need another stateful concern.
-It exports:
+`page.tsx`. It exports:
 
 ```ts
 export function RescheduleNotifyProvider({ children }: { children: ReactNode })
 export function useRescheduleNotify(): (apptID: string) => void
 ```
 
-`CalendarInner` wraps its tree in the provider; each block component calls
-`useRescheduleNotify()` and invokes it after a successful reschedule. A context
-rather than a prop because `TimelineBlock`, `WeekBlock` and the month chip are
-two to three levels below the page, and `DayView` / `WeekView` / `MonthView` in
-between have no interest in the prompt.
+`CalendarInner` wraps its tree in the provider; each block component (plus
+`PendingBookings`) calls `useRescheduleNotify()` and invokes it after a
+successful reschedule. A context rather than a prop because `TimelineBlock`,
+`WeekBlock`, the month chip, and `PendingBookings` sit at varying depths below
+the page, with several uninterested layers in between.
 
 The dialog follows the app's established modal idiom (`role="dialog"
 aria-modal="true"`, fixed scrim, Escape to dismiss — as in `calendar/page.tsx:1253`
@@ -216,7 +225,10 @@ practitioner can reschedule again, or contact the client directly.
 Backend first, then web — the web sends `notifyClient: false` to a callable that
 must already understand it, and calls `notifyAppointmentRescheduled`, which must
 already exist. Deploying web first would email on every drag (old callable
-ignores the flag) and break *Send email* with `not-found`.
+ignores the flag) and break *Send email* with `not-found`. It would also make
+**"Don't send" a lie**: the old callable has already unconditionally emailed the
+client by the time the practitioner sees the prompt and clicks "Don't send," so
+that button would silently do nothing to stop a message that already went out.
 
 ## Out of scope
 

@@ -29,21 +29,35 @@ const pendingAppt: Appointment = {
 const confirmAppointment = vi.fn();
 const markAppointment = vi.fn();
 const rescheduleAppointment = vi.fn();
+const notifyAppointmentRescheduled = vi.fn();
 let pending: Appointment[];
 
 function makeStore() {
   return {
-    state: emptyState(),
+    // appointments carries pendingAppt regardless of the `pending` inbox list above — the
+    // RescheduleNotify dialog (C1) reads the appointment straight from store.state, not from
+    // the inbox, so it needs a hit here to render anything once a reschedule raises it.
+    state: { ...emptyState(), appointments: { [pendingAppt.id]: pendingAppt } },
+    refreshing: false,
     pendingBookings: vi.fn(() => pending),
     confirmAppointment,
     markAppointment,
     rescheduleAppointment,
+    notifyAppointmentRescheduled,
   };
 }
 let store: ReturnType<typeof makeStore>;
 vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => store }));
 
 import { PendingBookings } from "@/components/app/PendingBookings";
+import { RescheduleNotifyProvider } from "@/components/app/RescheduleNotify";
+
+// PendingRow now raises the same Notify-the-client dialog as the calendar's drag/resize
+// handlers (C1, 27/07 review) — useRescheduleNotify() throws outside its provider, so every
+// render needs one, not just the new dialog test below.
+function renderInbox(me: Identity) {
+  return render(<RescheduleNotifyProvider><PendingBookings me={me} /></RescheduleNotifyProvider>);
+}
 
 beforeEach(() => {
   pending = [pendingAppt];
@@ -51,17 +65,18 @@ beforeEach(() => {
   confirmAppointment.mockReset();
   markAppointment.mockReset();
   rescheduleAppointment.mockReset();
+  notifyAppointmentRescheduled.mockReset();
 });
 
 describe("PendingBookings", () => {
   it("renders nothing when the inbox is empty", () => {
     pending = [];
-    const { container } = render(<PendingBookings me={nurse} />);
+    const { container } = renderInbox(nurse);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("scopes the query to the acting subject (own uid for an independent nurse)", () => {
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
     expect(store.pendingBookings).toHaveBeenCalledWith("u-sarah");
   });
 
@@ -71,12 +86,12 @@ describe("PendingBookings", () => {
       role: "nurse",
       context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière" } },
     };
-    render(<PendingBookings me={clinicNurse} />);
+    renderInbox(clinicNurse);
     expect(store.pendingBookings).toHaveBeenCalledWith("clinic-lumiere");
   });
 
   it("shows the booking title, time window, contact line and the patient's note", () => {
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
     expect(screen.getByText(/Amara Boyd · new patient/)).toBeInTheDocument();
     expect(screen.getByText(/2026-07-20 · 09:00–09:30/)).toBeInTheDocument();
     expect(screen.getByText(/0400 111 222/)).toBeInTheDocument();
@@ -85,21 +100,21 @@ describe("PendingBookings", () => {
 
   it("approves via confirmAppointment", async () => {
     const user = userEvent.setup();
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
     await user.click(screen.getByRole("button", { name: /approve/i }));
     expect(confirmAppointment).toHaveBeenCalledWith("appt-1", nurse);
   });
 
   it("declines via markAppointment(cancelled)", async () => {
     const user = userEvent.setup();
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
     await user.click(screen.getByRole("button", { name: /decline/i }));
     expect(markAppointment).toHaveBeenCalledWith("appt-1", "cancelled", nurse);
   });
 
   it("reschedules with the edited date, time and duration", async () => {
     const user = userEvent.setup();
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
 
     await user.click(screen.getByRole("button", { name: /reschedule/i }));
     const date = screen.getByLabelText(/new date/i);
@@ -120,7 +135,7 @@ describe("PendingBookings", () => {
       throw new Error("gone");
     });
     const user = userEvent.setup();
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
     await user.click(screen.getByRole("button", { name: /approve/i }));
     expect(await screen.findByText(/actioned elsewhere/i)).toBeInTheDocument();
   });
@@ -131,9 +146,38 @@ describe("PendingBookings", () => {
       throw new BackendError("unavailable");
     });
     const user = userEvent.setup();
-    render(<PendingBookings me={nurse} />);
+    renderInbox(nurse);
     await user.click(screen.getByRole("button", { name: /reschedule/i }));
     await user.click(screen.getByRole("button", { name: /apply/i }));
     expect(await screen.findByText(/outside your treatment hours/i)).toBeInTheDocument();
+  });
+
+  // C1 (27/07 review): this was the ninth reschedule site — the calendar's eight drag/resize
+  // handlers all raised this dialog, but moving a pending booking from the inbox silently
+  // stopped notifying the client once the store started mirroring notifyClient:false. Proves
+  // the wiring, not the email content (that's reschedule-notify.test.tsx's job).
+  it("raises the Notify-the-client dialog after a successful reschedule", async () => {
+    const user = userEvent.setup();
+    renderInbox(nurse);
+
+    await user.click(screen.getByRole("button", { name: /reschedule/i }));
+    await user.click(screen.getByRole("button", { name: /apply/i }));
+
+    expect(rescheduleAppointment).toHaveBeenCalledWith("appt-1", "2026-07-20", 9 * 60, 30, nurse);
+    const dialog = await screen.findByRole("dialog", { name: /notify the client/i });
+    expect(dialog).toHaveTextContent("Amara Boyd");
+    expect(within(dialog).getByRole("button", { name: /send email/i })).toBeInTheDocument();
+  });
+
+  it("does not raise the dialog when the reschedule throws", async () => {
+    rescheduleAppointment.mockImplementation(() => {
+      throw new Error("gone");
+    });
+    const user = userEvent.setup();
+    renderInbox(nurse);
+    await user.click(screen.getByRole("button", { name: /reschedule/i }));
+    await user.click(screen.getByRole("button", { name: /apply/i }));
+    await screen.findByText(/could not move the booking/i);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

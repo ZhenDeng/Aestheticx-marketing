@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Two repos.** Backend work happens in `/Users/zhendeng/Documents/AestheticX/backend/functions`. Web work happens in this worktree (`/Users/zhendeng/Documents/Aestheticx-marketing/.claude/worktrees/platform-admin-permission-denied-ac5727`). Commit separately in each — they are independent git repositories.
-- **Deploy order is backend first, then web.** The web sends `notifyClient: false` to a callable that must already understand it, and calls `notifyAppointmentRescheduled`, which must already exist. Shipping web first would email on every drag *and* break the Send button with `not-found`.
+- **Deploy order is backend first, then web.** The web sends `notifyClient: false` to a callable that must already understand it, and calls `notifyAppointmentRescheduled`, which must already exist. Shipping web first would email on every drag *and* break the Send button with `not-found` — and it would make **"Don't send" a lie**, since the old callable has already emailed the client unconditionally by the time the practitioner sees the prompt.
 - **`notifyClient` defaults to `true`** on the backend. iOS does not send the field and must keep its current auto-email behaviour.
 - **Region is automatic.** `index.ts` imports `./globalOptions` before every function module, which pins `australia-southeast1`. A new `onCall` in `appointmentsFn.ts` inherits it — do not add a per-function region.
 - **No `console.log`** in production code. `console.error` in a swallowing catch is the established idiom and is fine.
@@ -1138,6 +1138,6 @@ Not part of the TDD loop; run in this order or the calendar breaks.
    ```
 2. **Then web** — merge the web PR and let Vercel deploy it.
 
-Deploying web first would leave the old callable ignoring `notifyClient` (so every drag still emails) and `notifyAppointmentRescheduled` returning `not-found` when the practitioner taps Send.
+Deploying web first would leave the old callable ignoring `notifyClient` (so every drag still emails) and `notifyAppointmentRescheduled` returning `not-found` when the practitioner taps Send. Worse than either failure mode: it would make **"Don't send" a lie** — the client has already been emailed unconditionally by the old callable before the practitioner ever sees the prompt, so clicking "Don't send" silently does nothing to stop a message that already went out.
 
 Live smoke check after both: drag a real appointment with a client email, choose **Don't send**, and confirm no `mailOutbox` document was created. Then repeat choosing **Send email** and confirm exactly one was.

@@ -740,10 +740,23 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       },
       rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) => {
         backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity); // eager validate — throws
+        // Track this write in pendingWrites (27/07 review, finding C2): the RescheduleNotify
+        // dialog can open in the same commit as this call, and its Send button reads
+        // store.refreshing to avoid emailing before the move has actually landed server-side
+        // (or emailing a move that a failed mirror is about to revert). applyAndMirror stays
+        // silent for every OTHER call site — this is the one write important enough to gate a
+        // user-facing button on.
+        if (live) setPendingWrites((n) => n + 1);
         applyAndMirror(
           (s) => backend.rescheduleAppointment(s, id, dateISO, startMinute, durationMinutes, identity),
           // notifyClient:false — the calendar asks the practitioner and sends separately.
-          (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes, false),
+          async (m) => {
+            try {
+              await m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes, false);
+            } finally {
+              setPendingWrites((n) => n - 1);
+            }
+          },
         );
       },
       notifyAppointmentRescheduled: (id) => {

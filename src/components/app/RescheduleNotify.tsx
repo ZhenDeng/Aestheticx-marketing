@@ -60,29 +60,45 @@ function RescheduleNotifyDialog({ apptID, onClose }: { apptID: string; onClose: 
   if (!appt) return null;
 
   const contact = appointmentContact(appt, appt.patientID ? store.state.patients[appt.patientID] : undefined);
+  // The reschedule mirror may still be in flight — cold-start latency is seconds, not
+  // milliseconds — so a Send click could reach notifyAppointmentRescheduled (which re-reads
+  // the appointment server-side) before the move commits, emailing the pre-move time. Worse,
+  // if the mirror then FAILS, the store rehydrates and reverts the move, but an already-sent
+  // Send would have emailed a move that never happened. store.refreshing folds in pendingWrites,
+  // which rescheduleAppointment bumps for exactly this write (see src/lib/demo/store.tsx).
+  const saving = store.refreshing;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Notify the client"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    // role/aria-modal/aria-label live on the PANEL, not this scrim: the scrim is also the
+    // click-to-dismiss target, so putting the dialog role here would make the accessible
+    // dialog span the whole viewport instead of just the card.
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "color-mix(in srgb, var(--color-ink) 45%, transparent)" }}
       onClick={onClose}>
-      <div className="w-full max-w-sm rounded-card border border-line bg-card p-5 shadow-card"
+      <div role="dialog" aria-modal="true" aria-label="Notify the client"
+        className="w-full max-w-sm rounded-card border border-line bg-card p-5 shadow-card"
         onClick={(e) => e.stopPropagation()}>
         <h2 className="font-display text-xl text-ink">Notify the client?</h2>
         <p className="mt-2 text-sm text-ink-soft">{movedLine(store.state, appt)}</p>
         {contact.email ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button"
-              onClick={() => { store.notifyAppointmentRescheduled(apptID); onClose(); }}
-              className="rounded-btn px-3 py-1.5 text-sm font-medium text-card"
-              style={{ background: "var(--color-tint)" }}>
-              Send email
-            </button>
-            <button type="button" onClick={onClose}
-              className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft">
-              Don&apos;t send
-            </button>
-          </div>
+          <>
+            {saving && <p className="mt-3 text-sm text-ink-soft">Saving the new time…</p>}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button"
+                onClick={() => { store.notifyAppointmentRescheduled(apptID); onClose(); }}
+                disabled={saving}
+                className="rounded-btn px-3 py-1.5 text-sm font-medium text-card disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ background: "var(--color-tint)" }}>
+                Send email
+              </button>
+              {/* Always enabled — a practitioner must be able to dismiss the prompt even
+                  while the reschedule write is still saving. */}
+              <button type="button" onClick={onClose}
+                className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft">
+                Don&apos;t send
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <p className="mt-2 text-sm text-ink-soft">No client contact on file — no email will be sent.</p>
