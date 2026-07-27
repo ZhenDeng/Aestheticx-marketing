@@ -146,26 +146,33 @@ surprise, so it gets the same prompt. `PendingBookings.tsx:57` is out of scope:
 approving a pending booking sends a *confirmation* email, which is the intended
 behaviour of that action.
 
-Because `TimelineBlock` and the week/month block components are nested below the
-page component, the setter is threaded down as an `onRescheduled(apptID)` prop
-alongside the existing `onSelect` / `onError` props those components already
-take.
+**New component `src/components/app/RescheduleNotify.tsx`**
 
-**New component `src/components/app/NotifyRescheduleDialog.tsx`**
-
-Follows the app's established modal idiom (`role="dialog" aria-modal="true"`,
-fixed scrim, Escape to dismiss — as in `calendar/page.tsx:1253` and
-`DirectionDialog.tsx:124`). Props:
+The state and the modal live together in one small module rather than in
+`page.tsx`, which is already ~73 KB and does not need another stateful concern.
+It exports:
 
 ```ts
-{ appt: Appointment; onSend: () => void; onDismiss: () => void }
+export function RescheduleNotifyProvider({ children }: { children: ReactNode })
+export function useRescheduleNotify(): (apptID: string) => void
 ```
 
-It resolves the client contact with the existing `appointmentContact(appt,
-patient)` helper (already used for the detail panel's contact line) and renders
-the two-button form when `contact.email` is present, the single-OK form when it
-is not. Escape and scrim click behave as *Don't send* / *OK* — dismissing
-without emailing, which is the safe default.
+`CalendarInner` wraps its tree in the provider; each block component calls
+`useRescheduleNotify()` and invokes it after a successful reschedule. A context
+rather than a prop because `TimelineBlock`, `WeekBlock` and the month chip are
+two to three levels below the page, and `DayView` / `WeekView` / `MonthView` in
+between have no interest in the prompt.
+
+The dialog follows the app's established modal idiom (`role="dialog"
+aria-modal="true"`, fixed scrim, Escape to dismiss — as in `calendar/page.tsx:1253`
+and `DirectionDialog.tsx:124`). It holds only the appointment **id** and reads
+the record from the store at render time, so the copy always describes the
+committed position. It resolves the client contact with the existing
+`appointmentContact(appt, patient)` helper (already used for the detail panel's
+contact line) and renders the two-button form when `contact.email` is present,
+the single-OK form when it is not. Escape and scrim click behave as *Don't send*
+/ *OK* — dismissing without emailing, which is the safe default. If the
+appointment vanishes underneath it, the dialog closes itself.
 
 Title text reuses `appointmentChipTitle(store.state, appt, "Blocked time")` so
 the modal names the block the same way the chip does.
