@@ -927,11 +927,14 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
           header row is sticky inside it, so the calendar header never leaves the screen. */}
       <div ref={gridPaneRef} data-cal-scroll className="mt-6 overflow-auto overscroll-contain" style={{ maxHeight: gridPaneMaxHeight }}>
         <div className="grid sm:min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
-          {/* header row — sticky within the scroll pane; opaque so chips pass beneath it. */}
-          <div className="sticky top-0 z-20 bg-paper" />
+          {/* header row — sticky within the scroll pane; opaque bg-card (the shell's surface
+              colour, NOT paper — 26/07 follow-up: paper read as an off-colour band) so chips
+              pass beneath it. border-b spans the gutter corner too, and each day cell carries
+              the column's border-l so the grid lines run through the header. */}
+          <div className="sticky top-0 z-20 border-b border-line bg-card" />
           {days.map((iso) => (
             <button key={iso} onClick={() => openDay(iso)}
-              className="sticky top-0 z-20 border-b border-line bg-paper px-1 pb-2 text-center text-sm hover:text-tint"
+              className="sticky top-0 z-20 border-b border-l border-line bg-card px-1 pb-2 text-center text-sm hover:text-tint"
               style={iso === todayISO ? { color: "var(--color-tint)", fontWeight: 600 } : { color: "var(--color-ink-soft)" }}>
               {dayHeaderLabel(iso)}
             </button>
