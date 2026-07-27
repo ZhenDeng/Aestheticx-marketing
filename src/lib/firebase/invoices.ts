@@ -32,16 +32,21 @@ export interface CreateServiceInvoiceArgs {
   clinicID: string;
   issuerRole: "nurse" | "doctor";
   lines: { description: string; amountCents: number }[];
+  chargeGst: boolean;
+  gstIncluded: boolean;
 }
 
 // Manual practitioner→clinic service invoice (spec: manual-service-invoicing; backend
 // PR ZhenDeng/Aestheticx#115). The backend validates membership and freezes both
-// business-entity snapshots server-side.
+// business-entity snapshots server-side. The GST toggles default server-side to the
+// original exclusive convention, so an older backend simply ignores them.
 export async function createServiceInvoice(args: CreateServiceInvoiceArgs): Promise<string> {
   const res = await httpsCallable(functions(), "createServiceInvoice")({
     clinicId: args.clinicID,
     issuerRole: args.issuerRole,
     lines: args.lines,
+    chargeGst: args.chargeGst,
+    gstIncluded: args.gstIncluded,
   });
   return (res.data as { invoiceId?: string }).invoiceId ?? "";
 }

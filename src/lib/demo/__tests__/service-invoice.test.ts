@@ -84,6 +84,37 @@ describe("createServiceInvoice — happy path", () => {
   });
 });
 
+describe("createServiceInvoice — GST toggles (27/07 feedback)", () => {
+  it("inclusive: GST is backed out of the typed figures (round(amount/11))", () => {
+    const state = buildSeedState();
+    const next = createServiceInvoice(state, { clinicID: LUMIERE.id, lines: LINES, chargeGst: true, gstIncluded: true }, sarahClinic, SEED_NOW);
+    const invoice = next.invoices[next.invoices.length - 1];
+    expect(invoice.lines[0]).toMatchObject({ unitCents: 100000, feeCents: 90909, gstCents: 9091 });
+    expect(invoice.subtotalCents).toBe(90909 + 4545);
+    expect(invoice.gstCents).toBe(9091 + 455);
+    expect(invoice.totalCents).toBe(105000); // the typed figures ARE the total
+    expect(invoice.gstIncluded).toBe(true);
+  });
+
+  it("no GST: lines are untaxed and the total equals the subtotal", () => {
+    const state = buildSeedState();
+    const next = createServiceInvoice(state, { clinicID: LUMIERE.id, lines: LINES, chargeGst: false, gstIncluded: false }, sarahClinic, SEED_NOW);
+    const invoice = next.invoices[next.invoices.length - 1];
+    expect(invoice.gstCents).toBe(0);
+    expect(invoice.subtotalCents).toBe(105000);
+    expect(invoice.totalCents).toBe(105000);
+    expect(invoice.gstIncluded).toBeUndefined();
+  });
+
+  it("omitted toggles keep the original exclusive convention (10% on top)", () => {
+    const state = buildSeedState();
+    const next = createServiceInvoice(state, { clinicID: LUMIERE.id, lines: LINES }, sarahClinic, SEED_NOW);
+    const invoice = next.invoices[next.invoices.length - 1];
+    expect(invoice.totalCents).toBe(115500);
+    expect(invoice.gstIncluded).toBe(false);
+  });
+});
+
 describe("createServiceInvoice — permissions", () => {
   it("rejects a doctor whose clinic relationship is prescriber-only", () => {
     const state = withDoctorClinicRel(buildSeedState(), ["prescriber"]);

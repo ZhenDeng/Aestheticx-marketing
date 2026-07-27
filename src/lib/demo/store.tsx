@@ -476,6 +476,8 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
               clinicID: input.clinicID,
               issuerRole: id.role === "doctor" ? "doctor" : "nurse",
               lines: input.lines,
+              chargeGst: input.chargeGst ?? true,
+              gstIncluded: input.gstIncluded ?? false,
             });
             setRefreshTick((t) => t + 1);
           } catch (e) { setLastSyncError(syncErrorMessage(e)); }

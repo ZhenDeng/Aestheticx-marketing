@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities } from "@/lib/demo/identity";
-import { formatAUD, GST_RATE } from "@/lib/demo/invoicing";
+import { computeManualInvoice, formatAUD } from "@/lib/demo/invoicing";
 import type { ServiceInvoiceLineInput } from "@/lib/demo/backend";
 
 // Manual "Invoice the clinic" composer (spec: manual-service-invoicing, 20/07 feedback):
@@ -32,6 +32,9 @@ export function ServiceInvoiceComposer() {
   const store = useDemoStore();
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const [clinicChoice, setClinicChoice] = useState("");
+  // B2B default stays the original convention: GST charged, quoted ex GST (on top).
+  const [chargeGst, setChargeGst] = useState(true);
+  const [gstIncluded, setGstIncluded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [issued, setIssued] = useState(false);
 
@@ -54,11 +57,15 @@ export function ServiceInvoiceComposer() {
   const clinicID = clinicOptions.some((c) => c.id === clinicChoice) ? clinicChoice : clinicOptions[0].id;
   const clinicName = clinicOptions.find((c) => c.id === clinicID)!.name;
 
-  // Live preview over the currently-parseable lines: GST-exclusive, 10% on top per line.
+  // Live preview over the currently-parseable lines, following the GST toggles.
   const parsed = lines.map((l) => ({ description: l.description.trim(), cents: centsOf(l.amount) }));
   const previewable = parsed.filter((l) => l.cents !== null) as { description: string; cents: number }[];
-  const subtotalCents = previewable.reduce((sum, l) => sum + l.cents, 0);
-  const gstCents = previewable.reduce((sum, l) => sum + Math.round(l.cents * GST_RATE), 0);
+  const preview = previewable.length > 0
+    ? computeManualInvoice(
+        previewable.map((l, i) => ({ id: `p${i}`, description: l.description, amountCents: l.cents })),
+        { chargeGst, gstIncluded: chargeGst && gstIncluded },
+      )
+    : null;
 
   function patchLine(index: number, patch: Partial<DraftLine>) {
     setIssued(false);
@@ -78,7 +85,7 @@ export function ServiceInvoiceComposer() {
       inputs.push({ description: parsed[i].description, amountCents: parsed[i].cents! });
     }
     try {
-      store.createServiceInvoice({ clinicID, lines: inputs }, identity!);
+      store.createServiceInvoice({ clinicID, lines: inputs, chargeGst, gstIncluded: chargeGst && gstIncluded }, identity!);
       setLines([emptyLine()]);
       setIssued(true);
     } catch (e) {
@@ -120,7 +127,7 @@ export function ServiceInvoiceComposer() {
               />
               <input
                 value={line.amount}
-                placeholder="Amount ex GST"
+                placeholder={!chargeGst ? "Amount" : gstIncluded ? "Amount inc GST" : "Amount ex GST"}
                 inputMode="decimal"
                 aria-label={`Line ${i + 1} amount`}
                 onChange={(e) => patchLine(i, { amount: e.target.value })}
@@ -144,11 +151,25 @@ export function ServiceInvoiceComposer() {
         >
           Add line
         </button>
-        {previewable.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={chargeGst} onChange={(e) => { setChargeGst(e.target.checked); setIssued(false); }}
+              style={{ accentColor: "var(--color-tint)" }} />
+            Charge GST (10%)
+          </label>
+          {chargeGst && (
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" checked={gstIncluded} onChange={(e) => { setGstIncluded(e.target.checked); setIssued(false); }}
+                style={{ accentColor: "var(--color-tint)" }} />
+              Prices include GST
+            </label>
+          )}
+        </div>
+        {preview && (
           <div className="mt-3 flex flex-col items-end gap-0.5 text-sm">
-            <p className="text-ink-soft">Subtotal <span className="ml-2 inline-block w-24 text-right">{formatAUD(subtotalCents)}</span></p>
-            <p className="text-ink-soft">GST (10%) <span className="ml-2 inline-block w-24 text-right">{formatAUD(gstCents)}</span></p>
-            <p className="font-medium text-ink">Total <span className="ml-2 inline-block w-24 text-right">{formatAUD(subtotalCents + gstCents)}</span></p>
+            <p className="text-ink-soft">Subtotal <span className="ml-2 inline-block w-24 text-right">{formatAUD(preview.subtotalCents)}</span></p>
+            <p className="text-ink-soft">GST (10%) <span className="ml-2 inline-block w-24 text-right">{formatAUD(preview.gstCents)}</span></p>
+            <p className="font-medium text-ink">Total <span className="ml-2 inline-block w-24 text-right">{formatAUD(preview.totalCents)}</span></p>
           </div>
         )}
         {error && <p className="mt-2 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
