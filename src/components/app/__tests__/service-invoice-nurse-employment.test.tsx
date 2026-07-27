@@ -44,7 +44,7 @@ describe("ServiceInvoiceComposer — employed nurse", () => {
     await userEvent.type(screen.getByLabelText("Line 1 amount"), "1000");
     await userEvent.click(screen.getByRole("button", { name: /issue invoice/i }));
     expect(createServiceInvoice).toHaveBeenCalledWith(
-      { clinicID: "clinic-lumiere", lines: [{ description: "June nursing", amountCents: 100000 }] },
+      { clinicID: "clinic-lumiere", lines: [{ description: "June nursing", amountCents: 100000 }], chargeGst: true, gstIncluded: false },
       indie,
     );
   });

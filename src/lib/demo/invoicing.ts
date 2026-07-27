@@ -85,7 +85,7 @@ export interface Invoice {
   /** Top-up invoices: the promotional (non-taxable) portion and the total wallet credit. */
   giftCents?: number;
   totalCreditCents?: number;
-  /** Manual client invoice: recorded so the PDF prints the right GST statement. */
+  /** Manual client/service invoices: recorded so the PDF prints the right GST statement. */
   gstIncluded?: boolean;
   /** Links a client invoice raised from a calendar appointment check-out. */
   appointmentID?: string;

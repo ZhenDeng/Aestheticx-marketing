@@ -2862,6 +2862,10 @@ export interface ServiceInvoiceLineInput { description: string; amountCents: num
 export interface CreateServiceInvoiceInput {
   clinicID: string;
   lines: ServiceInvoiceLineInput[];
+  /** GST convention toggles (27/07 feedback), mirroring the manual client invoice.
+      Omitted = the original exclusive B2B math: GST charged, 10% on top. */
+  chargeGst?: boolean;
+  gstIncluded?: boolean;
 }
 
 // Manual service invoice (spec: manual-service-invoicing, 20/07 feedback): an employee
@@ -2891,17 +2895,27 @@ export function createServiceInvoice(state: DemoState, input: CreateServiceInvoi
     if (!Number.isInteger(line.amountCents) || line.amountCents <= 0) throw new BackendError("validationFailed");
   }
 
-  // GST-exclusive B2B math, per line, matching the checkout service fee: 10% on top.
-  const lines = input.lines.map((line) => ({
-    authorisationID: makeID("svc"),
-    dateISO: isoDay(now),
-    patientName: "",
-    feeCents: line.amountCents,
-    gstCents: Math.round(line.amountCents * GST_RATE),
-    description: line.description.trim(),
-    qty: 1,
-    unitCents: line.amountCents,
-  }));
+  // GST convention per the composer's toggles (27/07 feedback), same math as
+  // computeManualInvoice: exclusive (the default, matching the checkout service fee)
+  // adds 10% on top; inclusive backs GST out of the typed figure (round(amount/11));
+  // unchecked charges no GST.
+  const chargeGst = input.chargeGst ?? true;
+  const gstIncluded = chargeGst && (input.gstIncluded ?? false);
+  const lines = input.lines.map((line) => {
+    const gstCents = !chargeGst ? 0
+      : gstIncluded ? Math.round(line.amountCents / 11)
+      : Math.round(line.amountCents * GST_RATE);
+    return {
+      authorisationID: makeID("svc"),
+      dateISO: isoDay(now),
+      patientName: "",
+      feeCents: gstIncluded ? line.amountCents - gstCents : line.amountCents,
+      gstCents,
+      description: line.description.trim(),
+      qty: 1,
+      unitCents: line.amountCents,
+    };
+  });
   const subtotalCents = lines.reduce((sum, l) => sum + l.feeCents, 0);
   const gstCents = lines.reduce((sum, l) => sum + l.gstCents, 0);
   const invoice: Invoice = {
@@ -2919,6 +2933,7 @@ export function createServiceInvoice(state: DemoState, input: CreateServiceInvoi
     paid: false,
     kind: "service-fee",
     issuerRef: { kind: practitionerKind, id: identity.user.id },
+    gstIncluded: chargeGst ? gstIncluded : undefined,
     issuer: invoicePartyFor(state, practitionerKind, identity.user.id),
     billTo: invoicePartyFor(state, "clinic", input.clinicID),
   };

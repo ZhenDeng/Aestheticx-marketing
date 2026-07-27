@@ -135,6 +135,37 @@ describe("Invoice the clinic — composer", () => {
     expect(within(screen.getByTestId("service-fees")).getByText("$1,155.00")).toBeInTheDocument();
   });
 
+  it("GST toggles switch the preview convention: inclusive backs GST out, unchecked charges none", async () => {
+    render(<BillingPage />);
+    const section = screen.getByText("Invoice the clinic").closest("section")!;
+    await userEvent.type(within(section).getByLabelText("Line 1 description"), "Services");
+    await userEvent.type(within(section).getByLabelText("Line 1 amount"), "1100");
+
+    // Default exclusive: 1100 + 110 GST = 1210, quoted ex GST.
+    expect(within(section).getByPlaceholderText("Amount ex GST")).toBeInTheDocument();
+    expect(within(section).getByText("$1,210.00")).toBeInTheDocument();
+
+    // Prices include GST: the typed figure is the total; GST = 1100/11 = 100.
+    await userEvent.click(within(section).getByLabelText("Prices include GST"));
+    expect(within(section).getByPlaceholderText("Amount inc GST")).toBeInTheDocument();
+    expect(within(section).getByText("$1,000.00")).toBeInTheDocument();
+    expect(within(section).getByText("$100.00")).toBeInTheDocument();
+    expect(within(section).getByText("$1,100.00")).toBeInTheDocument();
+
+    // Charge GST off hides the inclusive toggle and taxes nothing.
+    await userEvent.click(within(section).getByLabelText("Charge GST (10%)"));
+    expect(within(section).queryByLabelText("Prices include GST")).not.toBeInTheDocument();
+    expect(within(section).getByPlaceholderText("Amount")).toBeInTheDocument();
+    expect(within(section).getByText("$0.00")).toBeInTheDocument();
+
+    const before = demoState.invoices.length;
+    await userEvent.click(within(section).getByRole("button", { name: "Issue invoice" }));
+    expect(demoState.invoices.length).toBe(before + 1);
+    const invoice = demoState.invoices[demoState.invoices.length - 1];
+    expect(invoice.gstCents).toBe(0);
+    expect(invoice.totalCents).toBe(110000);
+  });
+
   it("refuses to issue an incomplete line and points at it", async () => {
     render(<BillingPage />);
     const section = screen.getByText("Invoice the clinic").closest("section")!;
