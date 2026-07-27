@@ -319,6 +319,12 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
             { uid: identity.user.id, clinicIds: Object.keys(allClinics), superAdmin: allRoles.includes("superAdmin") },
             {
               onAppointments: (appointments) => setState((s) => ({ ...s, appointments })),
+              hasPatient: (id) => !!patientsRef.current[id],
+              // Consult-call file access (28/07): a call booked while this doctor is signed
+              // in opens that patient's file, but hydrate ran before the booking existed.
+              // Merge only when hydrate didn't already load it (never clobber local edits).
+              onPatient: (patient) =>
+                setState((s) => (s.patients[patient.id] ? s : { ...s, patients: { ...s.patients, [patient.id]: patient } })),
               onScopeError: () =>
                 setLastSyncError("Live calendar updates were interrupted — refresh to make sure appointments are current."),
             },
