@@ -278,8 +278,18 @@ export async function mirrorBookTreatment(input: {
     patientName: input.patientName ?? null, lead: input.lead ?? null, note: input.note ?? "",
   });
 }
-export async function mirrorRescheduleAppointment(id: string, dateISO: string, startMinute: number, durationMinutes: number): Promise<void> {
-  await httpsCallable(functions(), "rescheduleAppointment")({ appointmentId: id, dateISO, startMinute, durationMinutes });
+// `notifyClient` is REQUIRED, not optional: the calendar reschedules silently and offers a
+// separate Send button (2026-07-27), so a new call site must state its intent rather than
+// silently inherit the backend's iOS-preserving `true` default.
+export async function mirrorRescheduleAppointment(
+  id: string, dateISO: string, startMinute: number, durationMinutes: number, notifyClient: boolean,
+): Promise<void> {
+  await httpsCallable(functions(), "rescheduleAppointment")({
+    appointmentId: id, dateISO, startMinute, durationMinutes, notifyClient,
+  });
+}
+export async function mirrorNotifyAppointmentRescheduled(id: string): Promise<void> {
+  await httpsCallable(functions(), "notifyAppointmentRescheduled")({ appointmentId: id });
 }
 export async function mirrorMarkAppointment(id: string, status: "completed" | "noShow" | "cancelled"): Promise<void> {
   await httpsCallable(functions(), "markAppointment")({ appointmentId: id, status });

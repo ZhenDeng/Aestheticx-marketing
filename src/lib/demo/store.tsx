@@ -115,6 +115,8 @@ interface StoreValue {
   requestAdHocAuth: (input: import("./backend").RequestAdHocAuthInput) => Promise<void>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
+  /** Send the "your appointment moved" email for an already-committed reschedule. No-op in demo. */
+  notifyAppointmentRescheduled: (id: string) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
   linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
@@ -744,10 +746,31 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       },
       rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) => {
         backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity); // eager validate — throws
+        // Track this write in pendingWrites (27/07 review, finding C2): the RescheduleNotify
+        // dialog can open in the same commit as this call, and its Send button reads
+        // store.refreshing to avoid emailing before the move has actually landed server-side
+        // (or emailing a move that a failed mirror is about to revert). applyAndMirror stays
+        // silent for every OTHER call site — this is the one write important enough to gate a
+        // user-facing button on.
+        if (live) setPendingWrites((n) => n + 1);
         applyAndMirror(
           (s) => backend.rescheduleAppointment(s, id, dateISO, startMinute, durationMinutes, identity),
-          (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
+          // notifyClient:false — the calendar asks the practitioner and sends separately.
+          async (m) => {
+            try {
+              await m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes, false);
+            } finally {
+              setPendingWrites((n) => n - 1);
+            }
+          },
         );
+      },
+      notifyAppointmentRescheduled: (id) => {
+        if (!live) return; // demo has no mail pipeline — the dialog still opens and closes
+        runLiveWrite(async () => {
+          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorNotifyAppointmentRescheduled(id); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
+        });
       },
       markAppointment: (id, status, identity) => {
         backend.markAppointment(state, id, status, identity); // eager validate — throws synchronously (e.g. already actioned)

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
+import { useRescheduleNotify } from "@/components/app/RescheduleNotify";
 import { appointmentTitle, appointmentContact, BackendError } from "@/lib/demo/backend";
 import type { Appointment, Identity } from "@/lib/demo/types";
 
@@ -35,10 +36,13 @@ export function PendingBookings({ me }: { me: Identity }) {
 }
 
 // One inbox row: approve / reschedule / decline. The date is editable here — unlike the
-// day-view detail, pending rows span dates. Approving, moving, or declining also emails
-// the client in live mode (deployed callables queue it; see the 2026-07-05 design doc).
+// day-view detail, pending rows span dates. Approving and declining still email the client
+// automatically in live mode (deployed callables queue it; see the 2026-07-05 design doc);
+// a reschedule commits silently and raises the same "Notify the client?" dialog as the
+// calendar's drag/resize handlers (2026-07-27 — this was the ninth, previously-unwired site).
 function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
   const store = useDemoStore();
+  const promptNotify = useRescheduleNotify();
   const [rescheduling, setRescheduling] = useState(false);
   const [date, setDate] = useState(appt.dateISO);
   const [time, setTime] = useState(timeLabel(appt.startMinute));
@@ -55,6 +59,7 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
   function applyReschedule() {
     try {
       store.rescheduleAppointment(appt.id, date, minutesFromTime(time), duration, me);
+      promptNotify(appt.id);
       setError(null);
       setRescheduling(false);
     } catch (e) {

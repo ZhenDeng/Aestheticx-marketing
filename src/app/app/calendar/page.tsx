@@ -6,6 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentChipNote, appointmentContact, authCallDetails, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
+import { RescheduleNotifyProvider, useRescheduleNotify } from "@/components/app/RescheduleNotify";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { externalBusyForDate } from "@/lib/demo/externalBusy";
@@ -136,6 +137,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
   function openDay(iso: string) { setSelectedISO(iso); setView("day"); }
 
   return (
+    <RescheduleNotifyProvider>
     <div>
       <PendingBookings me={me} />
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -181,6 +183,7 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
       )}
       {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
     </div>
+    </RescheduleNotifyProvider>
   );
 }
 
@@ -479,6 +482,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
   appt: Appointment; me: Identity; layout: DayColumn; selected: boolean; onSelect: (id: string | null) => void;
 }) {
   const store = useDemoStore();
+  const promptNotify = useRescheduleNotify();
   const [dragDy, setDragDy] = useState(0);
   const [resizeDy, setResizeDy] = useState(0);
   const [topDy, setTopDy] = useState(0);
@@ -560,6 +564,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     if (newStart !== appt.startMinute) {
       try {
         store.rescheduleAppointment(appt.id, appt.dateISO, newStart, duration, me);
+        promptNotify(appt.id);
         setScheduleError(null);
       } catch (e) {
         setScheduleError(e instanceof BackendError && e.message === "unavailable"
@@ -601,6 +606,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     if (duration !== appt.endMinute - appt.startMinute) {
       try {
         store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+        promptNotify(appt.id);
         setScheduleError(null);
       } catch (e) {
         setScheduleError(e instanceof BackendError && e.message === "unavailable"
@@ -639,6 +645,7 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
     if (newStart !== appt.startMinute) {
       try {
         store.rescheduleAppointment(appt.id, appt.dateISO, newStart, appt.endMinute - newStart, me);
+        promptNotify(appt.id);
         setScheduleError(null);
       } catch (e) {
         setScheduleError(e instanceof BackendError && e.message === "unavailable"
@@ -695,6 +702,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
   selected: boolean; onSelect: (id: string | null) => void;
 }) {
   const store = useDemoStore();
+  const promptNotify = useRescheduleNotify();
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
   const [resizeDy, setResizeDy] = useState(0);
   const [topDy, setTopDy] = useState(0);
@@ -782,6 +790,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
     if (targetISO !== appt.dateISO || newStart !== appt.startMinute) {
       try {
         store.rescheduleAppointment(appt.id, targetISO, newStart, duration, me);
+        promptNotify(appt.id);
         setScheduleError(null);
       } catch (e) {
         setScheduleError(e instanceof BackendError && e.message === "unavailable"
@@ -813,6 +822,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
     if (duration !== appt.endMinute - appt.startMinute) {
       try {
         store.rescheduleAppointment(appt.id, appt.dateISO, appt.startMinute, duration, me);
+        promptNotify(appt.id);
         setScheduleError(null);
       } catch (e) {
         setScheduleError(e instanceof BackendError && e.message === "unavailable"
@@ -844,6 +854,7 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
     if (newStart !== appt.startMinute) {
       try {
         store.rescheduleAppointment(appt.id, appt.dateISO, newStart, appt.endMinute - newStart, me);
+        promptNotify(appt.id);
         setScheduleError(null);
       } catch (e) {
         setScheduleError(e instanceof BackendError && e.message === "unavailable"
@@ -1054,6 +1065,7 @@ function MonthChip({ appt, me, selected, onError }: {
   appt: Appointment; me: Identity; selected: boolean; onError: (msg: string | null) => void;
 }) {
   const store = useDemoStore();
+  const promptNotify = useRescheduleNotify();
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
   const drag = useRef<{ startX: number; startY: number; moved: boolean } | null>(null);
   const movedRef = useRef(false);
@@ -1084,6 +1096,7 @@ function MonthChip({ appt, me, selected, onError }: {
     if (!iso || iso === appt.dateISO) return;
     try {
       store.rescheduleAppointment(appt.id, iso, appt.startMinute, appt.endMinute - appt.startMinute, me);
+      promptNotify(appt.id);
       onError(null);
     } catch (err) {
       onError(err instanceof BackendError && err.message === "unavailable"
@@ -1402,6 +1415,7 @@ function ConsultCallDetails({ appt, me }: { appt: Appointment; me: Identity }) {
 
 function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Identity; onDone: () => void }) {
   const store = useDemoStore();
+  const promptNotify = useRescheduleNotify();
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -1457,6 +1471,7 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
               try {
                 store.rescheduleAppointment(appt.id, appt.dateISO, minutesFromTime(time), duration, me);
                 setScheduleError(null);
+                promptNotify(appt.id);
                 onDone();
               } catch (e) {
                 setScheduleError(e instanceof BackendError && e.message === "unavailable"
