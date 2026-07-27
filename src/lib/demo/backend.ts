@@ -1563,6 +1563,59 @@ export function appointmentContact(a: Appointment, patient: Patient | undefined)
   return contact;
 }
 
+/**
+ * What a booked authorisation teleconsult is about, for the calendar's appointment modal.
+ * A booked call is a 10-minute chip — below the grid's text threshold, so it draws as a
+ * colour-only bar and the modal is the ONLY place the call can be read. Mirrors the lines
+ * the dashboard's "Upcoming authorisation calls" rows show, plus the request behind the call.
+ *
+ * Every field is best-effort: unresolvable ones come back null/empty rather than guessed.
+ */
+export interface AuthCallDetails {
+  /** The nurse or clinic who booked the call. */
+  bookerName: string | null;
+  /** The prescriber the call is with (the appointment's owner). */
+  doctorName: string | null;
+  /** The booker's own note (appointmentChipNote, so the synthetic "Auth request · X"
+   *  marker `bookerName` already renders is suppressed). Null when there is none. */
+  note: string | null;
+  /** Medications on the open request behind this call, as "name · dosage". */
+  medications: string[];
+}
+
+/**
+ * The still-open authorisation request this call is about: same patient, same prescriber,
+ * raised by the party who booked the slot. Matched rather than referenced — the appointment
+ * carries no request id (neither does the deployed bookAuthSlot) — so the booker match is
+ * kept strict: a request from another nurse for the same patient must not surface here.
+ * Latest wins. Null for a lead booking (no patient file yet ⇒ no request).
+ */
+function openRequestForCall(state: DemoState, a: Appointment): AuthorisationRequest | null {
+  if (!a.patientID) return null;
+  const bookedBy = a.bookedByID;
+  return Object.values(state.requests)
+    .filter((r) =>
+      r.patientID === a.patientID && r.doctorID === a.ownerID &&
+      (r.status === "pending" || r.status === "needsEdit") &&
+      (!bookedBy || r.nurse.id === bookedBy || (r.context.kind === "clinic" && r.context.clinic.id === bookedBy)))
+    .sort((x, y) => y.createdAt - x.createdAt)[0] ?? null;
+}
+
+export function authCallDetails(state: DemoState, a: Appointment): AuthCallDetails {
+  const request = openRequestForCall(state, a);
+  return {
+    bookerName: bookerLabel(state, a),
+    // The window's stamped doctorName is the name the booker actually booked against, so it
+    // stands in when the account directory can't resolve the owner (a live cross-account view).
+    doctorName: accountNameByID(state, a.ownerID)
+      ?? Object.values(state.availabilityWindows).find((w) => w.doctorID === a.ownerID)?.doctorName
+      ?? null,
+    // Same note the chips show — the synthetic auth-request marker is already the booker line.
+    note: appointmentChipNote(a) ?? null,
+    medications: (request?.items ?? []).map((m) => [m.name, m.dosage].filter(Boolean).join(" · ")),
+  };
+}
+
 // Existing patients OWNED BY the acting subject that match a booking lead on name + full DOB —
 // "return patient" detection so a self-booking reuses the file instead of minting a duplicate.
 // Per-subject isolation (feedback 2026-07-07 item 4): matches only the caller's OWN files
