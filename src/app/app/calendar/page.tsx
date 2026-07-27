@@ -929,12 +929,12 @@ function WeekView({ ownerID, selectedISO, todayISO, me, openDay, showNew, setSho
         <div className="grid sm:min-w-[680px]" style={{ gridTemplateColumns: "3rem repeat(7, minmax(0, 1fr))" }}>
           {/* header row — sticky within the scroll pane; opaque bg-card (the shell's surface
               colour, NOT paper — 26/07 follow-up: paper read as an off-colour band) so chips
-              pass beneath it. Day cells are borderless by owner preference (27/07) — only the
-              full-width underline (spanning the gutter corner too) separates header from grid. */}
-          <div className="sticky top-0 z-20 border-b border-line bg-card" />
+              pass beneath it. Fully borderless by owner preference (27/07): no column
+              separators and no underline — the labels sit directly above the grid. */}
+          <div className="sticky top-0 z-20 bg-card" />
           {days.map((iso) => (
             <button key={iso} onClick={() => openDay(iso)}
-              className="sticky top-0 z-20 border-b border-line bg-card px-1 pb-2 text-center text-sm hover:text-tint"
+              className="sticky top-0 z-20 bg-card px-1 pb-2 text-center text-sm hover:text-tint"
               style={iso === todayISO ? { color: "var(--color-tint)", fontWeight: 600 } : { color: "var(--color-ink-soft)" }}>
               {dayHeaderLabel(iso)}
             </button>
