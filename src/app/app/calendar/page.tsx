@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, authCallDetails, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
@@ -1223,6 +1223,9 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
   // only ever error (and could strand an orphan patient on create-from-lead).
   const isOwner = appt.ownerID === appointmentOwnerScope(me);
   const lead = isLeadAppointment(appt);
+  // A booked consult call (authorisation teleconsult) gets its own detail block — see
+  // ConsultCallDetails for why this modal is the only place it can be read.
+  const isCall = appt.type === "authSlot";
   // Client contact (spec: DOB/phone/email on the calendar) — lead fields, patient-record fallback.
   const contact = appointmentContact(appt, appt.patientID ? store.state.patients[appt.patientID] : undefined);
   const contactLine = [contact.dobLabel && `DOB ${contact.dobLabel}`, contact.phone, contact.email]
@@ -1262,7 +1265,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
             <Link href={`/app/patients/${appt.patientID}`} className="underline decoration-line underline-offset-2 hover:decoration-tint">{appt.patientName ?? "Patient"}</Link>
           ) : lead ? (
             <>{leadName(appt) || "New patient"} <span className="micro text-ink-soft">· new patient</span></>
-          ) : "Blocked time"}
+          ) : isCall ? "Authorisation call" : "Blocked time"}
           {" · "}{timeLabel(appt.startMinute)}–{timeLabel(appt.endMinute)}
         </span>
         <span className="flex flex-none items-center gap-2.5">
@@ -1277,7 +1280,9 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       {appt.source === "google" && (
         <p className="micro mt-0.5 text-ink-soft">Booked via Google Calendar — changes made there sync here automatically.</p>
       )}
-      {appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
+      {/* The call block renders the booking note itself (minus its auto-generated marker). */}
+      {isCall ? <ConsultCallDetails appt={appt} me={me} />
+        : appt.appointmentNote && <p className="mt-0.5 text-sm text-ink-soft">{appt.appointmentNote}</p>}
 
       {lead && !creating && isOwner && canCreatePatient(me) && (
         <div className="mt-2 flex flex-col gap-2">
@@ -1322,6 +1327,54 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
         <AppointmentActions key={`${appt.startMinute}-${appt.endMinute}-${appt.status}`} appt={appt} me={me} onDone={onDone} />
       )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * What a booked consult call is about (owner feedback 27/07). A teleconsult is booked in
+ * 10-minute slots, so its chip is ~10px tall — under TEXT_MIN_PX, it draws as a colour-only
+ * bar with no title. This modal is therefore the only place the call can actually be read,
+ * and until now it showed nothing that said "call" at all. Same lines as the dashboard's
+ * upcoming-calls rows, plus the medications on the open request behind the call.
+ */
+function ConsultCallDetails({ appt, me }: { appt: Appointment; me: Identity }) {
+  const store = useDemoStore();
+  const { bookerName, doctorName, note, medications } = authCallDetails(store.state, appt);
+  // "Call with {doctor}" is for the booking nurse/clinic — on the doctor's own calendar it
+  // would only name them back to themselves.
+  const showDoctor = appt.ownerID !== appointmentOwnerScope(me);
+  const rows: { label: string; value: string }[] = [
+    ...(bookerName ? [{ label: "Requested by", value: bookerName }] : []),
+    ...(showDoctor && doctorName ? [{ label: "Call with", value: doctorName }] : []),
+    ...(note ? [{ label: "Note", value: note }] : []),
+  ];
+
+  return (
+    <div className="mt-2 rounded-inner border border-line px-3 py-2">
+      <p className="micro text-ink-soft">Authorisation teleconsult</p>
+      {rows.length > 0 && (
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+          {rows.map(({ label, value }) => (
+            <Fragment key={label}>
+              <dt className="text-ink-soft">{label}</dt>
+              <dd className="text-ink">{value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+      {medications.length > 0 && (
+        <div className="mt-2 border-t border-line pt-2">
+          <p className="micro text-ink-soft">Awaiting authorisation</p>
+          <ul className="mt-0.5 flex flex-col gap-0.5 text-sm text-ink">
+            {medications.map((m, i) => <li key={`${i}-${m}`}>{m}</li>)}
+          </ul>
+          <Link href="/app/authorisations"
+            className="micro mt-1 inline-block underline decoration-line underline-offset-2 hover:decoration-tint">
+            Open in Authorisations ›
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
