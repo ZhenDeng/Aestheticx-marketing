@@ -115,6 +115,8 @@ interface StoreValue {
   requestAdHocAuth: (input: import("./backend").RequestAdHocAuthInput) => Promise<void>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
+  /** Send the "your appointment moved" email for an already-committed reschedule. No-op in demo. */
+  notifyAppointmentRescheduled: (id: string) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
   linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
@@ -740,8 +742,16 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity); // eager validate — throws
         applyAndMirror(
           (s) => backend.rescheduleAppointment(s, id, dateISO, startMinute, durationMinutes, identity),
-          (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes),
+          // notifyClient:false — the calendar asks the practitioner and sends separately.
+          (m) => m.mirrorRescheduleAppointment(id, dateISO, startMinute, durationMinutes, false),
         );
+      },
+      notifyAppointmentRescheduled: (id) => {
+        if (!live) return; // demo has no mail pipeline — the dialog still opens and closes
+        runLiveWrite(async () => {
+          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorNotifyAppointmentRescheduled(id); }
+          catch (e) { setLastSyncError(syncErrorMessage(e)); }
+        });
       },
       markAppointment: (id, status, identity) => {
         backend.markAppointment(state, id, status, identity); // eager validate — throws synchronously (e.g. already actioned)
