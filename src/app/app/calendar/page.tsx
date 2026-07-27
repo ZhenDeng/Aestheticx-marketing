@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentContact, authCallDetails, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
+import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentChipNote, appointmentContact, authCallDetails, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
@@ -331,6 +331,7 @@ const WIN_START = 7 * 60;   // 07:00
 const WIN_END = 19 * 60;    // 19:00
 const PX_PER_MIN = 1;       // 60px / hour — a 30-min chip is 30px (fits one text line)
 const TEXT_MIN_PX = 28;     // below this a chip is a colour-only bar
+const NOTE_MIN_PX = 45;     // two 11px lines + padding — a 45-min chip is the first that fits a note
 const DRAG_STEP = 5;        // snap dragged appointments to 5-minute steps
 const DRAG_THRESHOLD = 4;   // px of movement before a press becomes a drag (vs a tap)
 const MIN_DURATION = 15;    // an appointment can't be resized shorter than this
@@ -445,6 +446,31 @@ function BlockedBands({ ownerID, dateISO }: { ownerID: string; dateISO: string }
           </div>
         );
       })}
+    </>
+  );
+}
+
+// " · {note}" for a chip's tooltip and accessible name, or "" when there is no note to
+// show. Every chip carries its note here regardless of height — that is how a 30-minute
+// chip, and a sub-TEXT_MIN_PX colour-only bar, still surface one (spec: 2026-07-27).
+function noteSuffix(appt: Appointment): string {
+  const note = appointmentChipNote(appt);
+  return note ? ` · ${note}` : "";
+}
+
+// Chip body shared by the day and week timeline blocks, which render identically: the
+// time+title line, plus the note on a dimmed second line once the chip is tall enough
+// (NOTE_MIN_PX) to hold one without clipping the patient name above it.
+function ChipText({ appt, showText, showNote }: { appt: Appointment; showText: boolean; showNote: boolean }) {
+  const store = useDemoStore();
+  const note = appointmentChipNote(appt);
+  if (!showText) return null;
+  return (
+    <>
+      <span className="block text-[11px] leading-tight">
+        <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentChipTitle(store.state, appt)}
+      </span>
+      {showNote && note && <span className="block truncate text-[10px] leading-tight opacity-80">{note}</span>}
     </>
   );
 }
@@ -638,13 +664,9 @@ function TimelineBlock({ appt, me, layout, selected, onSelect }: {
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
         zIndex: dragDy !== 0 || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
-      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
-      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}`}>
-      {showText && (
-        <span className="block text-[11px] leading-tight">
-          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentChipTitle(store.state, appt)}
-        </span>
-      )}
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}${noteSuffix(appt)}`}
+      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}${noteSuffix(appt)}`}>
+      <ChipText appt={appt} showText={showText} showNote={height >= NOTE_MIN_PX} />
       {draggable && (
         <>
           <span
@@ -845,13 +867,9 @@ function WeekBlock({ appt, me, days, dayIndex, layout, selected, onSelect }: {
         outline: selected ? "2px solid var(--color-ink)" : "none", outlineOffset: 1,
         zIndex: move || resizeDy !== 0 || topDy !== 0 ? 10 : 1,
       }}
-      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}`}
-      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}`}>
-      {showText && (
-        <span className="block text-[11px] leading-tight">
-          <span className="font-medium">{timeLabel(appt.startMinute)}</span> {appointmentChipTitle(store.state, appt)}
-        </span>
-      )}
+      aria-label={`${timeLabel(appt.startMinute)}–${timeLabel(appt.endMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}, ${STATUS_LABEL[appt.status]}${noteSuffix(appt)}`}
+      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}${noteSuffix(appt)}`}>
+      <ChipText appt={appt} showText={showText} showNote={height >= NOTE_MIN_PX} />
       {draggable && (
         <>
           <span
@@ -1099,7 +1117,10 @@ function MonthChip({ appt, me, selected, onError }: {
         pointerEvents: move ? "none" : undefined,
         touchAction: draggable ? "none" : undefined,
         cursor: draggable ? "grab" : undefined,
-      }}>
+      }}
+      // A month cell has no room for a second line, so the tooltip is the only place the
+      // note can surface here (spec: 2026-07-27).
+      title={`${timeLabel(appt.startMinute)} ${appointmentChipTitle(store.state, appt, "Blocked time")}${noteSuffix(appt)}`}>
       <span className="inline-block h-2 w-1 flex-none rounded-sm" style={{ background: apptColor(appt) }} />
       <span className="truncate">{timeLabel(appt.startMinute)} {appointmentChipTitle(store.state, appt)}</span>
     </span>
