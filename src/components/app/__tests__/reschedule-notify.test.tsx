@@ -2,7 +2,7 @@
 // this dialog asks whether to tell the client. Driven through the real demo store so the
 // dialog's contact resolution and copy are exercised, not stubbed.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, renderHook, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { emptyState } from "@/lib/demo/backend";
@@ -123,5 +123,17 @@ describe("RescheduleNotify dialog", () => {
     render(<Harness><Trigger apptID="a-deleted" /></Harness>);
     await user.click(screen.getByRole("button", { name: "__moved_a-deleted__" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("throws when called outside RescheduleNotifyProvider", () => {
+    // Matches the fail-loud contract of every sibling context in this codebase (useDemoStore,
+    // useDemoAuth, useConsultCall): a call site added outside the provider must blow up loudly,
+    // not silently swallow the prompt. React logs the render-phase error to console.error even
+    // though it's caught here — suppressed the same way auth-live-watcher.test.tsx does.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => renderHook(() => useRescheduleNotify())).toThrow(
+      "useRescheduleNotify must be used within RescheduleNotifyProvider",
+    );
+    errorSpy.mockRestore();
   });
 });

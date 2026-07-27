@@ -11,11 +11,13 @@ import type { Appointment } from "@/lib/demo/types";
 // once, whether to tell them. One prompt at a time: a second move replaces the first rather
 // than queueing a backlog of modals, which would be the same friction in a different shape.
 
-const RescheduleNotifyContext = createContext<(apptID: string) => void>(() => {});
+const RescheduleNotifyContext = createContext<((apptID: string) => void) | null>(null);
 
 /** Raise the "notify the client?" prompt for an appointment that just moved. */
 export function useRescheduleNotify(): (apptID: string) => void {
-  return useContext(RescheduleNotifyContext);
+  const ctx = useContext(RescheduleNotifyContext);
+  if (!ctx) throw new Error("useRescheduleNotify must be used within RescheduleNotifyProvider");
+  return ctx;
 }
 
 export function RescheduleNotifyProvider({ children }: { children: ReactNode }) {
