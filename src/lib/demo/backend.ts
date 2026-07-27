@@ -406,17 +406,45 @@ export interface SubmitRequestInput {
   identity: Identity;
 }
 
-// Recompute a patient's open-reviewer doctors from the current request set — the demo
-// mirror of the backend's onAuthRequestWritten trigger. A doctor is a reviewer iff they
-// hold a pending/needsEdit request for the patient (spec 2026-07-07 reviewer-file-access).
-function syncReviewerAccess(state: DemoState, patientID: string): DemoState {
+// A call still on the books. Cancelled/completed/noShow end the grant the moment the doctor
+// (or the booking clinic) marks it.
+const ACTIVE_CALL_STATUSES: AppointmentStatus[] = ["awaitingConfirmation", "confirmed"];
+
+/**
+ * The oldest call day that still opens the patient's file: yesterday, so an evening call
+ * written up next morning doesn't lose the file mid-use. Anything older is stale — access
+ * must not accumulate one patient per call ever booked. Mirrors the backend's
+ * callAccessCutoffISO; the demo dates its calendar in UTC (isoDay) where the backend uses
+ * clinic time, which only shifts the boundary by hours.
+ */
+export function callAccessCutoffISO(now: number): string {
+  return isoDay(now - 24 * 60 * 60 * 1000);
+}
+
+/** Doctors whose booked teleconsult about this patient is still live (see the cutoff above). */
+function callGrantedDoctors(state: DemoState, patientID: string, now: number): string[] {
+  const cutoffISO = callAccessCutoffISO(now);
+  return Object.values(state.appointments)
+    .filter((a) =>
+      a.type === "authSlot" && a.patientID === patientID
+      && ACTIVE_CALL_STATUSES.includes(a.status) && a.dateISO >= cutoffISO)
+    .map((a) => a.ownerID);
+}
+
+// Recompute a patient's open-reviewer doctors — the demo mirror of the backend's
+// onAuthRequestWritten + onAppointmentWritten triggers. A doctor holds read-only file access
+// while they have an open reason to read it: a pending/needsEdit request (spec 2026-07-07
+// reviewer-file-access), OR a booked consult call about the patient (owner feedback 28/07).
+// Either alone is enough, so deciding the request mid-call doesn't pull the file away.
+function syncReviewerAccess(state: DemoState, patientID: string, now: number = Date.now()): DemoState {
   const patient = state.patients[patientID];
   if (!patient) return state;
-  const reviewers = [...new Set(
-    Object.values(state.requests)
+  const reviewers = [...new Set([
+    ...Object.values(state.requests)
       .filter((r) => r.patientID === patientID && (r.status === "pending" || r.status === "needsEdit"))
       .map((r) => r.doctorID),
-  )];
+    ...callGrantedDoctors(state, patientID, now),
+  ])];
   return { ...state, patients: { ...state.patients, [patientID]: { ...patient, openReviewerDoctorIDs: reviewers } } };
 }
 
@@ -448,7 +476,7 @@ export function submitRequest(
     patientSummary: patientSummary(patient),
     premise,
   };
-  const next = syncReviewerAccess({ ...state, requests: { ...state.requests, [request.id]: request } }, input.patientID);
+  const next = syncReviewerAccess({ ...state, requests: { ...state.requests, [request.id]: request } }, input.patientID, now);
   return { state: next, request };
 }
 
@@ -575,6 +603,7 @@ export function approveRequest(
       requests: { ...state.requests, [requestID]: { ...request, status: "approved" } },
     },
     request.patientID,
+    now,
   );
 
   // Round 6: every approval produces ONE combined Treatment Authorisation document (all
@@ -742,7 +771,9 @@ export function editPendingRequest(state: DemoState, input: ResubmitRequestInput
 // syncReviewerAccess drops the addressed doctor from openReviewerDoctorIDs — revoking the
 // read-only file access a never-approved request would otherwise grant forever. Mirrors the
 // Firestore rule that permits exactly this transition (status only) for the same principals.
-export function withdrawRequest(state: DemoState, requestID: string, identity: Identity): DemoState {
+export function withdrawRequest(
+  state: DemoState, requestID: string, identity: Identity, now: number = Date.now(),
+): DemoState {
   const request = state.requests[requestID];
   if (!request) throw new BackendError("notFound");
   const isOwner = identity.role === "nurse" && request.nurse.id === identity.user.id;
@@ -754,6 +785,7 @@ export function withdrawRequest(state: DemoState, requestID: string, identity: I
   return syncReviewerAccess(
     { ...state, requests: { ...state.requests, [requestID]: { ...request, status: "withdrawn" } } },
     request.patientID,
+    now,
   );
 }
 
@@ -1066,6 +1098,7 @@ export function bookTreatmentAppointment(state: DemoState, input: BookTreatmentI
 
 export function rescheduleAppointment(
   state: DemoState, id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity,
+  now: number = Date.now(),
 ): DemoState {
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
@@ -1077,13 +1110,14 @@ export function rescheduleAppointment(
       throw new BackendError("unavailable");
     }
   }
-  const moved = { ...appt, dateISO, startMinute, endMinute: startMinute + durationMinutes };
-  return { ...state, appointments: { ...state.appointments, [id]: moved } };
+  // withCallAccess: the call's day is part of the grant window, so moving it moves the access.
+  return withCallAccess(state, { ...appt, dateISO, startMinute, endMinute: startMinute + durationMinutes }, now);
 }
 
 // completed | noShow | cancelled — only awaiting/confirmed appointments may be marked.
 export function markAppointment(
   state: DemoState, id: string, status: Extract<AppointmentStatus, "completed" | "noShow" | "cancelled">, identity: Identity,
+  now: number = Date.now(),
 ): DemoState {
   const appt = state.appointments[id];
   if (!appt) throw new BackendError("notFound");
@@ -1093,7 +1127,8 @@ export function markAppointment(
   const bookerCancelling = status === "cancelled" && appt.type === "authSlot" && appt.bookedByID === scope;
   if (appt.ownerID !== scope && !bookerCancelling) throw new BackendError("notPermitted");
   if (appt.status !== "awaitingConfirmation" && appt.status !== "confirmed") throw new BackendError("notActive");
-  return { ...state, appointments: { ...state.appointments, [id]: { ...appt, status } } };
+  // Marking a call ends the file access it granted the doctor (withCallAccess).
+  return withCallAccess(state, { ...appt, status }, now);
 }
 
 export function appointmentsForOwnerOnDay(state: DemoState, ownerID: string, dateISO: string): Appointment[] {
@@ -1204,7 +1239,9 @@ export interface BookAuthSlotInput {
 
 // Book a published 10-minute slot for an existing patient or a new-patient lead. The slot
 // must belong to a window and be open (no double-book).
-export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { state: DemoState; appt: Appointment } {
+export function bookAuthSlot(
+  state: DemoState, input: BookAuthSlotInput, now: number = Date.now(),
+): { state: DemoState; appt: Appointment } {
   validateBookingPatient(input, false);
   if (!slotInAnyWindow(state, input.doctorID, input.dateISO, input.startMinute)) throw new BackendError("notActive");
   // Overlap, not just exact-slot: an off-grid ad-hoc appointment also blocks (deployed parity).
@@ -1216,7 +1253,7 @@ export function bookAuthSlot(state: DemoState, input: BookAuthSlotInput): { stat
     patientID: input.patientID, patientName: input.patientName, lead: input.lead,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
   };
-  return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
+  return { state: withCallAccess(state, appt, now), appt };
 }
 
 export interface RequestAdHocAuthInput {
@@ -1228,7 +1265,9 @@ export interface RequestAdHocAuthInput {
 // or a new-patient lead. Never gated by treatment hours or published slots, but IS subject
 // to the auth-overlap rule — matching the deployed adHocAuthTx since AestheticX#49.
 // Mirrors bookAuthSlot's appointment shape (10-minute, confirmed).
-export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput): { state: DemoState; appt: Appointment } {
+export function requestAdHocAuth(
+  state: DemoState, input: RequestAdHocAuthInput, now: number = Date.now(),
+): { state: DemoState; appt: Appointment } {
   validateBookingPatient(input, false);
   const status = doctorStatusForUser(state, input.doctorID);
   if (!status.alwaysAcceptAuth) throw new BackendError("notAccepting");
@@ -1240,7 +1279,22 @@ export function requestAdHocAuth(state: DemoState, input: RequestAdHocAuthInput)
     patientID: input.patientID, patientName: input.patientName, lead: input.lead,
     appointmentNote: `Auth request · ${input.identity.user.name}`,
   };
-  return { state: { ...state, appointments: { ...state.appointments, [appt.id]: appt } }, appt };
+  return { state: withCallAccess(state, appt, now), appt };
+}
+
+// Store an auth-slot appointment and reconcile the file access it grants or ends — the demo
+// mirror of the backend's onAppointmentWritten trigger. Applied on every write to a call
+// (book, mark, relink), so the grant is never computed in more than this one place.
+function withCallAccess(state: DemoState, appt: Appointment, now: number): DemoState {
+  const stored = { ...state, appointments: { ...state.appointments, [appt.id]: appt } };
+  const previousPatientID = state.appointments[appt.id]?.patientID;
+  let next = appt.patientID ? syncReviewerAccess(stored, appt.patientID, now) : stored;
+  // Relinked to a different patient: the one it moved off must be reconciled too, or its
+  // grant is stranded open.
+  if (previousPatientID && previousPatientID !== appt.patientID) {
+    next = syncReviewerAccess(next, previousPatientID, now);
+  }
+  return next;
 }
 
 // A doctor withdraws one of their windows, only if no booking falls within it.
@@ -1640,7 +1694,7 @@ export function matchLeadToPatients(state: DemoState, lead: AppointmentLead, ide
 
 // Link a lead appointment to a patient: stamp the id + calendar name, clear the lead.
 export function linkAppointmentPatient(
-  state: DemoState, apptId: string, patientId: string, identity: Identity,
+  state: DemoState, apptId: string, patientId: string, identity: Identity, now: number = Date.now(),
 ): DemoState {
   const appt = state.appointments[apptId];
   if (!appt) throw new BackendError("notFound");
@@ -1652,10 +1706,13 @@ export function linkAppointmentPatient(
   // acting subject owns — never one belonging to another doctor/nurse/clinic.
   const owner = ownerFor(identity);
   if (patient.owner.kind !== owner.kind || patient.owner.id !== owner.id) throw new BackendError("notPermitted");
-  return {
-    ...state,
-    appointments: { ...state.appointments, [apptId]: { ...appt, patientID: patientId, patientName: calendarName(patient), lead: undefined } },
-  };
+  // withCallAccess: linking a lead on a booked call is what tells us which file that call
+  // opens (a lead call grants nothing — there is no file yet).
+  return withCallAccess(
+    state,
+    { ...appt, patientID: patientId, patientName: calendarName(patient), lead: undefined },
+    now,
+  );
 }
 
 // Owner's appointments with startISO <= dateISO <= endISO (ISO dates compare lexically),
@@ -1950,7 +2007,9 @@ export function deletePatient(state: DemoState, id: string, identity: Identity):
   return { ...state, patients, notesByPatient, formsByPatient, authorisations, requests, usages };
 }
 
-export function mergePatients(state: DemoState, keepId: string, removeId: string, identity: Identity): DemoState {
+export function mergePatients(
+  state: DemoState, keepId: string, removeId: string, identity: Identity, now: number = Date.now(),
+): DemoState {
   const keep = state.patients[keepId];
   const remove = state.patients[removeId];
   if (!keep || !remove) throw new BackendError("notFound");
@@ -2003,12 +2062,13 @@ export function mergePatients(state: DemoState, keepId: string, removeId: string
   }
   delete walletByPatientID[removeId];
 
-  // Recompute the kept file's reviewer set from the re-pointed request set (mirror of the
-  // backend trigger) rather than unioning the two stale arrays — this drops any reviewer
+  // Recompute the kept file's reviewer set from the re-pointed requests AND calls (mirror of
+  // the backend triggers) rather than unioning the two stale arrays — this drops any reviewer
   // whose request didn't actually move, keeping the invariant true.
   return syncReviewerAccess(
     { ...state, patients, notesByPatient, formsByPatient, authorisations, usages, appointments, requests, walletByPatientID },
     keepId,
+    now,
   );
 }
 
