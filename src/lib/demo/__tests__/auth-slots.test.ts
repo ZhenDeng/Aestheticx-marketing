@@ -5,7 +5,7 @@ import {
   bookAuthSlot, requestAdHocAuth, BackendError, setDoctorStatus,
   appointmentsForOwnerOnDay, appointmentsForOwnerInRange, appointmentOwnerScope,
   canRescheduleAppointment, rescheduleAppointment, upcomingAuthCalls,
-  appointmentChipTitle, bookerLabel,
+  appointmentChipTitle, appointmentChipNote, bookerLabel,
 } from "@/lib/demo/backend";
 import { LUMIERE } from "@/lib/demo/accounts";
 import type { Appointment, DemoState, Identity } from "@/lib/demo/types";
@@ -268,5 +268,38 @@ describe("authSlot chip title (14/07: 'nurse/clinic – patient – teleconsult'
     // In-app appointments (source manual or absent) are unmarked.
     expect(appointmentChipTitle(emptyState(), { ...booked, source: "manual" })).toBe("Coco Donovan");
     expect(appointmentChipTitle(emptyState(), { ...booked, source: undefined })).toBe("Coco Donovan");
+  });
+});
+
+describe("appointmentChipNote (calendar chip notes, 2026-07-27)", () => {
+  const base: Appointment = {
+    id: "n", type: "treatment", ownerID: "u-voss", dateISO: DAY, startMinute: 600, endMinute: 660,
+    status: "confirmed", patientID: "p2", patientName: "Coco Donovan",
+  };
+
+  it("returns the practitioner's note", () => {
+    expect(appointmentChipNote({ ...base, appointmentNote: "HA filler review" })).toBe("HA filler review");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(appointmentChipNote({ ...base, appointmentNote: "  Profhilo  " })).toBe("Profhilo");
+  });
+
+  it("returns undefined when there is no note or it is blank", () => {
+    expect(appointmentChipNote(base)).toBeUndefined();
+    expect(appointmentChipNote({ ...base, appointmentNote: "" })).toBeUndefined();
+    expect(appointmentChipNote({ ...base, appointmentNote: "   " })).toBeUndefined();
+  });
+
+  it("suppresses the synthetic auth-request note — its payload is already the chip title", () => {
+    const authSlot: Appointment = { ...base, type: "authSlot", appointmentNote: "Auth request · Janet Wang" };
+    expect(appointmentChipNote(authSlot)).toBeUndefined();
+    // The booker it carries still reaches the chip through the title, so nothing is lost.
+    expect(bookerLabel(emptyState(), authSlot)).toBe("Janet Wang");
+  });
+
+  it("still shows a real note written on an auth slot", () => {
+    // Only the synthetic form is suppressed — an auth slot carrying a genuine note keeps it.
+    expect(appointmentChipNote({ ...base, type: "authSlot", appointmentNote: "Antiwrinkle" })).toBe("Antiwrinkle");
   });
 });

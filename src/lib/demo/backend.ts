@@ -1491,10 +1491,15 @@ export function appointmentTitle(a: Appointment, blockPlaceholder = "—"): stri
  * bookers are exactly their cooperating counterparties). Legacy appointments without the
  * stamp fall back to parsing the "Auth request · X" note; null when nothing resolves.
  */
+// The synthetic note an auth booking writes to carry the booker's name to both calendars.
+// bookerLabel parses it back out for the chip title, so it must never also render as a
+// user-authored note — that would print the booker twice on one chip.
+const AUTH_REQUEST_NOTE = /^Auth request · (.+)$/;
+
 export function bookerLabel(state: DemoState, a: Appointment): string | null {
   const resolved = a.bookedByID ? accountNameByID(state, a.bookedByID) : null;
   if (resolved) return resolved;
-  const m = /^Auth request · (.+)$/.exec(a.appointmentNote ?? "");
+  const m = AUTH_REQUEST_NOTE.exec(a.appointmentNote ?? "");
   return m ? m[1] : null;
 }
 
@@ -1512,6 +1517,17 @@ export function appointmentChipTitle(state: DemoState, a: Appointment, blockPlac
   const booker = bookerLabel(state, a);
   const patient = appointmentTitle(a, "Authorisation call");
   return [booker, patient, "teleconsult"].filter(Boolean).join(" – ") + googleMark;
+}
+
+/**
+ * The note to show on a calendar chip (spec: 2026-07-27), or undefined when there is
+ * nothing worth showing: no note, a whitespace-only one, or the synthetic auth-request
+ * note whose payload appointmentChipTitle already surfaces as the booker.
+ */
+export function appointmentChipNote(a: Appointment): string | undefined {
+  const note = a.appointmentNote?.trim();
+  if (!note || AUTH_REQUEST_NOTE.test(note)) return undefined;
+  return note;
 }
 
 // Client contact details for a calendar item (spec: pending bookings on the calendar show
