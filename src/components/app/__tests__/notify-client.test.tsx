@@ -1,5 +1,5 @@
-// The calendar no longer emails on every drag (2026-07-27). A move commits immediately and
-// this dialog asks whether to tell the client. Driven through the real demo store so the
+// The calendar no longer emails on every drag (2026-07-27), approve, or decline (28/07
+// sweep). The action commits immediately and this dialog asks whether to tell the client. Driven through the real demo store so the
 // dialog's contact resolution and copy are exercised, not stubbed.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, renderHook, screen } from "@testing-library/react";
@@ -31,19 +31,19 @@ vi.mock("@/lib/demo/store", async (importOriginal) => {
     useDemoStore: () => ({
       ...actual.useDemoStore(),
       state: { ...emptyState(), appointments: { [WITH_EMAIL.id]: WITH_EMAIL, [NO_EMAIL.id]: NO_EMAIL } },
-      notifyAppointmentRescheduled: notifySpy,
+      notifyAppointmentAction: notifySpy,
     }),
   };
 });
 
 import { DemoAuthProvider } from "@/lib/demo/auth";
 import { DemoStoreProvider } from "@/lib/demo/store";
-import { RescheduleNotifyProvider, useRescheduleNotify } from "@/components/app/RescheduleNotify";
+import { NotifyClientProvider, useNotifyClient, type NotifyClientAction } from "@/components/app/NotifyClient";
 
 // A button that raises the prompt for a given appointment, standing in for a drag commit.
-function Trigger({ apptID }: { apptID: string }) {
-  const prompt = useRescheduleNotify();
-  return <button onClick={() => prompt(apptID)}>__moved_{apptID}__</button>;
+function Trigger({ apptID, action = "rescheduled" }: { apptID: string; action?: NotifyClientAction }) {
+  const prompt = useNotifyClient();
+  return <button onClick={() => prompt(apptID, action)}>__moved_{apptID}__</button>;
 }
 
 // DemoStoreProvider reads `mode` off useDemoAuth internally (unmocked — the store mock above
@@ -52,12 +52,12 @@ function Trigger({ apptID }: { apptID: string }) {
 function Harness({ children }: { children: ReactNode }) {
   return (
     <DemoAuthProvider>
-      <DemoStoreProvider><RescheduleNotifyProvider>{children}</RescheduleNotifyProvider></DemoStoreProvider>
+      <DemoStoreProvider><NotifyClientProvider>{children}</NotifyClientProvider></DemoStoreProvider>
     </DemoAuthProvider>
   );
 }
 
-describe("RescheduleNotify dialog", () => {
+describe("NotifyClient dialog", () => {
   beforeEach(() => { notifySpy.mockClear(); });
 
   it("does not render until a move raises it", () => {
@@ -73,7 +73,7 @@ describe("RescheduleNotify dialog", () => {
     expect(dialog).toHaveTextContent("Anna Chen");
     expect(dialog).toHaveTextContent("10:00");
     await user.click(screen.getByRole("button", { name: /send email/i }));
-    expect(notifySpy).toHaveBeenCalledWith(WITH_EMAIL.id);
+    expect(notifySpy).toHaveBeenCalledWith(WITH_EMAIL.id, "rescheduled");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -125,14 +125,35 @@ describe("RescheduleNotify dialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("throws when called outside RescheduleNotifyProvider", () => {
+  it("names the client and the confirmed time for an approve", async () => {
+    const user = userEvent.setup();
+    render(<Harness><Trigger apptID={WITH_EMAIL.id} action="confirmed" /></Harness>);
+    await user.click(screen.getByRole("button", { name: "__moved_a-email__" }));
+    const dialog = await screen.findByRole("dialog", { name: /notify the client/i });
+    expect(dialog).toHaveTextContent("Anna Chen");
+    expect(dialog).toHaveTextContent(/confirmed for/i);
+    await user.click(screen.getByRole("button", { name: /send email/i }));
+    expect(notifySpy).toHaveBeenCalledWith(WITH_EMAIL.id, "confirmed");
+  });
+
+  it("describes a cancellation and sends the cancelled email", async () => {
+    const user = userEvent.setup();
+    render(<Harness><Trigger apptID={WITH_EMAIL.id} action="cancelled" /></Harness>);
+    await user.click(screen.getByRole("button", { name: "__moved_a-email__" }));
+    const dialog = await screen.findByRole("dialog", { name: /notify the client/i });
+    expect(dialog).toHaveTextContent(/cancelled — was/i);
+    await user.click(screen.getByRole("button", { name: /send email/i }));
+    expect(notifySpy).toHaveBeenCalledWith(WITH_EMAIL.id, "cancelled");
+  });
+
+  it("throws when called outside NotifyClientProvider", () => {
     // Matches the fail-loud contract of every sibling context in this codebase (useDemoStore,
     // useDemoAuth, useConsultCall): a call site added outside the provider must blow up loudly,
     // not silently swallow the prompt. React logs the render-phase error to console.error even
     // though it's caught here — suppressed the same way auth-live-watcher.test.tsx does.
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => renderHook(() => useRescheduleNotify())).toThrow(
-      "useRescheduleNotify must be used within RescheduleNotifyProvider",
+    expect(() => renderHook(() => useNotifyClient())).toThrow(
+      "useNotifyClient must be used within NotifyClientProvider",
     );
     errorSpy.mockRestore();
   });

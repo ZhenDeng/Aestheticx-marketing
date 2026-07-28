@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
-import { useRescheduleNotify } from "@/components/app/RescheduleNotify";
+import { useNotifyClient } from "@/components/app/NotifyClient";
 import { appointmentTitle, appointmentContact, BackendError } from "@/lib/demo/backend";
 import type { Appointment, Identity } from "@/lib/demo/types";
 
@@ -36,13 +36,12 @@ export function PendingBookings({ me }: { me: Identity }) {
 }
 
 // One inbox row: approve / reschedule / decline. The date is editable here — unlike the
-// day-view detail, pending rows span dates. Approving and declining still email the client
-// automatically in live mode (deployed callables queue it; see the 2026-07-05 design doc);
-// a reschedule commits silently and raises the same "Notify the client?" dialog as the
-// calendar's drag/resize handlers (2026-07-27 — this was the ninth, previously-unwired site).
+// day-view detail, pending rows span dates. All three actions commit silently and raise the
+// same "Notify the client?" dialog as the calendar's drag/resize handlers (reschedule since
+// 2026-07-27; approve/decline since the 2026-07-28 auto-email sweep).
 function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
   const store = useDemoStore();
-  const promptNotify = useRescheduleNotify();
+  const promptNotify = useNotifyClient();
   const [rescheduling, setRescheduling] = useState(false);
   const [date, setDate] = useState(appt.dateISO);
   const [time, setTime] = useState(timeLabel(appt.startMinute));
@@ -59,7 +58,7 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
   function applyReschedule() {
     try {
       store.rescheduleAppointment(appt.id, date, minutesFromTime(time), duration, me);
-      promptNotify(appt.id);
+      promptNotify(appt.id, "rescheduled");
       setError(null);
       setRescheduling(false);
     } catch (e) {
@@ -91,7 +90,10 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
           {appt.appointmentNote && <span className="mt-0.5 block text-sm italic text-ink-soft">“{appt.appointmentNote}”</span>}
         </span>
         <span className="flex flex-none gap-2">
-          <button onClick={() => act(() => store.confirmAppointment(appt.id, me))}
+          <button onClick={() => act(() => {
+                    store.confirmAppointment(appt.id, me);
+                    promptNotify(appt.id, "confirmed");
+                  })}
                   className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
             Approve
           </button>
@@ -99,7 +101,10 @@ function PendingRow({ appt, me }: { appt: Appointment; me: Identity }) {
                   className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">
             Reschedule
           </button>
-          <button onClick={() => act(() => store.markAppointment(appt.id, "cancelled", me))}
+          <button onClick={() => act(() => {
+                    store.markAppointment(appt.id, "cancelled", me);
+                    promptNotify(appt.id, "cancelled");
+                  })}
                   className="rounded-btn border border-line px-3 py-1.5 text-sm" style={{ color: "var(--color-rose)" }}>
             Decline
           </button>

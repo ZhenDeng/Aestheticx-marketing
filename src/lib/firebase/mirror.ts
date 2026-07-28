@@ -265,8 +265,12 @@ export async function mirrorSetBookingToken(uid: string, token: string): Promise
   // "No document to update" (updateDoc would).
   await setDoc(doc(firestore(), "users", uid), { bookingToken: token }, { merge: true });
 }
-export async function mirrorConfirmAppointment(id: string): Promise<void> {
-  await httpsCallable(functions(), "confirmAppointment")({ appointmentId: id });
+// `notifyClient` is REQUIRED, not optional, on every appointment action that can email the
+// client (confirm / mark / reschedule): the web acts silently and offers a separate Send
+// button (2026-07-28), so a new call site must state its intent rather than silently
+// inherit the backend's iOS-preserving `true` default.
+export async function mirrorConfirmAppointment(id: string, notifyClient: boolean): Promise<void> {
+  await httpsCallable(functions(), "confirmAppointment")({ appointmentId: id, notifyClient });
 }
 export async function mirrorBookTreatment(input: {
   ownerID: string; dateISO: string; startMinute: number; durationMinutes: number;
@@ -278,9 +282,6 @@ export async function mirrorBookTreatment(input: {
     patientName: input.patientName ?? null, lead: input.lead ?? null, note: input.note ?? "",
   });
 }
-// `notifyClient` is REQUIRED, not optional: the calendar reschedules silently and offers a
-// separate Send button (2026-07-27), so a new call site must state its intent rather than
-// silently inherit the backend's iOS-preserving `true` default.
 export async function mirrorRescheduleAppointment(
   id: string, dateISO: string, startMinute: number, durationMinutes: number, notifyClient: boolean,
 ): Promise<void> {
@@ -291,8 +292,14 @@ export async function mirrorRescheduleAppointment(
 export async function mirrorNotifyAppointmentRescheduled(id: string): Promise<void> {
   await httpsCallable(functions(), "notifyAppointmentRescheduled")({ appointmentId: id });
 }
-export async function mirrorMarkAppointment(id: string, status: "completed" | "noShow" | "cancelled"): Promise<void> {
-  await httpsCallable(functions(), "markAppointment")({ appointmentId: id, status });
+// On-demand confirmed/cancelled email — the practitioner tapped Send in the Notify dialog.
+export async function mirrorNotifyAppointmentAction(id: string, action: "confirmed" | "cancelled"): Promise<void> {
+  await httpsCallable(functions(), "notifyAppointmentAction")({ appointmentId: id, action });
+}
+export async function mirrorMarkAppointment(
+  id: string, status: "completed" | "noShow" | "cancelled", notifyClient: boolean,
+): Promise<void> {
+  await httpsCallable(functions(), "markAppointment")({ appointmentId: id, status, notifyClient });
 }
 // The `linkAppointmentPatient` callable is deployed (verified 28/07). Callers linking a
 // JUST-created patient must await mirrorCreatePatient first — linkAppointmentTx throws
