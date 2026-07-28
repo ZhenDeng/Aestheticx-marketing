@@ -131,7 +131,8 @@ export default function ConsentPage({ params }: { params: Promise<{ id: string }
       </div>
 
       <h2 className="mt-6 font-display text-xl text-ink">Consent text</h2>
-      <div className="mt-3 max-h-72 overflow-y-auto rounded-inner border border-line p-4 text-sm leading-relaxed text-ink-soft">
+      {/* Full text in view — no inner scroll (28/07 feedback): the patient signs against all of it. */}
+      <div className="mt-3 rounded-inner border border-line p-4 text-sm leading-relaxed text-ink-soft">
         {templateFullText(template).map((para, i) => (
           <p key={i} className={`mt-2 first:mt-0 ${para === OFF_LABEL_CLAUSE ? "rounded-inner border-l-4 p-2" : ""}`}
             style={para === OFF_LABEL_CLAUSE ? { borderColor: "var(--color-tint)", background: "var(--color-tint-soft)" } : undefined}>
