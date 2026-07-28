@@ -522,6 +522,32 @@ describe("form mappers", () => {
     expect(back.answers[0].questionID).toBe("q");
     expect(back.signatureFileId).toBe("patients/p1/signatures/f1.png");
   });
+  it("maps a webLink record: map-shaped answers and the inline signature", () => {
+    const back = mapForm("f2", "p1", {
+      template: "collagenStimulatorConsent", channel: "webLink", signedAt: 1753680600644,
+      intro: "intro", clauses: ["c1"],
+      answers: {
+        "questions-answered": { answer: "yes" },
+        "changed-history": { answer: "yes", detail: "New medication" },
+      },
+      signaturePng: "data:image/png;base64,abc123",
+    });
+    // The retired "questions-answered" entry is dropped; the live question survives.
+    expect(back.answers).toEqual([
+      { questionID: "changed-history", answer: true, detail: "New medication" },
+    ]);
+    expect(back.signatureDataUrl).toBe("data:image/png;base64,abc123");
+    expect(back.signatureFileId).toBeUndefined();
+  });
+  it("ignores a non-data-url signaturePng and drops retired questions from the map shape", () => {
+    const back = mapForm("f3", "p1", {
+      template: "antiwrinkleConsent", channel: "webLink", signedAt: 1,
+      answers: { "questions-answered": { answer: "no" } },
+      signaturePng: "not-a-data-url",
+    });
+    expect(back.signatureDataUrl).toBeUndefined();
+    expect(back.answers.map((a) => a.questionID)).toEqual([]);
+  });
   it("drops answers to retired questions on existing signed forms", () => {
     const back = mapForm("f1", "p1", {
       template: "antiwrinkleConsent", channel: "onDevice", signedAt: 1750000000000,
