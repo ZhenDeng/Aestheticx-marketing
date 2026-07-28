@@ -114,20 +114,23 @@ export default function FormViewPage({ params }: { params: Promise<{ id: string;
       {form.answers.length > 0 && (
         <>
           <h2 className="mt-6 font-display text-lg text-ink">Responses</h2>
-          <ul className="mt-2 flex flex-col gap-3 text-sm">
+          {/* One card per question, mirroring the Sign-a-consent screening cards (28/07 feedback). */}
+          <div className="mt-3 flex flex-col gap-4">
             {form.answers.map((a) => {
               const q = questions.find((x) => x.id === a.questionID);
               return (
-                <li key={a.questionID}>
-                  <p className="whitespace-pre-line text-ink">{q?.prompt ?? a.questionID}</p>
-                  <p className="mt-0.5 text-ink-soft">
-                    <span className="font-medium text-ink">{a.answer ? "Yes" : "No"}</span>
-                    {a.detail ? ` (${a.detail})` : ""}
-                  </p>
-                </li>
+                <div key={a.questionID} className="rounded-inner border border-line p-3">
+                  <p className="whitespace-pre-line text-sm text-ink">{q?.prompt ?? a.questionID}</p>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="rounded-btn px-3 py-1 text-sm text-card" style={{ background: "var(--color-tint)" }}>
+                      {a.answer ? "Yes" : "No"}
+                    </span>
+                    {a.detail && <span className="text-sm text-ink-soft">{a.detail}</span>}
+                  </div>
+                </div>
               );
             })}
-          </ul>
+          </div>
         </>
       )}
 
