@@ -114,10 +114,18 @@ export default function FormViewPage({ params }: { params: Promise<{ id: string;
       {form.answers.length > 0 && (
         <>
           <h2 className="mt-6 font-display text-lg text-ink">Responses</h2>
-          <ul className="mt-2 flex flex-col gap-1 text-sm">
+          <ul className="mt-2 flex flex-col gap-3 text-sm">
             {form.answers.map((a) => {
               const q = questions.find((x) => x.id === a.questionID);
-              return <li key={a.questionID} className="text-ink-soft"><span className="text-ink">{a.answer ? "Yes" : "No"}</span> — {q?.prompt ?? a.questionID}{a.detail ? ` (${a.detail})` : ""}</li>;
+              return (
+                <li key={a.questionID}>
+                  <p className="whitespace-pre-line text-ink">{q?.prompt ?? a.questionID}</p>
+                  <p className="mt-0.5 text-ink-soft">
+                    <span className="font-medium text-ink">{a.answer ? "Yes" : "No"}</span>
+                    {a.detail ? ` (${a.detail})` : ""}
+                  </p>
+                </li>
+              );
             })}
           </ul>
         </>
