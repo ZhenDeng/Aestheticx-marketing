@@ -453,8 +453,10 @@ export interface SignedFormRecord {
   answers: FormAnswer[];
   intro: string;       // snapshot of the template text at signing
   clauses: string[];   // snapshot
-  signatureFileId?: string;   // live: Storage path
-  signatureDataUrl?: string;  // demo only: inline PNG data URL (never written to Firestore)
+  signatureFileId?: string;   // live: Storage path (on-device signing)
+  // Inline PNG data URL: demo signatures, and live webLink records whose signaturePng is
+  // stored inline on the doc. encodeForm never writes it back to Firestore.
+  signatureDataUrl?: string;
   pdfFileId?: string;
 }
 

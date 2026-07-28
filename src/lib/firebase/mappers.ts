@@ -563,19 +563,36 @@ export function mapInvoice(id: string, data: Doc): Invoice {
   };
 }
 
+// The two signing channels persist answers differently (mirroring the backend's
+// normalisedAnswers): on-device writes an array of `{questionId, answer: boolean, detail}`,
+// the remote web page a map of `questionId -> {answer: 'yes'|'no', detail?}`.
+function mapFormAnswers(raw: unknown): FormAnswer[] {
+  const entries: FormAnswer[] = Array.isArray(raw)
+    ? (raw as Doc[]).map((a) => ({ questionID: str(a.questionId), answer: a.answer === true, detail: str(a.detail) }))
+    : raw && typeof raw === "object"
+      ? Object.entries(raw as Record<string, unknown>).map(([questionID, v]) => {
+          const item = (v ?? {}) as Doc;
+          return { questionID, answer: item.answer === "yes" || item.answer === true, detail: str(item.detail) };
+        })
+      : [];
+  return entries.filter((a) => !REMOVED_QUESTION_IDS.has(a.questionID));
+}
+
 export function mapForm(id: string, patientID: string, data: Doc): SignedFormRecord {
-  const answers = (Array.isArray(data.answers) ? (data.answers as Doc[]) : []).map((a): FormAnswer => ({
-    questionID: str(a.questionId), answer: a.answer === true, detail: str(a.detail),
-  })).filter((a) => !REMOVED_QUESTION_IDS.has(a.questionID));
   return {
     id, patientID,
     template: (str(data.template) || "aestheticHistory") as FormTemplateKind,
     channel: (str(data.channel) || "onDevice") as SigningChannel,
     signedAt: toMillis(data.signedAt),
-    answers,
+    answers: mapFormAnswers(data.answers),
     intro: str(data.intro),
     clauses: strArray(data.clauses),
     signatureFileId: typeof data.signatureImageFileId === "string" ? data.signatureImageFileId : undefined,
+    // Remote (webLink) signatures live inline on the doc, not in Storage — without this the
+    // form view says "Signature unavailable" for every remotely signed consent.
+    signatureDataUrl: typeof data.signaturePng === "string" && data.signaturePng.startsWith("data:image/")
+      ? data.signaturePng
+      : undefined,
     pdfFileId: typeof data.pdfFileId === "string" ? data.pdfFileId : undefined,
   };
 }
