@@ -17,7 +17,7 @@ import {
   searchProducts, productLabel, treatmentAreasFor, quantityCaption, unitSuffix, effectiveCatalog, type CatalogProduct,
 } from "@/lib/demo/catalog";
 import {
-  loadRecentlyUsed, recordRecentlyUsedProduct, resolveRecentlyUsed, splitCustomAreas,
+  REQUEST_ITEM_TIMING, loadRecentlyUsed, recordRecentlyUsedProduct, resolveRecentlyUsed, splitCustomAreas,
 } from "@/lib/demo/requestBuilder";
 
 const CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", "collagenStimulator", "prpPrf"];
@@ -25,13 +25,13 @@ const CATEGORIES: ProductCategory[] = ["neurotoxin", "haFiller", "skinBooster", 
 type Line = { key: string; item: MedicationItem };
 
 function itemFromProduct(p: CatalogProduct): MedicationItem {
-  return { name: p.name, dosage: "", category: p.category, brand: p.brand, unit: p.unit, areas: [] };
+  return { name: p.name, dosage: "", category: p.category, brand: p.brand, unit: p.unit, areas: [], timing: REQUEST_ITEM_TIMING };
 }
 
 // iOS "Other / compounded medication": MedicationItem(name: "", dosage: "", category: .other)
 // — Swift init defaults unit to .freeText.
 function emptyOtherItem(): MedicationItem {
-  return { name: "", dosage: "", category: "other", unit: "freeText", areas: [] };
+  return { name: "", dosage: "", category: "other", unit: "freeText", areas: [], timing: REQUEST_ITEM_TIMING };
 }
 
 // Free-text editor for the "other" category — port of iOS LineItemEditorView's
@@ -147,9 +147,10 @@ function LineEditor({ line, onChange, onRemove }: {
         </div>
       </div>
       <label className="mt-3 block">
-        <span className="micro">Timing (optional)</span>
-        <input value={item.timing ?? ""} onChange={(e) => onChange({ ...item, timing: e.target.value || undefined })}
-          placeholder="e.g. PRN monthly" className="mt-1 w-full rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+        <span className="micro">Timing</span>
+        {/* Fixed value (28/07 feedback) — shown for transparency, not editable. */}
+        <input value={REQUEST_ITEM_TIMING} disabled readOnly
+          className="mt-1 w-full rounded-field border border-line bg-paper px-3 py-1.5 text-sm text-ink-soft" />
       </label>
     </div>
   );
@@ -273,7 +274,9 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
 
   function submit() {
     if (!canSubmit) return;
-    const items = lines.map((l) => l.item);
+    // Timing is fixed on every submitted item — lines prefilled from an older request
+    // (blank or free-text timing) are normalised here too.
+    const items = lines.map((l) => ({ ...l.item, timing: REQUEST_ITEM_TIMING }));
     if (editing && editRequest) {
       // Pending → edit in place (status stays pending); needsEdit → resubmit (re-opens review).
       if (editRequest.status === "pending") {

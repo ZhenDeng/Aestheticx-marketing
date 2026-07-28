@@ -2,6 +2,10 @@
 // + AXDomain/PrescribingProducts.swift (RecentlyUsedProducts).
 import { productById, PRODUCT_CATALOG, type CatalogProduct } from "./catalog";
 
+// Fixed timing stamped on every request item (28/07 feedback): timing is no longer free
+// text — the builder shows it disabled and every submitted item carries exactly this value.
+export const REQUEST_ITEM_TIMING = "PRN, Max 4 repeats";
+
 // iOS RecentlyUsedProducts default capacity (PrescribingProducts.swift:189).
 export const RECENTLY_USED_CAPACITY = 8;
 
