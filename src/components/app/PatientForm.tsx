@@ -22,9 +22,14 @@ function inputToDob(s: string): PatientDraft["dateOfBirth"] {
 
 const FIELD = "mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint";
 
-export function PatientForm({ mode, initial, existing, onCreated, onCancel, compact }: {
+export function PatientForm({ mode, initial, existing, create, onCancel, compact }: {
   mode: "create" | "edit"; initial: PatientDraft; existing?: Patient;
-  onCreated?: (id: string) => void; onCancel?: () => void; compact?: boolean;
+  /** Overrides the plain store create — e.g. the calendar's atomic create-and-link-lead.
+   *  Must return the new patient id; a throw shows the form's error and stops navigation.
+   *  (Replaces the old best-effort onCreated hook, whose swallowed link failures left
+   *  lead appointments silently unlinked — 28/07.) */
+  create?: (draft: PatientDraft) => string;
+  onCancel?: () => void; compact?: boolean;
 }) {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
@@ -42,10 +47,7 @@ export function PatientForm({ mode, initial, existing, onCreated, onCancel, comp
     if (invalid) return;
     try {
       if (mode === "create") {
-        const id = store.createPatient(draft, identity!);
-        // The patient is created; a best-effort post-create hook (e.g. linking a lead
-        // appointment) must not block navigation if it fails.
-        try { onCreated?.(id); } catch { /* link is best-effort; the patient still exists */ }
+        const id = create ? create(draft) : store.createPatient(draft, identity!);
         router.push(`/app/patients/${id}`);
       } else if (existing) {
         const updated: Patient = {

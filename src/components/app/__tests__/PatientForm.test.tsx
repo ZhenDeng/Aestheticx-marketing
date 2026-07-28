@@ -63,28 +63,32 @@ describe("PatientForm", () => {
     expect(screen.getByRole("button", { name: /create patient/i })).toBeDisabled();
   });
 
-  it("creates the patient, runs the post-create hook, and routes to the file", async () => {
-    const onCreated = vi.fn();
+  it("creates through the create override (not the plain store create) and routes to its id", async () => {
+    const create = vi.fn(() => "p-linked");
     const user = userEvent.setup();
-    render(<PatientForm mode="create" initial={validDraft()} onCreated={onCreated} />);
+    render(<PatientForm mode="create" initial={validDraft()} create={create} />);
 
     const submit = screen.getByRole("button", { name: /create patient/i });
     expect(submit).toBeEnabled();
     await user.click(submit);
 
-    expect(createPatient).toHaveBeenCalledWith(validDraft(), nurse);
-    expect(onCreated).toHaveBeenCalledWith("p-new");
-    expect(push).toHaveBeenCalledWith("/app/patients/p-new");
+    expect(create).toHaveBeenCalledWith(validDraft());
+    expect(createPatient).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/app/patients/p-linked");
   });
 
-  it("still navigates when the best-effort post-create hook throws", async () => {
-    const onCreated = vi.fn(() => {
-      throw new Error("lead link failed");
+  // 28/07 regression: the old onCreated hook swallowed link failures and navigated anyway,
+  // leaving lead appointments silently unlinked. A create-override throw means NOTHING was
+  // created (the action is atomic), so the form must show its error and stay put.
+  it("shows the error and does not navigate when the create override throws", async () => {
+    const create = vi.fn(() => {
+      throw new Error("appointment already linked");
     });
     const user = userEvent.setup();
-    render(<PatientForm mode="create" initial={validDraft()} onCreated={onCreated} />);
+    render(<PatientForm mode="create" initial={validDraft()} create={create} />);
     await user.click(screen.getByRole("button", { name: /create patient/i }));
-    expect(push).toHaveBeenCalledWith("/app/patients/p-new");
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByText(/could not save/i)).toBeInTheDocument();
   });
 
   it("saves an edit with trimmed fields and routes back to the file", async () => {

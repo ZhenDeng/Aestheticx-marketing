@@ -294,8 +294,9 @@ export async function mirrorNotifyAppointmentRescheduled(id: string): Promise<vo
 export async function mirrorMarkAppointment(id: string, status: "completed" | "noShow" | "cancelled"): Promise<void> {
   await httpsCallable(functions(), "markAppointment")({ appointmentId: id, status });
 }
-// Deferred backend: the `linkAppointmentPatient` Cloud Function is not yet deployed. The web
-// UI is ready; live linking lights up once it lands (demo works fully today).
+// The `linkAppointmentPatient` callable is deployed (verified 28/07). Callers linking a
+// JUST-created patient must await mirrorCreatePatient first — linkAppointmentTx throws
+// patient-not-found if the patient doc hasn't landed (see createPatientForAppointment).
 export async function mirrorLinkAppointmentPatient(id: string, patientId: string): Promise<void> {
   await httpsCallable(functions(), "linkAppointmentPatient")({ appointmentId: id, patientId });
 }

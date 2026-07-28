@@ -120,6 +120,8 @@ interface StoreValue {
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
   linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
+  /** Create a patient file from a lead appointment and link it, atomically. Returns the new patient id. */
+  createPatientForAppointment: (apptId: string, draft: import("./types").PatientDraft, identity: Identity) => string;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   setPatientAvatar: (patientID: string, avatar: backend.PatientAvatarEdit, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -851,6 +853,26 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
             catch (e) { setLastSyncError(syncErrorMessage(e)); setRefreshTick((t) => t + 1); }
           })();
         }
+        return patient.id;
+      },
+      createPatientForAppointment: (apptId, draft, identity) => {
+        // Create + link as ONE action (28/07): the calendar's create-from-lead used to be
+        // two same-tick calls, and the link's eager validation ran against a closure that
+        // did not yet contain the just-created patient — so the file was created but the
+        // appointment silently kept its lead. Validate both against the same composed
+        // state (throws before anything applies), apply once, and mirror the create
+        // BEFORE the link so the callable never races the patient doc into existence.
+        const { patient } = backend.createPatient(state, draft, identity);
+        const withPatient = { ...state, patients: { ...state.patients, [patient.id]: patient } };
+        backend.linkAppointmentPatient(withPatient, apptId, patient.id, identity); // eager validate — throws
+        applyAndMirror(
+          (s) => backend.linkAppointmentPatient(
+            { ...s, patients: { ...s.patients, [patient.id]: patient } }, apptId, patient.id, identity),
+          async (m) => {
+            await m.mirrorCreatePatient(patient);
+            await m.mirrorLinkAppointmentPatient(apptId, patient.id);
+          },
+        );
         return patient.id;
       },
       updatePatient: (patient, identity) =>
