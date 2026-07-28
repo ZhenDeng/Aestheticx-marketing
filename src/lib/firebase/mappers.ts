@@ -10,7 +10,7 @@ import type {
   CooperationRelationship, CounterpartyType, RelationshipKind, RelationshipStatus, RelationshipAuditEntry, RelationshipAction,
   AuditLogEntry, AuditAction, BusinessEntity, BusinessEntityType, ClinicRef,
 } from "@/lib/demo/types";
-import type { FormTemplateKind, SigningChannel } from "@/lib/demo/forms";
+import { REMOVED_QUESTION_IDS, type FormTemplateKind, type SigningChannel } from "@/lib/demo/forms";
 import { AFTERCARE_CATEGORIES, type AftercareCategory } from "@/lib/demo/aftercare";
 import type { Invoice, InvoiceLine, InvoiceParty } from "@/lib/demo/invoicing";
 import type { CatalogProduct } from "@/lib/demo/catalog";
@@ -566,7 +566,7 @@ export function mapInvoice(id: string, data: Doc): Invoice {
 export function mapForm(id: string, patientID: string, data: Doc): SignedFormRecord {
   const answers = (Array.isArray(data.answers) ? (data.answers as Doc[]) : []).map((a): FormAnswer => ({
     questionID: str(a.questionId), answer: a.answer === true, detail: str(a.detail),
-  }));
+  })).filter((a) => !REMOVED_QUESTION_IDS.has(a.questionID));
   return {
     id, patientID,
     template: (str(data.template) || "aestheticHistory") as FormTemplateKind,

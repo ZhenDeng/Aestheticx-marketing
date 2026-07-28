@@ -71,8 +71,12 @@ const PHOTOGRAPHY_CLAUSE =
 
 const CONFIRM_QUESTIONS: FormQuestion[] = [
   { id: "changed-history", prompt: "Has your medical history changed since your aesthetic history form?", kind: { type: "yesNo", detailPrompt: "Please describe what has changed" } },
-  { id: "questions-answered", prompt: "Have all your questions about today's treatment been answered?", kind: { type: "yesNo", detailPrompt: null } },
 ];
+
+// Questions retired from the consent templates. Previously signed forms may still carry
+// answers keyed by these ids; they are dropped at the Firestore read boundary (mapForm)
+// so existing signed consents no longer surface the question anywhere.
+export const REMOVED_QUESTION_IDS: ReadonlySet<string> = new Set(["questions-answered"]);
 
 function consent(kind: FormTemplateKind, intro: string, sections: string[]): FormTemplate {
   const clauses = [...sections, OFF_LABEL_CLAUSE, PRIVACY_CLAUSE, CONSENT_CLOSE_CLAUSE];
