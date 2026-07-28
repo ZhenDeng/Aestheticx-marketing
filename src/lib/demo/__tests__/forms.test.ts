@@ -30,9 +30,9 @@ describe("form templates", () => {
     // questions (verbatim source of truth); asserting the full set is present.
     expect(t.questions.length).toBeGreaterThanOrEqual(9);
   });
-  it("consent forms carry the two confirm questions", () => {
+  it("consent forms carry only the changed-history confirm question", () => {
     const t = formTemplate("haFillerConsent");
-    expect(t.questions.map((q) => q.id)).toEqual(["changed-history", "questions-answered"]);
+    expect(t.questions.map((q) => q.id)).toEqual(["changed-history"]);
   });
   it("displayName maps", () => {
     expect(templateDisplayName("haFillerDissolvingConsent")).toBe("Hyalase Consent");

@@ -15,7 +15,7 @@ describe("recordSignedForm", () => {
   it("records a form for an editable patient, snapshotting the template text", () => {
     const { state, form } = recordSignedForm(withPatient(nursePatient("p1")), {
       patientID: "p1", template: "antiwrinkleConsent", channel: "onDevice",
-      answers: [{ questionID: "questions-answered", answer: true, detail: "" }],
+      answers: [{ questionID: "changed-history", answer: false, detail: "" }],
       signatureDataUrl: "data:image/png;base64,AAA",
     }, nurse, NOW);
     expect(form.template).toBe("antiwrinkleConsent");

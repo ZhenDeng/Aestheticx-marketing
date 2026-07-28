@@ -522,6 +522,17 @@ describe("form mappers", () => {
     expect(back.answers[0].questionID).toBe("q");
     expect(back.signatureFileId).toBe("patients/p1/signatures/f1.png");
   });
+  it("drops answers to retired questions on existing signed forms", () => {
+    const back = mapForm("f1", "p1", {
+      template: "antiwrinkleConsent", channel: "onDevice", signedAt: 1750000000000,
+      intro: "intro", clauses: ["c1"],
+      answers: [
+        { questionId: "changed-history", answer: false, detail: "" },
+        { questionId: "questions-answered", answer: true, detail: "" },
+      ],
+    });
+    expect(back.answers.map((a) => a.questionID)).toEqual(["changed-history"]);
+  });
 });
 
 describe("mapProduct (Tier 3 #5B)", () => {
