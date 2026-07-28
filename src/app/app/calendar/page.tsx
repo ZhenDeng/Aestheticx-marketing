@@ -1354,7 +1354,7 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
       {lead && creating ? (
         <div className="mt-3 border-t border-line pt-3">
           <PatientForm mode="create" compact initial={draftFromLead(appt)}
-            onCreated={(id) => store.linkAppointmentPatient(appt.id, id, me)}
+            create={(d) => store.createPatientForAppointment(appt.id, d, me)}
             onCancel={() => setCreating(false)} />
         </div>
       ) : (
