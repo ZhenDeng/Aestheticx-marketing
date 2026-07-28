@@ -115,8 +115,11 @@ interface StoreValue {
   requestAdHocAuth: (input: import("./backend").RequestAdHocAuthInput) => Promise<void>;
   bookTreatmentAppointment: (input: import("./backend").BookTreatmentInput) => void;
   rescheduleAppointment: (id: string, dateISO: string, startMinute: number, durationMinutes: number, identity: Identity) => void;
-  /** Send the "your appointment moved" email for an already-committed reschedule. No-op in demo. */
-  notifyAppointmentRescheduled: (id: string) => void;
+  /**
+   * Send the client email for an already-committed action (moved / confirmed / cancelled).
+   * Only ever called from the Notify dialog's Send button. No-op in demo.
+   */
+  notifyAppointmentAction: (id: string, action: import("@/components/app/NotifyClient").NotifyClientAction) => void;
   markAppointment: (id: string, status: "completed" | "noShow" | "cancelled", identity: Identity) => void;
   linkAppointmentPatient: (apptId: string, patientId: string, identity: Identity) => void;
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
@@ -627,9 +630,19 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       },
       confirmAppointment: (id, identity) => {
         backend.confirmAppointment(state, id, identity); // eager validate — throws synchronously (e.g. already actioned)
+        // pendingWrites bump: the Notify dialog opens in the same commit and its Send button
+        // gates on store.refreshing — see the rescheduleAppointment comment below.
+        if (live) setPendingWrites((n) => n + 1);
         applyAndMirror(
           (s) => backend.confirmAppointment(s, id, identity),
-          (m) => m.mirrorConfirmAppointment(id),
+          // notifyClient:false — the calendar asks the practitioner and sends separately.
+          async (m) => {
+            try {
+              await m.mirrorConfirmAppointment(id, false);
+            } finally {
+              setPendingWrites((n) => n - 1);
+            }
+          },
         );
       },
       appointmentsForOwnerOnDay: (ownerID, dateISO) => backend.appointmentsForOwnerOnDay(state, ownerID, dateISO),
@@ -748,7 +761,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       },
       rescheduleAppointment: (id, dateISO, startMinute, durationMinutes, identity) => {
         backend.rescheduleAppointment(state, id, dateISO, startMinute, durationMinutes, identity); // eager validate — throws
-        // Track this write in pendingWrites (27/07 review, finding C2): the RescheduleNotify
+        // Track this write in pendingWrites (27/07 review, finding C2): the NotifyClient
         // dialog can open in the same commit as this call, and its Send button reads
         // store.refreshing to avoid emailing before the move has actually landed server-side
         // (or emailing a move that a failed mirror is about to revert). applyAndMirror stays
@@ -767,18 +780,34 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           },
         );
       },
-      notifyAppointmentRescheduled: (id) => {
+      notifyAppointmentAction: (id, action) => {
         if (!live) return; // demo has no mail pipeline — the dialog still opens and closes
         runLiveWrite(async () => {
-          try { const m = await import("@/lib/firebase/mirror"); await m.mirrorNotifyAppointmentRescheduled(id); }
-          catch (e) { setLastSyncError(syncErrorMessage(e)); }
+          try {
+            const m = await import("@/lib/firebase/mirror");
+            // Reschedule keeps its dedicated, longer-deployed callable; confirm/cancel share
+            // the newer notifyAppointmentAction one (2026-07-28).
+            if (action === "rescheduled") await m.mirrorNotifyAppointmentRescheduled(id);
+            else await m.mirrorNotifyAppointmentAction(id, action);
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
         });
       },
       markAppointment: (id, status, identity) => {
         backend.markAppointment(state, id, status, identity); // eager validate — throws synchronously (e.g. already actioned)
+        // Only a cancellation raises the Notify dialog, whose Send button gates on
+        // store.refreshing — so only that write needs the pendingWrites bump.
+        const gated = live && status === "cancelled";
+        if (gated) setPendingWrites((n) => n + 1);
         applyAndMirror(
           (s) => backend.markAppointment(s, id, status, identity),
-          (m) => m.mirrorMarkAppointment(id, status),
+          // notifyClient:false — the calendar asks the practitioner and sends separately.
+          async (m) => {
+            try {
+              await m.mirrorMarkAppointment(id, status, false);
+            } finally {
+              if (gated) setPendingWrites((n) => n - 1);
+            }
+          },
         );
       },
       linkAppointmentPatient: (apptId, patientId, identity) => {

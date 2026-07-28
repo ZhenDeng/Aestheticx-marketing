@@ -42,18 +42,18 @@ vi.mock("@/lib/firebase/mirror", () => ({ mirrorRescheduleAppointment, mirrorNot
 
 import { DemoAuthProvider } from "@/lib/demo/auth";
 import { DemoStoreProvider, useDemoStore } from "@/lib/demo/store";
-import { RescheduleNotifyProvider, useRescheduleNotify } from "@/components/app/RescheduleNotify";
+import { NotifyClientProvider, useNotifyClient } from "@/components/app/NotifyClient";
 
 // Stands in for a drag commit: reschedules, then raises the prompt in the same handler,
 // exactly like the calendar's eight wired sites and PendingBookings' ninth.
 function Trigger() {
   const store = useDemoStore();
-  const prompt = useRescheduleNotify();
+  const prompt = useNotifyClient();
   if (store.status !== "ready") return null;
   return (
     <button onClick={() => {
       store.rescheduleAppointment(APPT.id, APPT.dateISO, 600, 60, VOSS);
-      prompt(APPT.id);
+      prompt(APPT.id, "rescheduled");
     }}>
       __move__
     </button>
@@ -63,12 +63,12 @@ function Trigger() {
 function Harness({ children }: { children: ReactNode }) {
   return (
     <DemoAuthProvider>
-      <DemoStoreProvider><RescheduleNotifyProvider>{children}</RescheduleNotifyProvider></DemoStoreProvider>
+      <DemoStoreProvider><NotifyClientProvider>{children}</NotifyClientProvider></DemoStoreProvider>
     </DemoAuthProvider>
   );
 }
 
-describe("RescheduleNotify dialog — Send while the reschedule write is in flight", () => {
+describe("NotifyClient dialog — Send while the reschedule write is in flight", () => {
   beforeEach(() => {
     mirrorRescheduleAppointment.mockReset();
     mirrorNotifyAppointmentRescheduled.mockClear();
@@ -85,11 +85,11 @@ describe("RescheduleNotify dialog — Send while the reschedule write is in flig
     const dialog = await screen.findByRole("dialog", { name: /notify the client/i });
     const send = screen.getByRole("button", { name: /send email/i });
     expect(send).toBeDisabled();
-    expect(dialog).toHaveTextContent(/saving the new time/i);
+    expect(dialog).toHaveTextContent(/saving the change/i);
 
     resolveMirror();
     await waitFor(() => expect(send).toBeEnabled());
-    expect(dialog).not.toHaveTextContent(/saving the new time/i);
+    expect(dialog).not.toHaveTextContent(/saving the change/i);
   });
 
   it("keeps Don't send enabled and working throughout the pending write", async () => {
