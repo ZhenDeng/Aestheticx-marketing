@@ -146,12 +146,11 @@ function LineEditor({ line, onChange, onRemove }: {
           <button type="button" onClick={addCustom} className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">Add</button>
         </div>
       </div>
-      <label className="mt-3 block">
+      <div className="mt-3">
         <span className="micro">Timing</span>
-        {/* Fixed value (28/07 feedback) — shown for transparency, not editable. */}
-        <input value={REQUEST_ITEM_TIMING} disabled readOnly
-          className="mt-1 w-full rounded-field border border-line bg-paper px-3 py-1.5 text-sm text-ink-soft" />
-      </label>
+        {/* Fixed value (28/07 feedback) — shown as plain text, not editable. */}
+        <p className="mt-1 text-sm text-ink-soft">{REQUEST_ITEM_TIMING}</p>
+      </div>
     </div>
   );
 }
