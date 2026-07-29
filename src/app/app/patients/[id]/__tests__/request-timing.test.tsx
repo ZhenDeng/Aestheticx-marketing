@@ -56,11 +56,12 @@ async function addFirstSearchResult(query: string) {
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe("request builder — fixed item timing", () => {
-  it("shows a disabled Timing field with the fixed value and no '(optional)'", async () => {
+  it("shows the fixed timing as plain text — no input, no '(optional)'", async () => {
     await renderBuilder();
     await addFirstSearchResult("Botox");
-    const timing = screen.getByDisplayValue(REQUEST_ITEM_TIMING) as HTMLInputElement;
-    expect(timing.disabled).toBe(true);
+    // Plain text (28/07 follow-up: no bordered/filled field), so no input carries the value.
+    expect(screen.getByText(REQUEST_ITEM_TIMING)).toBeTruthy();
+    expect(screen.queryByDisplayValue(REQUEST_ITEM_TIMING)).toBeNull();
     expect(screen.getByText("Timing")).toBeTruthy();
     expect(screen.queryByText(/optional/i)).toBeNull();
   });
