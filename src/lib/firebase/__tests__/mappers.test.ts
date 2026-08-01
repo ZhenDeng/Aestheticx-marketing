@@ -559,6 +559,17 @@ describe("form mappers", () => {
     });
     expect(back.answers.map((a) => a.questionID)).toEqual(["changed-history"]);
   });
+  it("drops the retired photo-marketing answer from existing aesthetic history forms", () => {
+    const back = mapForm("f4", "p1", {
+      template: "aestheticHistory", channel: "onDevice", signedAt: 1750000000000,
+      intro: "intro", clauses: ["c1"],
+      answers: [
+        { questionId: "photo-clinical", answer: true, detail: "" },
+        { questionId: "photo-marketing", answer: true, detail: "" },
+      ],
+    });
+    expect(back.answers.map((a) => a.questionID)).toEqual(["photo-clinical"]);
+  });
 });
 
 describe("mapProduct (Tier 3 #5B)", () => {

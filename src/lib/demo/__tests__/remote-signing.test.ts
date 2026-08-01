@@ -8,7 +8,8 @@ describe("remoteSigningTemplateKinds", () => {
     // The live sign.html now renders each template's served question set, so the intake is no
     // longer held back in live mode.
     expect(remoteSigningTemplateKinds()).toContain("aestheticHistory");
-    expect(remoteSigningTemplateKinds()).toHaveLength(7);
+    expect(remoteSigningTemplateKinds()).toContain("photoVideoConsent");
+    expect(remoteSigningTemplateKinds()).toHaveLength(8);
   });
   it("offers the consent templates", () => {
     expect(remoteSigningTemplateKinds()).toContain("antiwrinkleConsent");
