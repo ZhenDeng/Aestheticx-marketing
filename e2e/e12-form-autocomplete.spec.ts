@@ -34,6 +34,8 @@ test("E12a — a doctor picks a medication from the catalog on a treatment note"
     .first().click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
 
+  // Notes is a collapsed accordion by default — expand it to reach the Treatment note button.
+  await page.getByRole("button", { name: /notes \(/i }).click();
   await page.getByRole("button", { name: /treatment note/i }).first().click();
   await page.getByRole("button", { name: /add medication/i }).click();
 

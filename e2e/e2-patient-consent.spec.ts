@@ -23,7 +23,9 @@ test("E2 — nurse creates a patient and records a signed consent", async ({ pag
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
   await expect(page.getByRole("heading", { name: new RegExp(`${GIVEN}\\s+${LAST}`) })).toBeVisible();
 
-  // Sign a consent straight from the file.
+  // Sign a consent straight from the file. The Consent forms section is a collapsed
+  // accordion by default, so expand it to reach the action.
+  await page.getByRole("button", { name: /consent forms/i }).click();
   await page.getByRole("link", { name: "Sign a consent" }).click();
   await expect(page.getByRole("heading", { name: "Sign a consent" })).toBeVisible();
 
@@ -38,9 +40,11 @@ test("E2 — nurse creates a patient and records a signed consent", async ({ pag
   await expect(submit).toBeEnabled();
   await submit.click();
 
-  // Back on the file, the signed consent is now listed.
+  // Back on the file, the signed consent is now listed — the accordion header carries the
+  // count, and expanding it (fresh mount, collapsed again) reveals the entry.
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
-  await expect(page.getByRole("heading", { name: "Consent forms" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /consent forms \(1\)/i })).toBeVisible();
+  await page.getByRole("button", { name: /consent forms/i }).click();
   await expect(page.getByText(/Antiwrinkle/i).first()).toBeVisible();
 
   // And the new patient appears in the clinical list.
