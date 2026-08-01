@@ -1,7 +1,7 @@
 // Ported from iOS AXDomain/Forms.swift + FormLibrary.swift. Legal content copied verbatim.
 
 export const FORM_TEMPLATE_KINDS = [
-  "aestheticHistory", "antiwrinkleConsent", "skinboosterConsent", "haFillerConsent",
+  "aestheticHistory", "photoVideoConsent", "antiwrinkleConsent", "skinboosterConsent", "haFillerConsent",
   "collagenStimulatorConsent", "fatDissolveConsent", "haFillerDissolvingConsent",
 ] as const;
 export type FormTemplateKind = (typeof FORM_TEMPLATE_KINDS)[number];
@@ -48,6 +48,7 @@ export function formAnswersComplete(
 export function templateDisplayName(kind: FormTemplateKind): string {
   switch (kind) {
     case "aestheticHistory": return "Aesthetic History";
+    case "photoVideoConsent": return "Photo & Video Consent";
     case "antiwrinkleConsent": return "Antiwrinkle Consent";
     case "skinboosterConsent": return "Skinbooster Consent";
     case "haFillerConsent": return "HA Filler Consent";
@@ -76,7 +77,9 @@ const CONFIRM_QUESTIONS: FormQuestion[] = [
 // Questions retired from the consent templates. Previously signed forms may still carry
 // answers keyed by these ids; they are dropped at the Firestore read boundary (mapForm)
 // so existing signed consents no longer surface the question anywhere.
-export const REMOVED_QUESTION_IDS: ReadonlySet<string> = new Set(["questions-answered"]);
+// "photo-marketing" moved out of the aesthetic history into the dedicated Photo & Video
+// Consent form (owner request 01/08); the stored doc and rendered PDF keep the old answer.
+export const REMOVED_QUESTION_IDS: ReadonlySet<string> = new Set(["questions-answered", "photo-marketing"]);
 
 function consent(kind: FormTemplateKind, intro: string, sections: string[]): FormTemplate {
   const clauses = [...sections, OFF_LABEL_CLAUSE, PRIVACY_CLAUSE, CONSENT_CLOSE_CLAUSE];
@@ -115,15 +118,41 @@ const AESTHETIC_HISTORY: FormTemplate = (() => {
       "• cardiovascular disease (e.g. hypertension)",
       "• a mental health condition",
     ].join("\n"), kind: { type: "yesNo", detailPrompt: "Please indicate which" } },
+    // Marketing/social photo use is no longer asked here — it lives in the dedicated
+    // Photo & Video Consent form with per-scenario consent (owner request 01/08).
     { id: "photo-clinical", prompt: "I consent to my photograph being taken for the purpose of clinical review.", kind: { type: "yesNo", detailPrompt: null } },
-    { id: "photo-marketing", prompt: "I consent to the use of my photographs and/or video for education, training, advertising, and social media.", kind: { type: "yesNo", detailPrompt: null } },
   ];
   return { kind: "aestheticHistory", intro, clauses, questions, requiresSignature: true, fullText: [intro, ...clauses] };
+})();
+
+// Web-authored (not an iOS port): a standalone consent covering every scenario in which the
+// patient's photographs and/or video may be used, each consented to separately (owner
+// request 01/08). Replaces the single blanket photo-marketing question the aesthetic
+// history used to carry.
+const PHOTO_VIDEO_CONSENT: FormTemplate = (() => {
+  const intro =
+    "Clinical photographs and/or video are routinely taken to document treatment. This form lets you choose exactly how your photographs and/or video may be used. Each use below is separate and optional — you may agree to some, all, or none, and your decision does not affect the care you receive.";
+  const clauses = [
+    "Conditions of use: my photographs and/or video remain part of my clinical record and are stored securely. I will not receive payment or royalties for any use I consent to. Where a use allows it, identifying features (such as my eyes, tattoos, or jewellery) can be obscured at my request, although some clinical images are only meaningful with the treated area visible.",
+    "Withdrawal: I may withdraw my consent to any of the uses below at any time by advising the clinic in writing. Withdrawal applies to future use only — material already published or distributed (particularly on social media) may not be fully retrievable.",
+    PRIVACY_CLAUSE,
+  ];
+  const questions: FormQuestion[] = [
+    { id: "use-clinical-record", prompt: "I consent to photographs and/or video being taken and used for my medical record and clinical review, including before-and-after comparison as part of my ongoing care.", kind: { type: "yesNo", detailPrompt: null } },
+    { id: "use-education-training", prompt: "I consent to the use of my photographs and/or video for the education and training of practitioners and clinical staff.", kind: { type: "yesNo", detailPrompt: null } },
+    { id: "use-conference-publication", prompt: "I consent to the use of my photographs and/or video in professional presentations, conferences, and medical or industry publications.", kind: { type: "yesNo", detailPrompt: null } },
+    { id: "use-advertising", prompt: "I consent to the use of my photographs and/or video for advertising and marketing, including the clinic's website and printed materials.", kind: { type: "yesNo", detailPrompt: null } },
+    { id: "use-social-media", prompt: "I consent to the use of my photographs and/or video on the clinic's social media accounts (e.g. Instagram, Facebook, TikTok).", kind: { type: "yesNo", detailPrompt: null } },
+    { id: "use-consultation-examples", prompt: "I consent to my before-and-after photographs and/or video being shown privately to prospective patients during consultations.", kind: { type: "yesNo", detailPrompt: null } },
+    { id: "prefer-deidentified", prompt: "Where the use allows it, I would like my images de-identified (identifying features obscured) before they are used.", kind: { type: "yesNo", detailPrompt: null } },
+  ];
+  return { kind: "photoVideoConsent", intro, clauses, questions, requiresSignature: true, fullText: [intro, ...clauses] };
 })();
 
 export function formTemplate(kind: FormTemplateKind): FormTemplate {
   switch (kind) {
     case "aestheticHistory": return AESTHETIC_HISTORY;
+    case "photoVideoConsent": return PHOTO_VIDEO_CONSENT;
     case "antiwrinkleConsent":
       return consent(kind,
         "Antiwrinkle injections (botulinum toxin type A) are one of the most widely performed and well-studied aesthetic treatments worldwide. They soften expression lines, can prevent deeper lines forming, and typically need no downtime. Effects appear over 3–14 days and usually last 3–4 months. Please review the points below before consenting.",
