@@ -86,6 +86,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [showTreatment, setShowTreatment] = useState(false);
   const [showAftercare, setShowAftercare] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  // Notes + Consent forms collapse by default (01/08 feedback) — same accordion
+  // pattern as Appointment history; counts stay visible in the collapsed header.
+  const [showNotes, setShowNotes] = useState(false);
+  const [showConsentForms, setShowConsentForms] = useState(false);
   // iOS AuthorisationCard's Direction button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
@@ -218,9 +222,16 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           <div><dt className="micro">Medications</dt><dd className="mt-0.5 text-ink">{patient.currentMedications}</dd></div>
         </dl>
 
-        <div className="mt-8 flex items-center justify-between gap-4">
-          <h2 className="font-display text-xl text-ink">Notes</h2>
-          <div className="flex items-center gap-2">
+        <button onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes}
+                className="mt-8 flex w-full items-center justify-between gap-4 text-left">
+          <h2 className="font-display text-xl text-ink">Notes ({notes.length})</h2>
+          <span className="micro text-ink-soft">{showNotes ? "Hide" : "Show"}</span>
+        </button>
+
+        {showNotes && (
+          <>
+        {(perms.canWriteTreatmentNote || canAftercare) && (
+          <div className="mt-3 flex items-center gap-2">
             {perms.canWriteTreatmentNote && (
               <button onClick={() => { setShowTreatment((v) => !v); setShowAftercare(false); }}
                       className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
@@ -234,7 +245,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               </button>
             )}
           </div>
-        </div>
+        )}
 
         {showTreatment && perms.canWriteTreatmentNote && (
           <TreatmentNoteForm patientID={id} identity={me} onDone={() => setShowTreatment(false)} />
@@ -313,20 +324,27 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           })}
           {notes.length === 0 && <li className="text-sm text-ink-soft">No notes yet.</li>}
         </ul>
+          </>
+        )}
 
-        <div className="mt-8 flex items-center justify-between gap-4">
-          <h2 className="font-display text-xl text-ink">Consent forms</h2>
-          {perms.canSendForms && (
-            <div className="flex items-center gap-2">
-              <Link href={`/app/patients/${id}/consent/remote`} className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
-                Send a link
-              </Link>
-              <Link href={`/app/patients/${id}/consent`} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
-                Sign a consent
-              </Link>
-            </div>
-          )}
-        </div>
+        <button onClick={() => setShowConsentForms((v) => !v)} aria-expanded={showConsentForms}
+                className="mt-8 flex w-full items-center justify-between gap-4 text-left">
+          <h2 className="font-display text-xl text-ink">Consent forms ({forms.length})</h2>
+          <span className="micro text-ink-soft">{showConsentForms ? "Hide" : "Show"}</span>
+        </button>
+
+        {showConsentForms && (
+          <>
+        {perms.canSendForms && (
+          <div className="mt-3 flex items-center gap-2">
+            <Link href={`/app/patients/${id}/consent/remote`} className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
+              Send a link
+            </Link>
+            <Link href={`/app/patients/${id}/consent`} className="rounded-btn px-3 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+              Sign a consent
+            </Link>
+          </div>
+        )}
         <ul className="mt-3 flex flex-col gap-2">
           {forms.map((f) => (
             <li key={f.id}>
@@ -338,6 +356,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           ))}
           {forms.length === 0 && <li className="text-sm text-ink-soft">No signed forms yet.</li>}
         </ul>
+          </>
+        )}
 
         {/* Billing matrix: wallet balance + top-up + checkout, gated inside the component
             by the isolation guard (renders nothing without commercial access). */}
