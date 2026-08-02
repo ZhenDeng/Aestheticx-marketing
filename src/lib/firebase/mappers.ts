@@ -2,6 +2,7 @@
 // LiveBackend.swift static decoders/encoders. No Firebase imports here (testable).
 import type {
   AccountRecord, Appointment, AppointmentLead, AppointmentType, Authorisation, AuthorisationRequest, DateOfBirth,
+  EmergencyContact,
   ExternalBusyCalendar, ExternalBusyEvent,
   MedicationItem, Note, NoteAttachment, Patient, PatientOwner, PatientSummary, Premise, ProductCategory,
   ProductUnit, RequestStatus, NoteKind, Role, TreatmentMedication, SignedFormRecord, FormAnswer,
@@ -89,7 +90,17 @@ export function mapPatient(id: string, data: Doc): Patient {
     avatarFileId: typeof data.avatarFileId === "string" && data.avatarFileId ? data.avatarFileId : undefined,
     alert: typeof data.alert === "string" ? data.alert : undefined,
     preferredName: typeof data.preferredName === "string" ? data.preferredName : undefined,
+    emergencyContact: mapEmergencyContact(data.emergencyContact),
   };
+}
+
+// The patient doc's optional `emergencyContact` map → EmergencyContact (absent/null/junk →
+// undefined; a map with every field blank is treated as absent too, matching the encoder).
+function mapEmergencyContact(raw: unknown): EmergencyContact | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const d = raw as Doc;
+  const c = { name: str(d.name), phone: str(d.phone), relationship: str(d.relationship) };
+  return c.name || c.phone || c.relationship ? c : undefined;
 }
 
 // The note doc's attachments[] → NoteAttachment[] (string fields only; junk entries dropped).
@@ -479,6 +490,9 @@ function patientCore(p: Patient): Doc {
     // avatarDataUrl preview bytes never reach Firestore.
     avatarFileId: p.avatarFileId ?? null,
     alert: p.alert ?? null, preferredName: p.preferredName ?? null,
+    emergencyContact: p.emergencyContact
+      ? { name: p.emergencyContact.name, phone: p.emergencyContact.phone, relationship: p.emergencyContact.relationship }
+      : null,
   };
 }
 

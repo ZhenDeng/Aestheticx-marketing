@@ -21,7 +21,7 @@ import { DirectionDialog } from "@/components/app/DirectionDialog";
 import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { emergencyKindLabel } from "@/lib/demo/direction";
-import { displayName, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment, type Patient } from "@/lib/demo/types";
+import { displayName, emergencyContactLine, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment, type Patient } from "@/lib/demo/types";
 import { unitSuffix } from "@/lib/demo/catalog";
 
 const APPT_STATUS_LABEL: Record<AppointmentStatus, string> = {
@@ -233,6 +233,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
           <div><dt className="micro">Address</dt><dd className="mt-0.5 text-ink">{patient.address || "—"}</dd></div>
           <div><dt className="micro">Allergies</dt><dd className="mt-0.5 text-ink">{patient.allergies}</dd></div>
           <div><dt className="micro">Medications</dt><dd className="mt-0.5 text-ink">{patient.currentMedications}</dd></div>
+          {/* Optional (owner feedback 02/08) — an absent contact reads "Nil", not blank. */}
+          <div className="col-span-2"><dt className="micro">Emergency contact</dt>
+            <dd className="mt-0.5 break-words text-ink">{emergencyContactLine(patient.emergencyContact)}</dd></div>
         </dl>
 
         <button onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes}

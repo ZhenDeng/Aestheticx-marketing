@@ -167,13 +167,17 @@ export function buildSeedState(): DemoState {
     [`${LUMIERE.id}_u-voss`]: 25000,
   } };
 
-  // Amara 'Mara' Boyd — clinic patient, full workflow + lignocaine alert.
-  const amara = makePatient(
-    "Amara", "Boyd", { year: 1991, month: 3, day: 12 }, "0401 223 871",
-    "Lidocaine, Penicillin", "Levothyroxine 75µg daily",
-    { kind: "clinic", id: LUMIERE.id }, "Mara",
-    "Anaphylaxis to lignocaine — confirm anaesthetic-free product before any treatment.",
-  );
+  // Amara 'Mara' Boyd — clinic patient, full workflow + lignocaine alert. The one seeded
+  // file WITH an emergency contact (the others show "Nil") — iOS seed parity.
+  const amara: Patient = {
+    ...makePatient(
+      "Amara", "Boyd", { year: 1991, month: 3, day: 12 }, "0401 223 871",
+      "Lidocaine, Penicillin", "Levothyroxine 75µg daily",
+      { kind: "clinic", id: LUMIERE.id }, "Mara",
+      "Anaphylaxis to lignocaine — confirm anaesthetic-free product before any treatment.",
+    ),
+    emergencyContact: { name: "Tomas Boyd", phone: "0401 887 662", relationship: "Husband" },
+  };
   state = { ...state, patients: { ...state.patients, [amara.id]: amara } };
 
   const amaraReq = submitRequest(
