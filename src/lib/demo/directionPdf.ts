@@ -243,21 +243,64 @@ export class DirectionWriter {
   cellLines(value: string, size: number, width: number, charSpace = 0): string[] {
     return wrapText(toWinAnsi(value), size, width, charSpace);
   }
+
+  /** Draw file image /Im{index+1} at the left margin, w×h points, and advance the cursor
+   *  (the image must be passed to buildPdfFile in the same order). Wrapped in q…Q so the
+   *  transform never leaks into later graphics ops. */
+  image(index: number, w: number, h: number): void {
+    this.breakPageIfNeeded(h);
+    const yBottom = PAGE_HEIGHT - (this.y + h);
+    this.pages[this.pages.length - 1].push(
+      `q ${num(w)} 0 0 ${num(h)} ${num(MARGIN)} ${num(yBottom)} cm /Im${index + 1} Do Q`,
+    );
+    this.y += h;
+  }
 }
 
-/** Serialise content streams into a complete single-font PDF file. */
-export function buildPdfFile(pageStreams: string[]): Uint8Array {
+/** A JPEG to embed as an image XObject (DCTDecode passes the bytes through verbatim —
+ *  the one raster format the hand-rolled writer can carry without a pixel codec). */
+export interface PdfJpegImage {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+}
+
+/** JPEG bytes as a binary-safe char string (one char per byte, all ≤ 0xFF) so the
+ *  existing string-assembled file body and its charCodeAt serialisation stay intact. */
+function binaryString(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 1) out += String.fromCharCode(bytes[i]);
+  return out;
+}
+
+/** Serialise content streams into a complete single-font PDF file. Optional JPEG images
+ *  become file-level XObjects (/Im1…), referenced from every page's resources — with no
+ *  images the output is byte-identical to the pre-image writer. */
+export function buildPdfFile(pageStreams: string[], images: PdfJpegImage[] = []): Uint8Array {
   const objects: string[] = [];
   const pageObjectIds = pageStreams.map((_, i) => 4 + i * 2);
+  // Image objects append AFTER the page/stream objects so existing object numbering
+  // (catalog 1, pages 2, font 3, page/stream pairs from 4) never shifts.
+  const imageObjectId = (i: number) => 4 + pageStreams.length * 2 + i;
+  const xobjectDict = images.length > 0
+    ? ` /XObject << ${images.map((_, i) => `/Im${i + 1} ${imageObjectId(i)} 0 R`).join(" ")} >>`
+    : "";
   objects.push("<< /Type /Catalog /Pages 2 0 R >>");
   objects.push(`<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageStreams.length} >>`);
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   for (const [i, stream] of pageStreams.entries()) {
     objects.push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] ` +
-        `/Resources << /Font << /F1 3 0 R >> >> /Contents ${4 + i * 2 + 1} 0 R >>`,
+        `/Resources << /Font << /F1 3 0 R >>${xobjectDict} >> /Contents ${4 + i * 2 + 1} 0 R >>`,
     );
     objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  }
+  for (const img of images) {
+    objects.push(
+      `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\n` +
+        `stream\n${binaryString(img.bytes)}\nendstream`,
+    );
   }
 
   let file = "%PDF-1.4\n";

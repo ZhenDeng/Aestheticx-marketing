@@ -417,6 +417,7 @@ async function readUserProfile(uid: string): Promise<{
     ...(typeof d.defaultPremiseId === "string" && d.defaultPremiseId ? { defaultPremiseId: d.defaultPremiseId } : {}),
     ...(typeof d.selectedPremiseId === "string" && d.selectedPremiseId ? { selectedPremiseId: d.selectedPremiseId } : {}),
     ...(typeof d.avatarFileId === "string" && d.avatarFileId ? { avatarFileId: d.avatarFileId } : {}),
+    ...(typeof d.signatureDataUrl === "string" && d.signatureDataUrl ? { signatureDataUrl: d.signatureDataUrl } : {}),
   };
   return { followUpSettings, appointmentReminderLead, bookingToken, doctorStatus, lastCalledDoctorId, profile };
 }

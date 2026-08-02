@@ -630,6 +630,7 @@ export function approveRequest(
         phone: doctorProfile.phone,
         principalPlace: doctorProfile.principalPlace,
         prescriberNumber: doctorProfile.ahpra,
+        signatureDataUrl: doctorProfile.signatureDataUrl,
       },
       clinic: request.context.kind === "clinic"
         ? { name: request.context.clinic.name, address: request.context.clinic.address }
@@ -1405,6 +1406,7 @@ export function updateProfile(state: DemoState, userID: string, edits: UserProfi
     ...(edits.selectedPremiseId !== undefined ? { selectedPremiseId: edits.selectedPremiseId } : {}),
     ...(edits.avatarFileId !== undefined ? { avatarFileId: edits.avatarFileId } : {}),
     ...(edits.avatarDataUrl !== undefined ? { avatarDataUrl: edits.avatarDataUrl } : {}),
+    ...(edits.signatureDataUrl !== undefined ? { signatureDataUrl: edits.signatureDataUrl } : {}),
   };
   return { ...state, profileByUser: { ...state.profileByUser, [userID]: next } };
 }
