@@ -33,6 +33,17 @@ describe("navItemsFor", () => {
     expect(labels("superAdmin")).toContain("Profile");
     expect(labels("doctor")).toContain("Profile");
   });
+
+  // Clinic-employee-only nurse (02/08): no ABN, no billing — Invoice is the clinic admin's.
+  it("withholds the Invoice tab from a clinic-employee-only nurse, keeping the rest of the clinical nav", () => {
+    const nav = navItemsFor("nurse", { employeeOnly: true }).map((i) => i.label);
+    expect(nav).not.toContain("Invoice");
+    for (const kept of ["Dashboard", "Patients", "Authorisations", "Calendar", "Templates", "Profile"]) {
+      expect(nav).toContain(kept);
+    }
+    // The flag is account-level and only ever true for nurse accounts; other roles unchanged.
+    expect(navItemsFor("nurse", { employeeOnly: false }).map((i) => i.label)).toContain("Invoice");
+  });
 });
 
 describe("activeNavHref", () => {

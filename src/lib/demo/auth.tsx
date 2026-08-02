@@ -38,6 +38,14 @@ interface AuthValue {
   mustChangePassword: boolean;
   /** Live mode: set the real password + clear the gate via the completeFirstLogin callable. */
   completeFirstLogin: (newPassword: string) => Promise<void>;
+  /** Clinic-employee-only nurse (02/08): the signed-in ACCOUNT was registered without an
+   *  ABN — never an independent clinician, and every billing surface is withheld. Live:
+   *  the `employeeOnly` custom claim; demo: the account's flag in DEMO_ACCOUNTS. */
+  employeeOnly: boolean;
+  /** Live mode: signed in but the account resolved ZERO identities (e.g. an employee-only
+   *  nurse whose last clinic membership was revoked). The login page explains instead of
+   *  silently doing nothing — the clinic-scope-lockout family made this failure invisible. */
+  noWorkspace: boolean;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -80,6 +88,10 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
   const resolved = mode === "demo" ? true : liveResolved;
   // Demo mode never gates: mustChangePassword is a live-account claim (createUser sets it).
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  // Clinic-employee-only claim (02/08) — live only; demo derives it from DEMO_ACCOUNTS below.
+  const [liveEmployeeOnly, setLiveEmployeeOnly] = useState(false);
+  // Signed in but zero identities resolved (live) — the "no workspace" login explainer.
+  const [noWorkspace, setNoWorkspace] = useState(false);
 
   // The login forms call these from a mount effect keyed on the callback identity, so they
   // MUST be referentially stable. Built with useCallback rather than inline in the context
@@ -91,6 +103,8 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     setIdentity(null);
     setAvailableIdentities([]);
     setMustChangePassword(false);
+    setLiveEmployeeOnly(false);
+    setNoWorkspace(false);
     // Re-arm the resolved gate. Leaving it set would make `resolved` stale-true with a null
     // identity at the moment mode flips to live — exactly the signed-out-looking window the
     // gate exists to hold AuthGuard through while a persisted session restores.
@@ -121,12 +135,12 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
     let unsub: (() => void) | undefined;
     let unsubClaims: (() => void) | undefined;
     let claimsUid: string | null = null;
-    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser, currentUserUid, watchClaimsRevision }) => {
+    import("@/lib/firebase/auth").then(({ watchUser, identitiesForUser, mustChangePasswordForUser, employeeOnlyForUser, currentUserUid, watchClaimsRevision }) => {
       if (cancelled) return; // cleanup ran before the import resolved — don't subscribe
       unsub = watchUser(async (user) => {
         if (!user) {
           unsubClaims?.(); unsubClaims = undefined; claimsUid = null;
-          if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setLiveResolved(true); }
+          if (!cancelled) { setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setLiveEmployeeOnly(false); setNoWorkspace(false); setLiveResolved(true); }
           return;
         }
         // Claims fast path (20/07): one users/{uid} watcher per signed-in uid — a bumped
@@ -139,9 +153,11 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
           unsubClaims = watchClaimsRevision?.(user.uid);
         }
         try {
-          const [ids, mustChange] = await Promise.all([
+          const [ids, mustChange, employeeOnlyClaim] = await Promise.all([
             identitiesForUser(user),
             mustChangePasswordForUser(user),
+            // Optional call: test mocks may omit it (the watchClaimsRevision precedent).
+            Promise.resolve(employeeOnlyForUser?.(user)).then((v) => v === true),
           ]);
           // Stale-resolution guard: identity resolution can take seconds (it may run the
           // claims self-heal). If the user signed out — or a different user signed in —
@@ -158,6 +174,10 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
             return stillHeld ? cur : pickInitialIdentity(window.localStorage, user.uid, ids);
           });
           setMustChangePassword(mustChange);
+          setLiveEmployeeOnly(employeeOnlyClaim);
+          // Signed in with ZERO identities (e.g. an employee-only nurse whose last clinic
+          // membership was revoked): surface it — the login page otherwise shows nothing.
+          setNoWorkspace(ids.length === 0);
           setLiveResolved(true);
         } catch (error) {
           // A resolution failure must not strand the app on the loading screen — land on
@@ -166,7 +186,7 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
           // must not stomp the current user's live session.
           console.error("Identity resolution failed:", error);
           if (!cancelled && currentUserUid() === user.uid) {
-            setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setLiveResolved(true);
+            setIdentity(null); setAvailableIdentities([]); setMustChangePassword(false); setLiveEmployeeOnly(false); setNoWorkspace(false); setLiveResolved(true);
           }
         }
       });
@@ -216,8 +236,16 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         // gate immediately so the UI doesn't wait on that round-trip.
         setMustChangePassword(false);
       },
+      // Demo mode resolves the flag from the signed-in account's cast entry; live mode
+      // carries the server-verified claim. Account-level, not per-identity — an employee-
+      // only nurse has no billing under ANY of her (all clinic) identities.
+      employeeOnly: mode === "demo"
+        ? (identity != null
+            && DEMO_ACCOUNTS.find((a) => a.identities.some((i) => i.user.id === identity.user.id))?.employeeOnly === true)
+        : liveEmployeeOnly,
+      noWorkspace: mode === "live" && noWorkspace,
     }),
-    [mode, identity, resolved, availableIdentities, mustChangePassword, enterDemoMode, exitDemoMode],
+    [mode, identity, resolved, availableIdentities, mustChangePassword, liveEmployeeOnly, noWorkspace, enterDemoMode, exitDemoMode],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

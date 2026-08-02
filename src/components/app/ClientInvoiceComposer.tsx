@@ -31,7 +31,7 @@ const NUM_CELL = "border-l border-line py-1.5 px-2 text-right";
 export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
   patient: Patient; appointmentID?: string; onIssued?: (invoice: Invoice) => void;
 }) {
-  const { identity } = useDemoAuth();
+  const { identity, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const [chargeGst, setChargeGst] = useState(true);
@@ -40,6 +40,9 @@ export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
   const [issued, setIssued] = useState<Invoice | null>(null);
 
   if (!identity) return null;
+  // Clinic-employee-only nurse (02/08): invoicing belongs to the clinic admin. Self-guarded
+  // here so every mount (patient file, calendar check-out, billing page) is covered at once.
+  if (employeeOnly) return null;
   if (store.patientAccess(patient, identity) === "none") return null;
 
   const parsed = lines.map((l) => ({ description: l.description.trim(), cents: centsOf(l.amount) }));

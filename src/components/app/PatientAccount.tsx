@@ -35,10 +35,13 @@ function GiftChip({ children }: { children: React.ReactNode }) {
 }
 
 export function PatientAccountSection({ patient }: { patient: Patient }) {
-  const { identity } = useDemoAuth();
+  const { identity, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   const [openPanel, setOpenPanel] = useState<"topup" | "checkout" | null>(null);
   if (!identity || !store.matrixEnabled) return null;
+  // Clinic-employee-only nurse (02/08): wallet/top-up/checkout are billing — they belong
+  // to the clinic admin, so the whole Account section is withheld from her.
+  if (employeeOnly) return null;
   const access = store.patientAccess(patient, identity);
   if (access === "none") return null;
 

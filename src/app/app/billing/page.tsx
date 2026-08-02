@@ -14,7 +14,7 @@ import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { InvoiceActions } from "@/components/app/InvoiceActions";
 
 export default function BillingPage() {
-  const { identity } = useDemoAuth();
+  const { identity, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   const [openPanel, setOpenPanel] = useState<string | null>(null); // `${monthKey}:${counterpartyID}`
   const [priceInput, setPriceInput] = useState<string>("");
@@ -32,6 +32,16 @@ export default function BillingPage() {
       <div className="max-w-3xl">
         <h1 className="font-display text-3xl text-ink">Invoice</h1>
         <p className="mt-2 text-ink-soft">Billing lives with the clinical roles; the admin shell has no invoice stream.</p>
+      </div>
+    );
+  }
+  // Clinic-employee-only nurse (02/08): no ABN, no billing capability — invoicing for the
+  // clinic's clients belongs to the clinic admin. The nav hides the tab; this covers deep links.
+  if (employeeOnly) {
+    return (
+      <div className="max-w-3xl">
+        <h1 className="font-display text-3xl text-ink">Invoice</h1>
+        <p className="mt-2 text-ink-soft">Invoicing for the clinic is handled by your clinic admin — this account has no billing stream.</p>
       </div>
     );
   }

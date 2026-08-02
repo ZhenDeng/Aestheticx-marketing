@@ -167,6 +167,13 @@ function AccountRow({ account }: { account: AccountRecord }) {
           {[account.roles.map((r) => ROLE_LABEL[r]).join(" · ") || "No role", account.email].filter(Boolean).join(" — ")}
         </span>
       </span>
+      {/* Clinic-employee-only nurse (02/08): no ABN — distinguishes her from an ABN-holding
+          nurse at a glance (different creation path, no billing, lockout-sensitive removal). */}
+      {account.employeeOnly && (
+        <span className="micro flex-none rounded-full border border-line px-2 py-0.5 text-ink-soft">
+          Clinic employee · no ABN
+        </span>
+      )}
       {account.mustChangePassword && (
         <span className="micro flex-none rounded-full px-2 py-0.5" style={{ background: "var(--color-umber-soft)", color: "var(--color-umber)" }}>
           Awaiting first login
@@ -242,6 +249,10 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   const [premises, setPremises] = useState<NewPremiseInput[]>([{ name: "", address: "" }]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [supervisingDoctorId, setSupervisingDoctorId] = useState("");
+  // Clinic-employee-only nurse (02/08): no ABN — the account can only ever be a clinic
+  // employee, so the employing clinic is captured here and granted atomically at creation.
+  const [employeeOnly, setEmployeeOnly] = useState(false);
+  const [employingClinicId, setEmployingClinicId] = useState("");
   const [missing, setMissing] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -251,6 +262,10 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
   const clinic = accountType === "clinic";
   const isDoctor = !clinic && roles.includes("doctor");
   const isNurse = !clinic && roles.includes("nurse");
+  // The employee-only option applies to nurse-ONLY accounts (validator: roles must be
+  // exactly ["nurse"]); adding the doctor role reverts the form to the ABN path.
+  const isEmployeeOnly = isNurse && !isDoctor && employeeOnly;
+  const clinicOptions = store.clinics();
 
   // The prescribing-doctor directory for the nurse's optional supervising-doctor link
   // (16/07 feedback bug 1): fetched once when a nurse role is first selected, like the
@@ -280,12 +295,19 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
     return {
       ...draft,
       clinicAddress: undefined,
+      // Employee-only (02/08): no ABN/business identity by definition — blank whatever was
+      // typed before the toggle so a stale value never reaches the callable.
+      abn: isEmployeeOnly ? "" : draft.abn,
+      businessName: isEmployeeOnly ? "" : draft.businessName,
       principalPlace: roles.includes("doctor") ? draft.principalPlace : undefined,
-      premises: roles.includes("nurse") ? premises : undefined,
+      premises: roles.includes("nurse") && !isEmployeeOnly ? premises : undefined,
       // 16/07: optional contact address (persists to Profile) + optional supervising-doctor
       // link (nurse only — the callable creates the cooperation relationship atomically).
+      // Employee-only nurses skip the personal link: their requests ride the CLINIC's
+      // doctor relationships.
       address: draft.address.trim() || undefined,
-      supervisingDoctorId: roles.includes("nurse") && supervisingDoctorId ? supervisingDoctorId : undefined,
+      supervisingDoctorId: roles.includes("nurse") && !isEmployeeOnly && supervisingDoctorId ? supervisingDoctorId : undefined,
+      ...(isEmployeeOnly ? { employeeOnly: true, employingClinicId } : {}),
       roles,
     };
   }
@@ -359,8 +381,8 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
         {field(clinic ? "Clinic name" : "Full name", "name")}
         {field("Email", "email", { type: "email" })}
         {field("Phone", "phone")}
-        {field("ABN", "abn")}
-        {field("Business name", "businessName")}
+        {!isEmployeeOnly && field("ABN", "abn")}
+        {!isEmployeeOnly && field("Business name", "businessName")}
         {!clinic && field("AHPRA", "ahpra", { hint: "Required for doctors and nurses" })}
         {clinic && field("Clinic address", "clinicAddress", { address: true, hint: "Printed as the premises of administration on clinic authorisations" })}
         {field("Temporary password", "temporaryPassword", { type: "password", hint: "At least 8 characters — they change it on first login" })}
@@ -381,7 +403,44 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
         {/* 16/07 feedback bug 2: a contact address entered here persists to the user's Profile. */}
         {!clinic && field("Address", "address", { address: true, hint: "Contact address — shows on the user's profile (optional)" })}
       </div>
-      {isNurse && (
+      {/* Clinic-employee-only nurse (02/08): nurse-ONLY accounts can waive the ABN — the
+          account then lives entirely inside its employing clinic's workspace. Ticking a
+          doctor role reverts to the ABN path (the validator requires nurse-only). */}
+      {isNurse && !isDoctor && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={employeeOnly}
+            onChange={(e) => { setEmployeeOnly(e.target.checked); setMissing([]); }}
+            className="mt-0.5 accent-[var(--color-tint)]"
+          />
+          <span>
+            Clinic employee only (no ABN)
+            <span className="micro mt-0.5 block text-ink-soft">
+              For a nurse without an ABN: never an independent clinician — she works in her
+              employing clinic&rsquo;s workspace, and billing stays with the clinic admin.
+            </span>
+          </span>
+        </label>
+      )}
+      {isEmployeeOnly && (
+        <label className="mt-3 block">
+          <span className="micro">Employing clinic</span>
+          <p className="micro mt-0.5 text-ink-soft">
+            Required — the membership is granted with the account, so she can sign straight
+            into the clinic workspace. Without one the account would have no workspace at all.
+          </p>
+          <select
+            value={employingClinicId}
+            onChange={(e) => setEmployingClinicId(e.target.value)}
+            className={`mt-1.5 w-full rounded-field border bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus:border-tint ${missing.includes("employingClinicId") ? "border-rose" : "border-line"}`}
+          >
+            <option value="">Choose a clinic…</option>
+            {clinicOptions.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
+      )}
+      {isNurse && !isEmployeeOnly && (
         <label className="mt-3 block">
           <span className="micro">Supervising doctor</span>
           <p className="micro mt-0.5 text-ink-soft">Optional — links the nurse under this doctor so she can raise authorisation requests immediately. You can also set this up later.</p>
@@ -397,7 +456,7 @@ function CreateUserForm({ onDone, onCancel }: { onDone: (name: string) => void; 
           </select>
         </label>
       )}
-      {isNurse && (
+      {isNurse && !isEmployeeOnly && (
         <div className="mt-3">
           <span className="micro">Premises of administration</span>
           <p className="micro mt-0.5 text-ink-soft">At least one — the first becomes the default; the nurse can add more later.</p>

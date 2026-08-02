@@ -6,6 +6,10 @@ export interface DemoClaims {
   uid: string;
   roles: string[];
   clinics: Record<string, string>; // clinicId -> "admin" | "employee" | "contractor"
+  /** Clinic-employee-only nurse (02/08): no ABN, never an independent clinician. `roles`
+   *  still carries "nurse" (roles-driven surfaces — admin console, employment management,
+   *  claims self-heal — depend on it); this flag suppresses the independent identity. */
+  employeeOnly?: boolean;
 }
 
 function isRole(r: string): r is Role {
@@ -31,7 +35,10 @@ export function identitiesFromClaims(
   const identities: Identity[] = [];
 
   // Independent identities from top-level roles (nurse/doctor act independently).
+  // A clinic-employee-only account (no ABN) holds the nurse role but never the independent
+  // identity — its only workspaces are the clinic memberships below.
   for (const r of claims.roles) {
+    if (r === "nurse" && claims.employeeOnly === true) continue;
     if (isRole(r) && (r === "nurse" || r === "doctor" || r === "superAdmin")) {
       identities.push({ user, role: r, context: { kind: "independent" } });
     }

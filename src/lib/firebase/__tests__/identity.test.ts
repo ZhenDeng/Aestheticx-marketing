@@ -54,4 +54,36 @@ describe("identitiesFromClaims", () => {
     const ids = identitiesFromClaims(claims, { name: "Dr Elena Voss" });
     expect(ids[0].role).toBe("doctor");
   });
+
+  // Clinic-employee-only nurse (02/08): registered without an ABN — the nurse role stays on
+  // the claims (roles-driven surfaces need it) but must never mint an independent identity.
+  describe("employeeOnly claim", () => {
+    it("suppresses the independent nurse identity, leaving only clinic workspaces", () => {
+      const claims: DemoClaims = {
+        uid: "u-mia", roles: ["nurse"], clinics: { "clinic-lumiere": "employee" }, employeeOnly: true,
+      };
+      const ids = identitiesFromClaims(claims, { name: "Mia Torres" }, { "clinic-lumiere": "Lumière Clinic" });
+      expect(ids).toHaveLength(1);
+      expect(ids[0].role).toBe("nurse");
+      expect(ids[0].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } });
+    });
+
+    it("resolves ZERO identities when the last membership is revoked (the lockout the login page must explain)", () => {
+      const claims: DemoClaims = { uid: "u-mia", roles: ["nurse"], clinics: {}, employeeOnly: true };
+      expect(identitiesFromClaims(claims, { name: "Mia Torres" })).toHaveLength(0);
+    });
+
+    it("does not suppress a doctor or superAdmin independent identity (misconfigured flag)", () => {
+      const claims: DemoClaims = { uid: "u-x", roles: ["doctor"], clinics: {}, employeeOnly: true };
+      const ids = identitiesFromClaims(claims, { name: "Dr X" });
+      expect(ids).toHaveLength(1);
+      expect(ids[0].role).toBe("doctor");
+    });
+
+    it("changes nothing when the flag is absent or false", () => {
+      const claims: DemoClaims = { uid: "u-sarah", roles: ["nurse"], clinics: {}, employeeOnly: false };
+      expect(identitiesFromClaims(claims, userDoc)).toHaveLength(1);
+      expect(identitiesFromClaims(claims, userDoc)[0].context.kind).toBe("independent");
+    });
+  });
 });

@@ -580,6 +580,10 @@ function EmploymentMemberRow({ member, clinicID, clinicName, employment, identit
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const removable = employment !== undefined || (live && member.roles.includes("nurse"));
+  // Clinic-employee-only nurse (02/08): this clinic may be her ONLY workspace — removing it
+  // resolves zero identities, i.e. a login lockout. Allowed (it is how an admin deactivates
+  // her), but the confirm must say so instead of the generic prompt.
+  const lastWorkspace = member.employeeOnly === true && (member.clinicIDs ?? []).filter((id) => id !== clinicID).length === 0;
 
   function remove() {
     setError(null);
@@ -600,13 +604,18 @@ function EmploymentMemberRow({ member, clinicID, clinicName, employment, identit
         <span className="block text-sm font-medium text-ink">{member.name || member.email || member.id}</span>
         <span className="micro block">
           {member.roles.filter((role) => role !== "doctor").map((role) => role === "clinicAdmin" ? "Clinic admin" : role === "nurse" ? "Nurse" : role).join(" · ")}
+          {member.employeeOnly ? " · Clinic employee (no ABN)" : ""}
         </span>
         {error && <span className="micro block" style={{ color: "var(--color-rose)" }}>{error}</span>}
       </span>
       {removable ? (
         confirming ? (
           <span className="flex items-center gap-2">
-            <span className="micro" style={{ color: "var(--color-rose)" }}>Remove from clinic?</span>
+            <span className="micro" style={{ color: "var(--color-rose)" }}>
+              {lastWorkspace
+                ? "This is their only workspace — removing it locks the account out until re-employed. Remove?"
+                : "Remove from clinic?"}
+            </span>
             <button onClick={remove} className="micro rounded-btn px-2.5 py-1 text-card" style={{ background: "var(--color-rose)" }}>Confirm</button>
             <button onClick={() => setConfirming(false)} className="micro rounded-btn border border-line px-2.5 py-1 text-ink-soft">Cancel</button>
           </span>

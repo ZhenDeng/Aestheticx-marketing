@@ -132,6 +132,14 @@ export async function mustChangePasswordForUser(user: User): Promise<boolean> {
   return tokenResult.claims.mustChangePassword === true;
 }
 
+// Clinic-employee-only nurse claim (02/08): registered without an ABN — never an independent
+// clinician, no billing surfaces. Read straight off the token like mustChangePassword; the
+// auth context exposes it so billing gates don't have to re-derive it from the identity set.
+export async function employeeOnlyForUser(user: User): Promise<boolean> {
+  const tokenResult = await user.getIdTokenResult();
+  return tokenResult.claims.employeeOnly === true;
+}
+
 // Thrown by completeFirstLogin when the password update SUCCEEDED but the follow-up
 // confirmation (the completeFirstLogin callable / token refresh) failed. Callers key
 // off `error.name` to tell the user their new password is already set and a retry of

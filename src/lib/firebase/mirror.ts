@@ -454,6 +454,10 @@ export async function mirrorCreateUser(input: import("@/lib/demo/userAdmin").New
     // linkage. The callable trims/validates both and ignores supervisingDoctorId for non-nurses.
     ...(input.address ? { address: input.address } : {}),
     ...(input.supervisingDoctorId ? { supervisingDoctorId: input.supervisingDoctorId } : {}),
+    // Clinic-employee-only nurse (02/08): no ABN, nurse-only roles; the callable validates
+    // the pair, grants the clinic membership atomically, and stamps the employeeOnly claim.
+    ...(input.employeeOnly ? { employeeOnly: true } : {}),
+    ...(input.employingClinicId ? { employingClinicId: input.employingClinicId } : {}),
   });
   const d = res.data as { uid?: unknown };
   if (typeof d.uid !== "string" || !d.uid) throw new Error("createUser returned no uid");

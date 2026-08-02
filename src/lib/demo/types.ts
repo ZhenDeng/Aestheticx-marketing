@@ -419,6 +419,11 @@ export interface AccountRecord {
   // the account that administers it (20/07 feedback: entities live on account rows).
   clinicIDs?: string[];
   mustChangePassword: boolean;
+  /** Clinic-employee-only nurse (02/08): registered without an ABN, so the account can only
+   *  ever practise as a clinic employee — identity derivation never mints an independent
+   *  identity, and every billing surface is withheld (billing belongs to the clinic admin).
+   *  Server-managed (claims + users doc), like roles/clinics. */
+  employeeOnly?: boolean;
 }
 
 // Nurse↔clinic employment (spec: 2026-07-25). A super-admin-granted clinic membership for

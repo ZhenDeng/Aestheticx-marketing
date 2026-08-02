@@ -357,6 +357,9 @@ export function buildSeedState(): DemoState {
       // clinic-keyed business entity onto this account's row (20/07 feedback).
       clinicIDs: [...new Set(account.identities.flatMap((i) => (i.context.kind === "clinic" ? [i.context.clinic.id] : [])))],
       mustChangePassword: false,
+      // Clinic-employee-only nurse (02/08): carried onto the console record so admin
+      // surfaces can tell her from an ABN-holding nurse (chip + lockout warning).
+      ...(account.employeeOnly ? { employeeOnly: true } : {}),
     };
   }
   state = { ...state, accountsByID };

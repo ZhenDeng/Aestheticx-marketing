@@ -31,6 +31,13 @@ export interface NewUserInput {
    *  Function creates the cooperation relationship atomically so the nurse can raise
    *  requests immediately. Ignored for non-nurse accounts. */
   supervisingDoctorId?: string;
+  /** Clinic-employee-only nurse (02/08): registered WITHOUT an ABN — never an independent
+   *  clinician. Roles must be exactly ["nurse"]; ABN/business name/premises are waived
+   *  (the clinic's premise applies; she invoices nobody); employingClinicId is required. */
+  employeeOnly?: boolean;
+  /** Employee-only accounts: the clinic membership granted atomically at creation — without
+   *  it the account would resolve ZERO identities, which is a login lockout. */
+  employingClinicId?: string;
 }
 
 const PRESCRIBER_ROLES = ["doctor", "nurse"];
@@ -45,10 +52,19 @@ export function validateNewUser(input: NewUserInput): string[] {
   // separate person behind the login), so no AHPRA is required — it is an organisation,
   // not a registered health practitioner.
   const isClinicAccount = input.accountType === "clinic";
+  // Clinic-employee-only nurse (02/08): no ABN by definition, so no business identity to
+  // capture — but the employing clinic is mandatory (zero memberships = zero identities,
+  // a login lockout) and the account must be nurse-only (an employee-only doctor or admin
+  // would sidestep that role's own requirements).
+  const employeeOnly = !isClinicAccount && input.employeeOnly === true;
+  if (employeeOnly) {
+    if (roles.length !== 1 || roles[0] !== "nurse") missing.push("roles (clinic-employee accounts are nurse-only)");
+    if (blank(input.employingClinicId)) missing.push("employingClinicId");
+  }
   if (blank(input.email)) missing.push("email");
   if (blank(input.name)) missing.push("name");
-  if (blank(input.abn)) missing.push("abn");
-  if (blank(input.businessName)) missing.push("businessName");
+  if (!employeeOnly && blank(input.abn)) missing.push("abn");
+  if (!employeeOnly && blank(input.businessName)) missing.push("businessName");
   if (blank(input.phone)) missing.push("phone");
   if (!Array.isArray(input.roles) || input.roles.length === 0) missing.push("roles");
   if (typeof input.temporaryPassword !== "string" || input.temporaryPassword.length < 8) {
@@ -66,7 +82,8 @@ export function validateNewUser(input: NewUserInput): string[] {
   }
   // Nurses must start with at least one premise of administration (their default), and
   // every supplied premise must be complete — a junk row is rejected, never persisted.
-  if (!isClinicAccount && roles.includes("nurse")) {
+  // Employee-only nurses are exempt: clinic-context requests stamp the CLINIC's premise.
+  if (!isClinicAccount && !employeeOnly && roles.includes("nurse")) {
     const premises = input.premises;
     const complete = (p: NewPremiseInput) => !blank(p?.name) && !blank(p?.address);
     if (!Array.isArray(premises) || premises.length === 0 || !premises.every(complete)) {

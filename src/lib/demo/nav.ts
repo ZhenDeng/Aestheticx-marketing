@@ -35,8 +35,12 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/app/profile", label: "Profile" },
 ];
 
-export function navItemsFor(role: Role): NavItem[] {
-  return role === "superAdmin" ? ADMIN_NAV : CLINICAL_NAV;
+export function navItemsFor(role: Role, opts?: { employeeOnly?: boolean }): NavItem[] {
+  if (role === "superAdmin") return ADMIN_NAV;
+  // Clinic-employee-only nurse (02/08): no ABN, no billing — invoicing belongs to the
+  // clinic admin, so the Invoice tab is withheld from her nav entirely.
+  if (opts?.employeeOnly) return CLINICAL_NAV.filter((item) => item.href !== "/app/billing");
+  return CLINICAL_NAV;
 }
 
 // The nav href that should render active for a pathname: the longest item href that is the

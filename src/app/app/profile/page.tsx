@@ -56,7 +56,7 @@ function contextLine(identity: Identity): string {
 }
 
 export default function ProfilePage() {
-  const { identity, availableIdentities, selectIdentity, signOut } = useDemoAuth();
+  const { identity, availableIdentities, selectIdentity, signOut, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   const router = useRouter();
   if (!identity) return null;
@@ -94,10 +94,12 @@ export default function ProfilePage() {
 
       {/* 16/07 feedback enhancement 1: nurse-role accounts get ONE merged premises/address
           surface — the free-text Address block hides and the active premise (below) is the
-          address display. Everyone else keeps the per-identity Address field. */}
-      <ProfileFields me={me} profile={profile} showsAhpra={isClinician || holdsClinicalRole} showsPrincipalPlace={holdsDoctorRole} showsAddress={!holdsNurseRole} />
+          address display. Everyone else keeps the per-identity Address field. A clinic-
+          employee-only nurse (02/08) has no personal premises of administration — her
+          requests stamp the CLINIC's premise — so she keeps the plain Address field. */}
+      <ProfileFields me={me} profile={profile} showsAhpra={isClinician || holdsClinicalRole} showsPrincipalPlace={holdsDoctorRole} showsAddress={!holdsNurseRole || employeeOnly} />
 
-      {holdsNurseRole && <PremisesSection me={me} profile={profile} />}
+      {holdsNurseRole && !employeeOnly && <PremisesSection me={me} profile={profile} />}
 
       {/* 15/07 feedback: the Invoice section is doctor-only; nurses/clinics receive invoices by email. */}
       {me.role === "doctor" && (
