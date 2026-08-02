@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emptyState, submitRequest, approveRequest, setScriptPrice, generateInvoice, markInvoicePaid, deleteInvoice, billableAuthorisations } from "@/lib/demo/backend";
+import { emptyState, submitRequest, approveRequest, setScriptPrice, generateInvoice, markInvoicePaid, deleteInvoice, billableAuthorisations, createClientInvoice, createServiceInvoice } from "@/lib/demo/backend";
 import { authIDsForSelectedScripts, scriptsFromBillable } from "@/lib/demo/invoicing";
 import type { DemoState, Identity, Patient } from "@/lib/demo/types";
 
@@ -197,6 +197,58 @@ describe("deleteInvoice", () => {
 
   it("throws for an unknown invoice", () => {
     expect(() => deleteInvoice(emptyState(), "nope", voss, NOW)).toThrow();
+  });
+});
+
+// 02/08 feedback: manual matrix records (client invoices, service fees) are deletable by
+// their ISSUER silo; wallet-linked documents never are.
+describe("deleteInvoice — matrix records (02/08)", () => {
+  const LUMIERE = { id: "clinic-lumiere", name: "Lumière" };
+  const sarahAtClinic: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "clinic", clinic: LUMIERE } };
+  const admin: Identity = { user: { id: "u-admin", name: "Ava Admin" }, role: "clinicAdmin", context: { kind: "clinic", clinic: LUMIERE } };
+
+  function withClientInvoice(owner: Patient["owner"] = { kind: "nurse", id: "u-sarah" }, issuer: Identity = sarah): { state: DemoState; invoiceID: string } {
+    const p = { ...patient("p1"), owner };
+    const s0: DemoState = { ...emptyState(), patients: { p1: p } };
+    const { state, invoice } = createClientInvoice(s0, {
+      patientID: "p1", lines: [{ description: "Consult", amountCents: 10000 }], chargeGst: true, gstIncluded: true,
+    }, issuer, NOW);
+    return { state, invoiceID: invoice.id };
+  }
+
+  it("the issuing nurse deletes her client invoice (paid or not) and it leaves the store", () => {
+    const { state, invoiceID } = withClientInvoice();
+    const paid = markInvoicePaid(state, invoiceID, sarah, NOW + 500);
+    const next = deleteInvoice(paid, invoiceID, sarah, NOW + 1000);
+    expect(next.invoices).toHaveLength(0);
+    const entry = Object.values(next.auditLogByID).find((e) => e.action === "invoice_deleted" && e.targetID === invoiceID);
+    expect(entry).toBeDefined();
+    // No authorisations clause for matrix records (none are linked).
+    expect(entry!.summary).not.toMatch(/authorisation/);
+  });
+
+  it("a clinic-context member deletes a clinic-issued client invoice; outsiders cannot", () => {
+    const { state, invoiceID } = withClientInvoice({ kind: "clinic", id: LUMIERE.id }, sarahAtClinic);
+    expect(deleteInvoice(state, invoiceID, admin, NOW + 1000).invoices).toHaveLength(0);
+    expect(() => deleteInvoice(state, invoiceID, voss, NOW)).toThrow();      // not a member
+    expect(() => deleteInvoice(state, invoiceID, sarah, NOW)).toThrow();     // independent context ≠ clinic silo
+  });
+
+  it("wallet-linked documents (top-up, checkout-born service fee) stay non-deletable", () => {
+    const base = withClientInvoice();
+    const topUp = { ...base.state.invoices[0], id: "inv-top", kind: "top-up" as const };
+    const checkoutFee = { ...base.state.invoices[0], id: "inv-fee", kind: "service-fee" as const, checkoutID: "co-1" };
+    const s = { ...base.state, invoices: [...base.state.invoices, topUp, checkoutFee] };
+    expect(() => deleteInvoice(s, "inv-top", sarah, NOW)).toThrow();
+    expect(() => deleteInvoice(s, "inv-fee", sarah, NOW)).toThrow();
+  });
+
+  it("a manual (non-checkout) service-fee invoice deletes by its issuer", () => {
+    // Membership by active clinic context — no clinic record needed in the store.
+    const s = createServiceInvoice(emptyState(), { clinicID: LUMIERE.id, lines: [{ description: "June services", amountCents: 100000 }] }, sarahAtClinic, NOW);
+    const inv = s.invoices[0];
+    expect(deleteInvoice(s, inv.id, sarahAtClinic, NOW + 1000).invoices).toHaveLength(0);
+    expect(() => deleteInvoice(s, inv.id, admin, NOW)).toThrow(); // the clinic RECEIVES it; only the issuer deletes
   });
 });
 

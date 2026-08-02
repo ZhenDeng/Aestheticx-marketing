@@ -15,7 +15,7 @@ function applyState(u: (s: DemoState) => DemoState) { demoState = u(demoState); 
 
 const sarahIndependent: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
 let currentIdentity: Identity = sarahIndependent;
-let storeStatus: "demo" | "ready" = "demo"; // "ready" = live mode (nothing persists)
+let storeStatus: "demo" | "ready" = "demo"; // "ready" = live mode (persists via the callable)
 
 vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity: currentIdentity, availableIdentities: [] }) }));
 vi.mock("@/lib/demo/store", () => ({
@@ -26,7 +26,9 @@ vi.mock("@/lib/demo/store", () => ({
       patientAccess: (p: Patient, id: Identity) => patientAccessLevel(state, id, p),
       createClientInvoice: (input: backend.CreateClientInvoiceInput, id: Identity) => {
         const invoice = backend.buildClientInvoice(state, input, id, SEED_NOW);
-        // Mirrors the real store: live builds transiently and never persists.
+        // Mirrors the real store: demo records synchronously; live persists via the
+        // async callable + rehydrate (not modelled here — the component only needs
+        // the returned invoice for its confirmation + PDF actions).
         if (storeStatus === "demo") applyState((s) => backend.recordClientInvoice(s, invoice, id, SEED_NOW));
         return invoice;
       },
@@ -88,17 +90,15 @@ describe("ClientInvoiceComposer", () => {
     expect(screen.getByText(/invoice issued to claire donovan/i)).toBeInTheDocument();
   });
 
-  it("live mode: the confirmation says the invoice is NOT saved and nothing persists", async () => {
+  it("live mode: the confirmation reads like a filed record (02/08 — the callable persists it)", async () => {
     storeStatus = "ready";
     const claire = findPatient("Claire Donovan");
     render(<ClientInvoiceComposer patient={claire} />);
     await userEvent.type(screen.getByLabelText("Line 1 description"), "Consult");
     await userEvent.type(screen.getByLabelText("Line 1 amount"), "100");
-    const before = demoState.invoices.length;
     await userEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
-    expect(demoState.invoices.length).toBe(before); // transient — PDF hand-off only
-    expect(screen.getByText(/invoice created for claire donovan/i)).toHaveTextContent(/not saved/i);
-    expect(screen.queryByText(/invoice issued to/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/invoice issued to claire donovan/i)).toHaveTextContent(/saved to your invoice records/i);
+    expect(screen.queryByText(/not saved/i)).not.toBeInTheDocument();
   });
 
   it("renders nothing without commercial access to the patient", () => {

@@ -269,24 +269,39 @@ export function invoicesFor(invoices: Invoice[], identity: Identity): Invoice[] 
         ? clinicId !== null && i.counterpartyID === clinicId
         : i.counterpartyType === "nurse" && i.counterpartyID === identity.user.id;
     }
-    const issuer = i.issuerRef;
-    const kind = resolveInvoiceKind(i);
-    let isIssuer = false;
-    if (issuer !== undefined) {
-      if (issuer.kind === "clinic") {
-        isIssuer = issuer.id === clinicId;
-      } else if (issuer.id === identity.user.id) {
-        // Practitioner-issued documents: SERVICE FEES are the practitioner's own
-        // earnings from clinic work and follow the person across identities (a
-        // clinic-only nurse must see and finalize her drafts). CLIENT documents
-        // (sales/top-ups) belong to the silo that owns the client — the independent
-        // book — and carry client PII, so the same user's clinic identity is not the
-        // issuer (isolation doctrine, mirrors patientAccessLevel's owner check).
-        isIssuer = kind === "service-fee" || identity.context.kind === "independent";
-      }
-    }
-    if (isIssuer) return true;
+    if (isMatrixIssuer(i, identity)) return true;
     if (i.draft) return false;
     return i.counterpartyType === "clinic" && clinicId !== null && i.counterpartyID === clinicId;
   });
+}
+
+/** Is this identity the ISSUING silo of a matrix invoice? Clinic-issued documents follow
+ *  clinic context. Practitioner-issued SERVICE FEES are the practitioner's own earnings
+ *  from clinic work and follow the person across identities (a clinic-only nurse must
+ *  see and finalize her drafts). Practitioner-issued CLIENT documents (invoices, sales,
+ *  top-ups) belong to the silo that owns the client — the independent book — and carry
+ *  client PII, so the same user's clinic identity is not the issuer (isolation doctrine,
+ *  mirrors patientAccessLevel's owner check). */
+export function isMatrixIssuer(invoice: Invoice, identity: Identity): boolean {
+  const issuer = invoice.issuerRef;
+  if (issuer === undefined) return false;
+  if (issuer.kind === "clinic") {
+    return identity.context.kind === "clinic" && identity.context.clinic.id === issuer.id;
+  }
+  if (issuer.id !== identity.user.id) return false;
+  return resolveInvoiceKind(invoice) === "service-fee" || identity.context.kind === "independent";
+}
+
+/** May this identity DELETE the invoice record? (02/08 feedback: issued records must be
+ *  correctable.) Authorisation invoices keep the issuing-doctor gate (deletion returns
+ *  their scripts to the un-invoiced pool). Manual matrix records — client invoices and
+ *  service fees — delete by issuer silo. Checkout-born service fees (checkoutID) and
+ *  client-sale/top-up documents stay non-deletable: they are cross-linked from the
+ *  append-only wallet ledger, so deletion would orphan ledger entries. */
+export function canDeleteInvoice(invoice: Invoice, identity: Identity): boolean {
+  const kind = resolveInvoiceKind(invoice);
+  if (kind === "authorisation") return identity.role === "doctor" && invoice.doctorID === identity.user.id;
+  if (kind !== "client-invoice" && kind !== "service-fee") return false;
+  if (invoice.checkoutID) return false;
+  return isMatrixIssuer(invoice, identity);
 }

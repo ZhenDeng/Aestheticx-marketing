@@ -56,7 +56,7 @@ import { isoWeekday } from "./calendar";
 import { fullName, displayName, identityBadge, emptyDraft, emergencyContactFromDraft, ownerKeyOf, effectiveRelationshipKinds, RELATIONSHIP_KINDS } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
-import { computeInvoice, computeInclusiveTotals, computeManualInvoice, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
+import { canDeleteInvoice, computeInvoice, computeInclusiveTotals, computeManualInvoice, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
 import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
@@ -2685,19 +2685,19 @@ export function generateInvoice(
   return { state: audited, invoice };
 }
 
-// The issuing doctor deletes an invoice to correct an error (16/07 feedback enhancement 2):
-// the invoice goes away and every member authorisation returns to the un-invoiced pool, so a
-// corrected invoice can be regenerated through the normal flow. Deleting a PAID invoice is
-// allowed (corrections happen after settlement too) — the audit summary records that state.
+// The issuer deletes an invoice to correct an error (16/07 feedback enhancement 2; matrix
+// records 02/08): an authorisation invoice goes away and every member authorisation
+// returns to the un-invoiced pool, so a corrected invoice can be regenerated through the
+// normal flow; manual matrix records (client invoices, service fees) simply go away.
+// canDeleteInvoice gates: issuing doctor for authorisation invoices, issuer silo for
+// matrix records, never wallet-linked documents (top-ups, sales, checkout-born fees —
+// deletion would orphan append-only ledger entries). Deleting a PAID invoice is allowed
+// (corrections happen after settlement too) — the audit summary records that state.
 // Live routes through the deleteInvoice callable (invoices are Function-only docs).
 export function deleteInvoice(state: DemoState, invoiceID: string, identity: Identity, now: number): DemoState {
   const invoice = state.invoices.find((i) => i.id === invoiceID);
   if (!invoice) throw new BackendError("notFound");
-  // Matrix invoices are deliberately NOT deletable in this change: top-up and
-  // wallet-settled invoices are cross-linked from the append-only wallet ledger, so
-  // deletion would orphan ledger entries. The doctorID gate below is "" on matrix
-  // invoices and therefore fails closed for everyone.
-  if (identity.role !== "doctor" || identity.user.id !== invoice.doctorID) throw new BackendError("notPermitted");
+  if (!canDeleteInvoice(invoice, identity)) throw new BackendError("notPermitted");
   const memberIDs = new Set(invoice.authorisationIDs);
   const authorisations = { ...state.authorisations };
   for (const id of memberIDs) {
@@ -2708,7 +2708,7 @@ export function deleteInvoice(state: DemoState, invoiceID: string, identity: Ide
     next,
     {
       actor: identity, action: "invoice_deleted", targetType: "invoice", targetID: invoiceID,
-      summary: `invoice deleted · ${invoice.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}${invoice.paid ? " · was marked paid" : ""} · ${memberIDs.size} authorisation${memberIDs.size === 1 ? "" : "s"} returned to un-invoiced`,
+      summary: `invoice deleted · ${invoice.periodLabel} · $${(invoice.totalCents / 100).toFixed(2)}${invoice.paid ? " · was marked paid" : ""}${memberIDs.size > 0 ? ` · ${memberIDs.size} authorisation${memberIDs.size === 1 ? "" : "s"} returned to un-invoiced` : ""}`,
     },
     now,
   );

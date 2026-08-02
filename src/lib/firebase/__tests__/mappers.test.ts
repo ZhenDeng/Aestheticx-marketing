@@ -672,6 +672,25 @@ describe("mapInvoice matrix fields (manual service invoices, backend PR #115)", 
     expect(inv.draft).toBeUndefined();
     expect(inv.lines[0].description).toBeUndefined();
   });
+
+  it("decodes a client-invoice record (02/08): kind, client counterparty, patientID, gstIncluded, appointmentID", () => {
+    const inv = mapInvoice("inv5", {
+      doctorId: "", counterpartyId: "p-9", counterpartyType: "client", periodLabel: "2026-08-02",
+      kind: "client-invoice", draft: false, issuerRef: { kind: "clinic", id: "clinic-lumiere" },
+      patientId: "p-9", gstIncluded: true, appointmentId: "appt-3",
+      lines: [{ authorisationId: "cli-1", dateISO: "2026-08-02", patientName: "", feeCents: 30000, gstCents: 3000, description: "Anti-wrinkle", qty: 1, unitCents: 33000 }],
+      subtotalCents: 30000, gstCents: 3000, totalCents: 33000, authorisationIds: [], paid: false,
+      issuer: { businessName: "Lumière", abn: "82601443218", email: "c@x.au" },
+      billTo: { businessName: "Mia Park", abn: "", email: "mia@x.au" },
+    });
+    expect(inv.kind).toBe("client-invoice");
+    expect(inv.counterpartyType).toBe("client");
+    expect(inv.patientID).toBe("p-9");
+    expect(inv.gstIncluded).toBe(true);
+    expect(inv.appointmentID).toBe("appt-3");
+    expect(inv.issuerRef).toEqual({ kind: "clinic", id: "clinic-lumiere" });
+    expect(inv.billTo).toMatchObject({ businessName: "Mia Park" });
+  });
 });
 
 describe("mapClinic (clinic directory)", () => {

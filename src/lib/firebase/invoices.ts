@@ -53,6 +53,30 @@ export async function createServiceInvoice(args: CreateServiceInvoiceArgs): Prom
 
 // 16/07 feedback enhancement 2: delete an invoice to correct an error — the backend
 // transactionally removes the doc and returns its member authorisations to un-invoiced.
+// 02/08: matrix records (client invoices, service fees) are deletable by their issuer
+// silo too — ownership is enforced per-invoice inside the callable's transaction.
 export async function deleteInvoice(invoiceID: string): Promise<void> {
   await httpsCallable(functions(), "deleteInvoice")({ invoiceId: invoiceID });
+}
+
+export interface CreateClientInvoiceArgs {
+  patientID: string;
+  lines: { description: string; amountCents: number }[];
+  chargeGst: boolean;
+  gstIncluded: boolean;
+  appointmentID?: string;
+}
+
+// Manual client invoice as a stored record (02/08 feedback: issued client invoices must
+// be re-downloadable and deletable, not one-shot PDFs). The backend validates access via
+// the client's owning silo and freezes the issuer/bill-to snapshots server-side.
+export async function createClientInvoice(args: CreateClientInvoiceArgs): Promise<string> {
+  const res = await httpsCallable(functions(), "createClientInvoice")({
+    patientId: args.patientID,
+    lines: args.lines,
+    chargeGst: args.chargeGst,
+    gstIncluded: args.gstIncluded,
+    ...(args.appointmentID ? { appointmentId: args.appointmentID } : {}),
+  });
+  return (res.data as { invoiceId?: string }).invoiceId ?? "";
 }
