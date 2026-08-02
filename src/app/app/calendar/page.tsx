@@ -1415,6 +1415,7 @@ function ConsultCallDetails({ appt, me }: { appt: Appointment; me: Identity }) {
 
 function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Identity; onDone: () => void }) {
   const store = useDemoStore();
+  const { employeeOnly } = useDemoAuth();
   const promptNotify = useNotifyClient();
   const [time, setTime] = useState(timeValue(appt.startMinute));
   const [duration, setDuration] = useState(appt.endMinute - appt.startMinute);
@@ -1445,7 +1446,9 @@ function AppointmentActions({ appt, me, onDone }: { appt: Appointment; me: Ident
 
   return (
     <div className="mt-2 border-t border-line pt-2">
-      {patient && canManage && (
+      {/* Clinic-employee-only nurse (02/08): the composer inside self-guards to nothing, so
+          the toggle would be a dead control — hide it with the rest of her billing surfaces. */}
+      {patient && canManage && !employeeOnly && (
         <div className="mb-3">
           <button type="button" onClick={() => setCheckingOut((v) => !v)}
             className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-tint">

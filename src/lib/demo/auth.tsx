@@ -217,6 +217,8 @@ export function DemoAuthProvider({ children }: { children: ReactNode }) {
         setIdentity(null);
         setAvailableIdentities([]);
         setMustChangePassword(false);
+        setLiveEmployeeOnly(false);
+        setNoWorkspace(false);
         // Deliberately does NOT leave the sandbox. A clinician who was live signed-in and
         // then wandered into /demo in the same tab would otherwise click "Sign out" and have
         // the watcher restore their dormant Firebase session — ending up signed IN to their

@@ -111,6 +111,12 @@ describe("validateNewUser", () => {
         .toContain("roles (clinic-employee accounts are nurse-only)");
     });
 
+    it("rejects a personal supervising-doctor link — her requests ride the clinic's relationships", () => {
+      expect(validateNewUser({ ...employee, supervisingDoctorId: "u-voss" }))
+        .toContain("supervisingDoctorId (clinic-employee nurses use the clinic's doctor relationships)");
+      expect(validateNewUser({ ...employee, supervisingDoctorId: "  " })).toEqual([]);
+    });
+
     it("keeps the ABN requirement for ordinary nurses when the flag is absent/false", () => {
       expect(validateNewUser({ ...base, abn: "" })).toContain("abn");
       expect(validateNewUser({ ...employee, employeeOnly: false, abn: "", employingClinicId: undefined }))

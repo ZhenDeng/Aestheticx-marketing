@@ -60,6 +60,9 @@ export function validateNewUser(input: NewUserInput): string[] {
   if (employeeOnly) {
     if (roles.length !== 1 || roles[0] !== "nurse") missing.push("roles (clinic-employee accounts are nurse-only)");
     if (blank(input.employingClinicId)) missing.push("employingClinicId");
+    // Her requests ride the CLINIC's doctor relationships — a personal supervising-doctor
+    // link is the independent-practice mechanism and must not be smuggled in server-side.
+    if (!blank(input.supervisingDoctorId)) missing.push("supervisingDoctorId (clinic-employee nurses use the clinic's doctor relationships)");
   }
   if (blank(input.email)) missing.push("email");
   if (blank(input.name)) missing.push("name");
