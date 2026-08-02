@@ -330,6 +330,16 @@ export async function invoiceRowsForScopes(
   } catch (e) {
     if (!isPermissionDenied(e)) throw e;
   }
+  // Clinic-issued records (02/08: client invoices for the clinic's book) key on
+  // issuerRef.id == the CLINIC id. Every membership queries (the read rule is inClinic,
+  // not admin-only); degrades on denial while the rules clause deploys.
+  for (const cid of Object.keys(clinics)) {
+    try {
+      for (const row of await q("issuer", cid)) byId.set(row.id, row);
+    } catch (e) {
+      if (!isPermissionDenied(e)) throw e;
+    }
+  }
   for (const row of await q("nurseCounterparty", uid)) byId.set(row.id, row);
   for (const cid of adminClinicIdsOf(clinics)) {
     try {

@@ -95,11 +95,11 @@ describe("Invoice a client — selection", () => {
     expect(screen.getByText(/no clients you can invoice yet/i)).toHaveTextContent(/your book/);
   });
 
-  it("renders in live mode with the not-stored note instead of the old explainer", () => {
+  it("renders in live mode without the retired not-stored note (02/08: records persist)", () => {
     storeMode = { status: "ready", matrixEnabled: false };
     render(<BillingPage />);
     expect(screen.getByRole("heading", { name: "Invoice a client" })).toBeInTheDocument();
-    expect(screen.getByText(/aren't stored/i)).toBeInTheDocument();
+    expect(screen.queryByText(/aren't stored/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/isn't available in live mode/i)).not.toBeInTheDocument();
   });
 });

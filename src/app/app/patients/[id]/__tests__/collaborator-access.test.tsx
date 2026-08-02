@@ -48,6 +48,8 @@ vi.mock("@/lib/demo/store", () => ({
     now: 0,
     state: storeState,
     matrixEnabled: true,
+    invoicesFor: () => [],
+    deleteInvoice: vi.fn(),
     patientAccess: (p: Patient, id: Identity) => patientAccessLevel(storeState as never, id, p),
     walletEntries: () => [],
     walletBalance: () => 0,

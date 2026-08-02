@@ -6,6 +6,7 @@ import { render, screen, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Suspense, useSyncExternalStore } from "react";
 import * as backend from "@/lib/demo/backend";
+import { invoicesFor } from "@/lib/demo/invoicing";
 import { patientAccessLevel } from "@/lib/demo/isolation";
 import { buildSeedState, SEED_NOW } from "@/lib/demo/seed";
 import { fullName, type DemoState, type Identity, type Patient } from "@/lib/demo/types";
@@ -34,10 +35,14 @@ vi.mock("@/lib/demo/store", () => ({
       formsForPatient: () => [], appointmentsForPatient: () => [], searchPatients: () => [],
       recordAdminAccess: vi.fn(), deletePatient: vi.fn(), mergePatients: vi.fn(),
       saveGeneralNote: vi.fn(), retryAftercare: vi.fn(), withdrawRequest: vi.fn(),
+      invoicesFor: (id: Identity) => invoicesFor(state.invoices, id),
       createClientInvoice: (input: backend.CreateClientInvoiceInput, id: Identity) => {
         const invoice = backend.buildClientInvoice(state, input, id, SEED_NOW);
         applyState((s) => backend.recordClientInvoice(s, invoice, id, SEED_NOW));
         return invoice;
+      },
+      deleteInvoice: (invoiceID: string, id: Identity) => {
+        applyState((s) => backend.deleteInvoice(s, invoiceID, id, SEED_NOW));
       },
     };
   },
@@ -73,5 +78,20 @@ describe("patient file — Invoice client", () => {
     await userEvent.click(within(section).getByRole("button", { name: "Issue invoice" }));
     expect(demoState.invoices.some((i) => i.kind === "client-invoice")).toBe(true);
     expect(within(section).getByText(/INV-/)).toBeInTheDocument();
+  });
+
+  it("deletes an issued record via the confirm-to-delete action (02/08)", async () => {
+    const id = findPatientId("Claire Donovan");
+    await renderFile(id);
+    const section = screen.getByRole("heading", { name: /invoice client/i }).closest("section")!;
+    await userEvent.click(within(section).getByRole("button", { name: /invoice client/i }));
+    await userEvent.type(within(section).getByLabelText("Line 1 description"), "Dermal filler");
+    await userEvent.type(within(section).getByLabelText("Line 1 amount"), "500");
+    await userEvent.click(within(section).getByRole("button", { name: "Issue invoice" }));
+    expect(demoState.invoices.some((i) => i.kind === "client-invoice")).toBe(true);
+    // Two-step confirm: Delete, then Delete invoice.
+    await userEvent.click(within(section).getByRole("button", { name: "Delete" }));
+    await userEvent.click(within(section).getByRole("button", { name: "Delete invoice" }));
+    expect(demoState.invoices.some((i) => i.kind === "client-invoice")).toBe(false);
   });
 });

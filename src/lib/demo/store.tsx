@@ -497,12 +497,30 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         });
       },
       createClientInvoice: (input, id) => {
-        // Build once (eager-validate + stable id), persist that exact invoice in demo,
-        // and hand it back either way so the caller can render the PDF. Live never persists
-        // yet — the client-invoice backend callable is a follow-up.
+        // Build once (eager-validate + stable id) and hand the invoice back either way so
+        // the caller can render the PDF immediately. Demo persists that exact invoice;
+        // live persists via the createClientInvoice callable (02/08: issued client
+        // invoices are RECORDS — re-downloadable and deletable) and rehydrates, so the
+        // stored copy (server id + server-frozen snapshots) replaces the transient one.
         const now = writeNow();
         const invoice = backend.buildClientInvoice(state, input, id, now);
-        if (!live) setState((s) => backend.recordClientInvoice(s, invoice, id, now));
+        if (!live) {
+          setState((s) => backend.recordClientInvoice(s, invoice, id, now));
+          return invoice;
+        }
+        runLiveWrite(async () => {
+          try {
+            const m = await import("@/lib/firebase/invoices");
+            await m.createClientInvoice({
+              patientID: input.patientID,
+              lines: input.lines,
+              chargeGst: input.chargeGst,
+              gstIncluded: input.gstIncluded,
+              ...(input.appointmentID ? { appointmentID: input.appointmentID } : {}),
+            });
+            setRefreshTick((t) => t + 1);
+          } catch (e) { setLastSyncError(syncErrorMessage(e)); }
+        });
         return invoice;
       },
       pendingRequestsForDoctor: (did) => backend.pendingRequestsForDoctor(state, did),

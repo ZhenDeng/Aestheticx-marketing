@@ -6,7 +6,10 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
 import { counterpartyMonthDetail, ownerDisplayLabel, isoDay } from "@/lib/demo/backend";
-import { formatAUD, computeInvoice, resolveInvoiceKind, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
+import { canDeleteInvoice, formatAUD, computeInvoice, resolveInvoiceKind, scriptsFromBillable, authIDsForSelectedScripts, GST_RATE, DEFAULT_SCRIPT_PRICE_CENTS, type Invoice } from "@/lib/demo/invoicing";
+import { invoiceNumber } from "@/lib/demo/invoicePdf";
+import { monthlyStatement, statementCsv, statementCsvFilename, statementEmailBody, statementEmailSubject } from "@/lib/demo/invoiceStatement";
+import { mailtoHref } from "@/lib/demo/remoteSigning";
 import { fullName } from "@/lib/demo/types";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ServiceInvoiceComposer } from "@/components/app/ServiceInvoiceComposer";
@@ -149,6 +152,10 @@ export default function BillingPage() {
           received service fees — kind-tagged, per role (design-ui.md §4). */}
       <MatrixStreams />
 
+      {/* 02/08 feedback: month-end summary of everything issued — per-type list + totals,
+          exportable as CSV or handed to the mail app. */}
+      <MonthlyStatementSection />
+
       {isDoctor && <CustomTimeframeCard />}
       <ClinicStatsSection />
 
@@ -243,11 +250,8 @@ function InvoiceClientSection() {
           ? "Pick a client to invoice below, or open their account to check out — checkout issues the invoice."
           : "Pick a client to invoice below, or open their file."}
       </p>
-      {!store.matrixEnabled && (
-        <p className="mt-1 text-sm text-ink-soft">
-          Live invoices generate a PDF for your mail app — they aren&apos;t stored in the app yet.
-        </p>
-      )}
+      {/* 02/08: issued invoices are stored records in both modes now — the list below
+          (Client invoices) keeps them re-downloadable, so no not-stored caveat. */}
       {clients.length === 0 ? (
         <p className="mt-2 text-sm text-ink-soft">
           No clients you can invoice yet — clients appear here once they are in
@@ -305,6 +309,8 @@ function PaidChip({ paid }: { paid: boolean }) {
 }
 
 function MatrixInvoiceRow({ invoice, action }: { invoice: Invoice; action?: React.ReactNode }) {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
   // Client docs read best under the CLIENT's name (the bill-to snapshot); B2B service
   // fees under the other business's name from this viewer's side.
   const kind = resolveInvoiceKind(invoice);
@@ -325,6 +331,17 @@ function MatrixInvoiceRow({ invoice, action }: { invoice: Invoice; action?: Reac
       <span className="flex flex-none flex-wrap items-center justify-end gap-3">
         {action}
         <InvoiceActions invoice={invoice} />
+        {/* 02/08: issued records are correctable — the issuer silo deletes (confirm-to-
+            delete); wallet-linked documents never offer it (canDeleteInvoice). */}
+        {identity && canDeleteInvoice(invoice, identity) && (
+          <ConfirmAction
+            label="Delete"
+            prompt="Delete this invoice record?"
+            confirmLabel="Delete invoice"
+            onConfirm={() => store.deleteInvoice(invoice.id, identity)}
+            triggerClassName="text-xs"
+          />
+        )}
       </span>
     </li>
   );
@@ -332,15 +349,17 @@ function MatrixInvoiceRow({ invoice, action }: { invoice: Invoice; action?: Reac
 
 /** The role's matrix streams: issued client documents, own service fees (drafts first),
  *  and — for clinic-context viewers — received service fees. Sections hide when empty.
- *  Client documents remain matrix-gated (demo-only); service-fee streams render in both
- *  modes now that manual service invoicing is live (backend PR #115). */
+ *  Client documents render in both modes now (02/08: client invoices are stored records;
+ *  checkout-born sales/top-ups still only exist in demo), like the service-fee streams
+ *  (live since backend PR #115). Deletable records (client invoices, manual service
+ *  fees) carry a confirm-to-delete action for the issuer. */
 function MatrixStreams() {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
   const me = identity!;
   if (!store.matrixEnabled && !store.serviceInvoicingEnabled) return null;
   const all = store.invoicesFor(me);
-  const clientDocs = !store.matrixEnabled ? [] : all.filter((i) => {
+  const clientDocs = all.filter((i) => {
     const k = resolveInvoiceKind(i);
     return k === "client-sale" || k === "top-up" || k === "client-invoice";
   });
@@ -429,6 +448,102 @@ function MatrixStreams() {
         </section>
       )}
     </>
+  );
+}
+
+// ——— Monthly summary (02/08 feedback) ———
+// "Which invoices went out this month, and how much in total?" — every stored (undeleted)
+// invoice the active identity ISSUED in the picked month, grouped per type with per-type
+// and overall totals. Deleted records are gone from the store, so the sums are exactly
+// the archive. Download hands over a CSV; Email opens the practitioner's own mail app
+// with the list in the body (nothing is auto-sent — the aftercare/invoice doctrine).
+function MonthlyStatementSection() {
+  const { identity } = useDemoAuth();
+  const store = useDemoStore();
+  const me = identity!;
+  const [month, setMonth] = useState(() => monthKey(store.now));
+  const statement = monthlyStatement(store.state.invoices, me, month);
+
+  function downloadCsv() {
+    const blob = new Blob([statementCsv(statement)], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = statementCsvFilename(month);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // A real anchor, not a location mutation: the AftercareForm mailto idiom — the mail
+  // client sends it, not us, and the practitioner picks the recipient there.
+  const emailHref = mailtoHref("", statementEmailSubject(month), statementEmailBody(statement));
+  const mayTruncate = emailHref.length > 2000;
+
+  return (
+    <section className="mt-10" data-testid="monthly-summary">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="font-display text-xl text-ink">Monthly summary</h2>
+          <p className="mt-1 text-sm text-ink-soft">Every invoice you issued in the month — per type, with totals.</p>
+        </div>
+        <label className="block">
+          <span className="micro">Month</span>
+          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)}
+            className="mt-1 block rounded-field border border-line bg-card px-3 py-1.5 text-sm text-ink" />
+        </label>
+      </div>
+      {statement.count === 0 ? (
+        <p className="mt-3 text-sm text-ink-soft">No invoices issued in {monthLabel(month)}.</p>
+      ) : (
+        <>
+          {statement.groups.map((g) => (
+            <div key={g.kind} className="mt-4">
+              <div className="flex items-baseline justify-between">
+                <h3 className="text-sm font-medium text-ink">{g.label}</h3>
+                <span className="text-sm text-ink">{g.invoices.length} · <span className="font-medium">{formatAUD(g.totalCents)}</span></span>
+              </div>
+              <ul className="mt-1.5 flex flex-col gap-1.5">
+                {g.invoices.map((inv) => (
+                  <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-2.5">
+                    <span className="min-w-0 text-sm text-ink">
+                      {invoiceNumber(inv.id)} · {inv.periodLabel} · {inv.billTo?.businessName || "—"}
+                      <span className="ml-2 font-medium">{formatAUD(inv.totalCents)}</span>
+                      <span className="ml-2 inline-flex"><PaidChip paid={inv.paid} /></span>
+                    </span>
+                    <span className="flex flex-none items-center gap-3">
+                      <InvoiceActions invoice={inv} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
+            <span className="text-sm text-ink">
+              Total — {statement.count} invoice{statement.count === 1 ? "" : "s"}
+              <span className="ml-2 font-display text-lg">{formatAUD(statement.totalCents)}</span>
+            </span>
+            <span className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={downloadCsv}
+                className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                Download CSV
+              </button>
+              <a href={emailHref}
+                className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
+                Email summary
+              </a>
+            </span>
+          </div>
+          {mayTruncate && (
+            <p className="mt-2 text-xs text-ink-soft">
+              Long summary — some mail apps truncate it. The CSV download always carries the full list.
+            </p>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

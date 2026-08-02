@@ -25,9 +25,10 @@ const CELL = "py-1.5 px-2";
 const NUM_CELL = "border-l border-line py-1.5 px-2 text-right";
 
 // Manual client invoice (spec: manual client invoicing, 2026-07-24): a practitioner/clinic
-// hand-types each line and bills the CLIENT. Two GST toggles pick the convention. Demo
-// persists + returns the invoice; live returns a transient one — either way the PDF actions
-// hand it to the practitioner's mail app / downloads. Renders nothing without access.
+// hand-types each line and bills the CLIENT. Two GST toggles pick the convention. Issued
+// invoices are stored records in BOTH modes (02/08 feedback — live persists via the
+// createClientInvoice callable); the PDF actions download or hand off to the mail app,
+// and the record stays re-downloadable from the lists. Renders nothing without access.
 export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
   patient: Patient; appointmentID?: string; onIssued?: (invoice: Invoice) => void;
 }) {
@@ -154,11 +155,9 @@ export function ClientInvoiceComposer({ patient, appointmentID, onIssued }: {
         {issued && (
           <>
             <span className="text-sm" style={{ color: "var(--color-umber)" }}>
-              {/* Live builds the invoice transiently for the PDF hand-off — nothing is stored,
-                  so the confirmation must not read like a filed record (26/07 review). */}
-              {store.status === "demo"
-                ? <>Invoice issued to {fullName(patient)} — {formatAUD(issued.totalCents)}.</>
-                : <>Invoice created for {fullName(patient)} — {formatAUD(issued.totalCents)}. Not saved in the app yet — download or email it now.</>}
+              {/* 02/08: both modes persist the record now — it stays re-downloadable
+                  from the invoice lists, so the confirmation reads like a filed record. */}
+              Invoice issued to {fullName(patient)} — {formatAUD(issued.totalCents)}. Saved to your invoice records.
             </span>
             <InvoiceActions invoice={issued} />
           </>

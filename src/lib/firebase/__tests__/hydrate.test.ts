@@ -281,18 +281,36 @@ describe("invoiceRowsForScopes (admin-gated clinic counterparty)", () => {
 
   const asIssuer = { id: "inv-svc", data: { doctorId: "", issuerRef: { kind: "nurse", id: "me" } } };
 
-  it("queries the clinic counterparty only for admin memberships", async () => {
+  it("queries the clinic counterparty only for admin memberships; the clinic ISSUER scope for every membership (02/08)", async () => {
     const calls: string[] = [];
     const q = async (scope: string, id: string) => {
       calls.push(`${scope}:${id}`);
       if (scope === "doctorId") return [asDoctor];
-      if (scope === "issuer") return [asIssuer];
+      if (scope === "issuer") return id === "me" ? [asIssuer] : [];
       if (scope === "nurseCounterparty") return [asNurse];
       return [asClinic];
     };
     const rows = await invoiceRowsForScopes("me", { "c-admin": "admin", "c-emp": "employee" }, q);
     expect(rows.map((r) => r.id).sort()).toEqual(["inv-clinic", "inv-doc", "inv-nurse", "inv-svc"]);
-    expect(calls).toEqual(["doctorId:me", "issuer:me", "nurseCounterparty:me", "clinicCounterparty:c-admin"]);
+    // Clinic-issued records (client invoices) hydrate through issuer:<clinicId> for EVERY
+    // membership — the read rule is inClinic, not admin-only.
+    expect(calls).toEqual(["doctorId:me", "issuer:me", "issuer:c-admin", "issuer:c-emp", "nurseCounterparty:me", "clinicCounterparty:c-admin"]);
+  });
+
+  it("a clinic-issued client invoice reaches the rows via the clinic issuer scope", async () => {
+    const asClinicIssued = { id: "inv-cli", data: { doctorId: "", kind: "client-invoice", issuerRef: { kind: "clinic", id: "c-emp" } } };
+    const q = async (scope: string, id: string) =>
+      scope === "issuer" && id === "c-emp" ? [asClinicIssued] : [];
+    const rows = await invoiceRowsForScopes("me", { "c-emp": "employee" }, q);
+    expect(rows.map((r) => r.id)).toEqual(["inv-cli"]);
+  });
+
+  it("a denied clinic-issuer scope degrades to empty while the rules clause deploys", async () => {
+    const q = async (scope: string, id: string) => {
+      if (scope === "issuer" && id === "c-emp") throw denied;
+      return scope === "doctorId" ? [asDoctor] : [];
+    };
+    expect((await invoiceRowsForScopes("me", { "c-emp": "employee" }, q)).map((r) => r.id)).toEqual(["inv-doc"]);
   });
 
   it("a denied issuer scope degrades to empty (rule ships with backend PR #115); transients rethrow", async () => {

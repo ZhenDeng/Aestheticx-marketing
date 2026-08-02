@@ -553,14 +553,19 @@ export function mapInvoice(id: string, data: Doc): Invoice {
       }
     : undefined;
   return {
-    ...(data.kind === "service-fee" || data.kind === "client-sale" || data.kind === "top-up"
+    ...(data.kind === "service-fee" || data.kind === "client-sale" || data.kind === "top-up" || data.kind === "client-invoice"
       ? { kind: data.kind } : {}),
     ...(issuerRef ? { issuerRef } : {}),
     ...(typeof data.draft === "boolean" ? { draft: data.draft } : {}),
+    // Client-invoice records (02/08): the billed client, GST convention, and the
+    // check-out link — absent on every other kind.
+    ...(typeof data.patientId === "string" && data.patientId ? { patientID: data.patientId } : {}),
+    ...(typeof data.gstIncluded === "boolean" ? { gstIncluded: data.gstIncluded } : {}),
+    ...(typeof data.appointmentId === "string" && data.appointmentId ? { appointmentID: data.appointmentId } : {}),
     id,
     doctorID: str(data.doctorId),
     counterpartyID: str(data.counterpartyId),
-    counterpartyType: data.counterpartyType === "clinic" ? "clinic" : "nurse",
+    counterpartyType: data.counterpartyType === "clinic" ? "clinic" : data.counterpartyType === "client" ? "client" : "nurse",
     periodLabel: str(data.periodLabel),
     lines,
     subtotalCents: intValue(data.subtotalCents),

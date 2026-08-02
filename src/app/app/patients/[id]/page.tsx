@@ -10,7 +10,8 @@ import { patientAccessLevel } from "@/lib/demo/isolation";
 import { PatientAccountSection } from "@/components/app/PatientAccount";
 import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { InvoiceActions } from "@/components/app/InvoiceActions";
-import { resolveInvoiceKind, formatAUD } from "@/lib/demo/invoicing";
+import { canDeleteInvoice, resolveInvoiceKind, formatAUD } from "@/lib/demo/invoicing";
+import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { invoiceNumber } from "@/lib/demo/invoicePdf";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
@@ -42,8 +43,10 @@ function apptTime(minute: number): string {
 
 // Manual client invoicing (spec: 2026-07-24): compose a tax invoice for this client — from
 // the patient file, in both demo and live. The composer self-guards on commercial access;
-// the heading is gated on the same check so it never stands over an empty box. Demo persists
-// issued invoices and lists them here (live hands off the PDF only).
+// the heading is gated on the same check so it never stands over an empty box. Issued
+// invoices are stored RECORDS in both modes now (02/08 feedback; live persists via the
+// createClientInvoice callable) — listed here for re-download, and deletable by the
+// issuing silo to correct an error.
 function ClientInvoiceSection({ patient, className = "mt-8" }: { patient: Patient; className?: string }) {
   const { identity, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
@@ -52,9 +55,10 @@ function ClientInvoiceSection({ patient, className = "mt-8" }: { patient: Patien
   // Clinic-employee-only nurse (02/08): invoicing belongs to the clinic admin — the composer
   // self-guards too, but the heading must not stand over an empty box.
   if (!identity || employeeOnly || store.patientAccess(patient, identity) === "none") return null;
-  const issued = store.status === "demo"
-    ? store.state.invoices.filter((i) => resolveInvoiceKind(i) === "client-invoice" && i.patientID === patient.id)
-    : [];
+  // Through invoicesFor, not state.invoices raw: the silo doctrine (a practitioner's own
+  // client documents stay out of their clinic identity) applies on the file too.
+  const issued = store.invoicesFor(identity)
+    .filter((i) => resolveInvoiceKind(i) === "client-invoice" && i.patientID === patient.id);
   return (
     <section className={className}>
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
@@ -71,9 +75,20 @@ function ClientInvoiceSection({ patient, className = "mt-8" }: { patient: Patien
           {issued.length > 0 && (
             <ul className="mt-3 flex flex-col gap-1.5">
               {issued.map((inv) => (
-                <li key={inv.id} className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
+                <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
                   <span className="text-sm text-ink">{invoiceNumber(inv.id)} · {inv.periodLabel} · <span className="font-medium">{formatAUD(inv.totalCents)}</span></span>
-                  <InvoiceActions invoice={inv} />
+                  <span className="flex flex-none flex-wrap items-center justify-end gap-3">
+                    <InvoiceActions invoice={inv} />
+                    {canDeleteInvoice(inv, identity) && (
+                      <ConfirmAction
+                        label="Delete"
+                        prompt="Delete this invoice record?"
+                        confirmLabel="Delete invoice"
+                        onConfirm={() => store.deleteInvoice(inv.id, identity)}
+                        triggerClassName="text-xs"
+                      />
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
