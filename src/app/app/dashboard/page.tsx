@@ -41,8 +41,8 @@ function UpcomingAuthCalls({ asDoctor }: { asDoctor: Identity }) {
       <h2 className="font-display text-lg text-ink">Upcoming authorisation calls</h2>
       {calls.length === 0 ? (
         <p className="mt-2 text-sm text-ink-soft">
-          No calls booked. Nurses book against your published availability — manage it under{" "}
-          <Link href="/app/availability" className="underline hover:text-ink">Availability</Link>.
+          No calls booked. Nurses book against your published availability — manage it at the bottom of the{" "}
+          <Link href="/app/calendar" className="underline hover:text-ink">Calendar</Link> page.
         </p>
       ) : (
         <ul className="mt-3 flex flex-col gap-2">
@@ -198,9 +198,10 @@ export default function DashboardPage() {
           </Link>
         )}
         {/* Round 6 booking surface, nurse side: an obvious entry to book an authorisation
-            teleconsult with a cooperating doctor (the existing Availability flow). */}
+            teleconsult with a cooperating doctor (the Availability section, now at the
+            bottom of the Calendar page). */}
         {identity.role === "nurse" && (
-          <Link href="/app/availability" className="rounded-card border p-6 shadow-card transition-colors hover:border-tint"
+          <Link href="/app/calendar" className="rounded-card border p-6 shadow-card transition-colors hover:border-tint"
             style={{ borderColor: "var(--color-tint)", background: "var(--color-tint-soft)" }}>
             <p className="font-display text-2xl text-ink">Book an authorisation call</p>
             <p className="mt-1 text-sm text-ink-soft">Pick a doctor’s open slot, or request now</p>
