@@ -393,12 +393,17 @@ export interface UserProfile {
   selectedPremiseId?: string;
   avatarFileId?: string;  // live: Storage object under users/{uid}/** (storage.rules avatar path)
   avatarDataUrl?: string; // demo only: inline preview bytes (never written to Firestore)
+  /** Doctors: electronic signature drawn on the dashboard, printed in the signature block
+   *  of approval PDFs. A white-backed JPEG data URL — inline on the users doc in live too
+   *  (consent signatures set the inline-data-URL precedent), so the backend renderer can
+   *  read it at approval without a Storage round-trip. Empty/absent = not captured. */
+  signatureDataUrl?: string;
 }
 
 // The client-writable subset — mirrors the users/{uid} update rule, which rejects
 // any write touching roles/clinics/abn/mustChangePassword.
 export type UserProfileEdit = Partial<Pick<UserProfile,
-  "ahpra" | "phone" | "address" | "principalPlace" | "premises" | "defaultPremiseId" | "selectedPremiseId" | "avatarFileId" | "avatarDataUrl">>;
+  "ahpra" | "phone" | "address" | "principalPlace" | "premises" | "defaultPremiseId" | "selectedPremiseId" | "avatarFileId" | "avatarDataUrl" | "signatureDataUrl">>;
 
 // One row of the super-admin account inventory. Live: a users/{uid} doc (rules allow
 // superAdmin to list the collection); demo: derived from DEMO_ACCOUNTS. mustChangePassword

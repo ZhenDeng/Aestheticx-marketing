@@ -9,11 +9,15 @@ import {
   approvalNoteId,
   approvalPdfPath,
   approvalRows,
+  base64ToBytes,
   buildApprovalDocumentModel,
   bytesToBase64,
   dosageWithUnit,
   formatDay,
+  jpegDimensions,
   renderApprovalPdf,
+  signatureBox,
+  signatureImage,
   type ApprovalModelInput,
 } from "@/lib/demo/approvalPdf";
 import { approveRequest, notesForPatient, submitRequest, updateProfile } from "@/lib/demo/backend";
@@ -161,6 +165,57 @@ describe("renderApprovalPdf", () => {
   });
 });
 
+// A minimal JPEG frame (SOI + SOF0 header + EOI): enough for the dimension parser and
+// for DCTDecode embedding, which passes bytes through verbatim. 600×200 like the pad.
+const FAKE_JPEG = Uint8Array.from([
+  0xff, 0xd8,                   // SOI
+  0xff, 0xc0, 0x00, 0x11, 0x08, // SOF0, length 17, precision 8
+  0x00, 0xc8,                   // height 200
+  0x02, 0x58,                   // width 600
+  0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01, // 3 components
+  0xff, 0xd9,                   // EOI
+]);
+const FAKE_JPEG_DATA_URL = `data:image/jpeg;base64,${bytesToBase64(FAKE_JPEG)}`;
+
+describe("electronic signature embedding", () => {
+  it("base64ToBytes inverts bytesToBase64 and rejects non-base64 input", () => {
+    expect(Array.from(base64ToBytes(bytesToBase64(FAKE_JPEG))!)).toEqual(Array.from(FAKE_JPEG));
+    expect(Array.from(base64ToBytes("TWE=")!)).toEqual(Array.from(new TextEncoder().encode("Ma")));
+    expect(base64ToBytes("not*base64")).toBeNull();
+  });
+  it("reads JPEG dimensions from the SOF marker and rejects non-JPEG bytes", () => {
+    expect(jpegDimensions(FAKE_JPEG)).toEqual({ width: 600, height: 200 });
+    expect(jpegDimensions(new TextEncoder().encode("%PNG not a jpeg"))).toBeNull();
+    expect(jpegDimensions(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]))).toBeNull(); // no SOF
+  });
+  it("signatureImage accepts only a JPEG data URL, failing soft on anything else", () => {
+    expect(signatureImage(FAKE_JPEG_DATA_URL)).toEqual({ bytes: FAKE_JPEG, width: 600, height: 200 });
+    expect(signatureImage(null)).toBeNull();
+    expect(signatureImage("")).toBeNull();
+    expect(signatureImage("data:image/png;base64,AAAA")).toBeNull();
+    expect(signatureImage("data:image/jpeg;base64,%%%")).toBeNull();
+  });
+  it("scales the signature into the display box, aspect preserved", () => {
+    expect(signatureBox({ bytes: FAKE_JPEG, width: 600, height: 200 })).toEqual({ w: 120, h: 40 });
+  });
+  it("embeds the signature as a DCTDecode XObject drawn in the signature block", () => {
+    const withSig = renderApprovalPdf(buildApprovalDocumentModel(modelInput({
+      prescriber: { ...modelInput().prescriber, signatureDataUrl: FAKE_JPEG_DATA_URL },
+    })));
+    const file = new TextDecoder("latin1").decode(withSig);
+    expect(file).toContain("/Filter /DCTDecode");
+    expect(file).toContain("/Im1 Do");
+    expect(file).toContain("/XObject << /Im1");
+    // The block still prints the name under the drawn signature.
+    expect(file).toContain("Dr Elena Voss");
+  });
+  it("renders exactly as before when no signature is on the profile", () => {
+    const file = new TextDecoder("latin1").decode(renderApprovalPdf(buildApprovalDocumentModel(modelInput())));
+    expect(file).not.toContain("/Im1");
+    expect(file).not.toContain("DCTDecode");
+  });
+});
+
 describe("approval note factory (wire parity with the Cloud Function's approvalNoteDoc)", () => {
   it("builds the deterministic treatment note with the PDF attached", () => {
     const note = approvalNote({
@@ -232,6 +287,20 @@ describe("demo approveRequest writes the approval note", () => {
       Uint8Array.from(atob(note!.attachments![0].dataUrl!.split(",")[1]), (c) => c.charCodeAt(0)),
     );
     expect(pdfText).toContain("2 Notts Ave, Bondi Beach NSW 2026");
+  });
+
+  it("prints the doctor's saved dashboard signature in the approval PDF", () => {
+    let state = buildSeedState();
+    state = updateProfile(state, voss.user.id, { signatureDataUrl: FAKE_JPEG_DATA_URL });
+    const pid = ownPatientId(state, sarahIndependent);
+    const submitted = submitRequest(state, { patientID: pid, doctorID: voss.user.id, items: [botox], identity: sarahIndependent }, SEED_NOW);
+    const { state: approved } = approveRequest(submitted.state, submitted.request.id, voss, APPROVED);
+    const note = notesForPatient(approved, pid).find((n) => n.id === approvalNoteId(submitted.request.id));
+    const pdfText = new TextDecoder("latin1").decode(
+      Uint8Array.from(atob(note!.attachments![0].dataUrl!.split(",")[1]), (c) => c.charCodeAt(0)),
+    );
+    expect(pdfText).toContain("/Filter /DCTDecode");
+    expect(pdfText).toContain("/Im1 Do");
   });
 
   it("skips the note in live mode (the Cloud Function owns the artifact)", () => {

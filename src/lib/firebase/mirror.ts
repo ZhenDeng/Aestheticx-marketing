@@ -255,6 +255,10 @@ export async function mirrorUpdateProfile(uid: string, edits: import("@/lib/demo
   if (edits.defaultPremiseId !== undefined) values.defaultPremiseId = edits.defaultPremiseId;
   if (edits.selectedPremiseId !== undefined) values.selectedPremiseId = edits.selectedPremiseId;
   if (edits.avatarFileId !== undefined) values.avatarFileId = edits.avatarFileId;
+  // The doctor's electronic signature persists INLINE on the users doc (consent signatures
+  // set the inline-data-URL precedent) so the backend approval renderer can read it without
+  // a Storage round-trip. A white-backed JPEG stays well under the 1MB document limit.
+  if (edits.signatureDataUrl !== undefined) values.signatureDataUrl = edits.signatureDataUrl;
   if (Object.keys(values).length === 0) return; // demo-only edit (avatarDataUrl) — nothing to persist
   await setDoc(doc(firestore(), "users", uid), values, { merge: true });
 }

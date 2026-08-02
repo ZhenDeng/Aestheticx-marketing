@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
+import { DoctorSignatureSection } from "@/components/app/DoctorSignature";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { activePremise, appointmentTitle, bookerLabel, patientPermissions, premisesAfterSelect, upcomingAuthCalls } from "@/lib/demo/backend";
 import { approvedThisMonth } from "@/lib/demo/billing";
@@ -203,6 +204,10 @@ export default function DashboardPage() {
       </div>
 
       {asDoctor && <UpcomingAuthCalls asDoctor={asDoctor} />}
+
+      {/* Prescribing is always-on (same rule as the pending tile): the signature belongs to
+          the held doctor identity, whatever workspace the account is acting in. */}
+      {asDoctor && <DoctorSignatureSection asDoctor={asDoctor} />}
 
       <PremiseSwitcher me={identity} />
     </div>
