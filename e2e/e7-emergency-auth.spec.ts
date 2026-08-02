@@ -17,7 +17,9 @@ test("E7 — an approved filler shows a standing emergency authorisation on the 
   await page.locator('a[href^="/app/patients/"]').first().click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
 
-  // Her file carries the standing emergency authorisation.
+  // Her file carries the standing emergency authorisation — inside the Active
+  // authorisations card, which is a collapsed accordion by default.
+  await page.getByRole("button", { name: /active authorisations/i }).click();
   await expect(page.getByText("Emergency authorisations")).toBeVisible();
   await expect(page.getByText(/Hyaluronidase/i)).toBeVisible();
 });

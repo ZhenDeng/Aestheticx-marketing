@@ -44,29 +44,39 @@ function apptTime(minute: number): string {
 // the patient file, in both demo and live. The composer self-guards on commercial access;
 // the heading is gated on the same check so it never stands over an empty box. Demo persists
 // issued invoices and lists them here (live hands off the PDF only).
-function ClientInvoiceSection({ patient }: { patient: Patient }) {
+function ClientInvoiceSection({ patient, className = "mt-8" }: { patient: Patient; className?: string }) {
   const { identity } = useDemoAuth();
   const store = useDemoStore();
+  // Collapsed by default (01/08 feedback) — same accordion pattern as Notes/Consent forms.
+  const [open, setOpen] = useState(false);
   if (!identity || store.patientAccess(patient, identity) === "none") return null;
   const issued = store.status === "demo"
     ? store.state.invoices.filter((i) => resolveInvoiceKind(i) === "client-invoice" && i.patientID === patient.id)
     : [];
   return (
-    <section className="mt-8">
-      <h2 className="font-display text-xl text-ink">Invoice client</h2>
-      <p className="mt-1 text-sm text-ink-soft">Type each line and price, choose GST, then generate a tax invoice.</p>
-      <div className="mt-3">
-        <ClientInvoiceComposer patient={patient} />
-      </div>
-      {issued.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-1.5">
-          {issued.map((inv) => (
-            <li key={inv.id} className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
-              <span className="text-sm text-ink">{invoiceNumber(inv.id)} · {inv.periodLabel} · <span className="font-medium">{formatAUD(inv.totalCents)}</span></span>
-              <InvoiceActions invoice={inv} />
-            </li>
-          ))}
-        </ul>
+    <section className={className}>
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
+              className="flex w-full items-center justify-between gap-4 text-left">
+        <h2 className="font-display text-xl text-ink">Invoice client ({issued.length})</h2>
+        <span className="micro text-ink-soft">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open && (
+        <>
+          <p className="mt-1 text-sm text-ink-soft">Type each line and price, choose GST, then generate a tax invoice.</p>
+          <div className="mt-3">
+            <ClientInvoiceComposer patient={patient} />
+          </div>
+          {issued.length > 0 && (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {issued.map((inv) => (
+                <li key={inv.id} className="flex items-center justify-between gap-3 rounded-inner border border-line bg-card px-4 py-3">
+                  <span className="text-sm text-ink">{invoiceNumber(inv.id)} · {inv.periodLabel} · <span className="font-medium">{formatAUD(inv.totalCents)}</span></span>
+                  <InvoiceActions invoice={inv} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );
@@ -90,6 +100,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   // pattern as Appointment history; counts stay visible in the collapsed header.
   const [showNotes, setShowNotes] = useState(false);
   const [showConsentForms, setShowConsentForms] = useState(false);
+  const [showAuths, setShowAuths] = useState(false);
   // iOS AuthorisationCard's Direction button: which authorisation the Clause 68C direction sheet is open for.
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   // Platform-admin patient access is audit-logged (constitution §16/§21). One record per file
@@ -362,13 +373,19 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         {/* Billing matrix: wallet balance + top-up + checkout, gated inside the component
             by the isolation guard (renders nothing without commercial access). */}
         <PatientAccountSection patient={patient} />
-        {/* Manual client invoicing — works in demo and live (spec: 2026-07-24). */}
-        <ClientInvoiceSection patient={patient} />
       </div>
 
-      <aside>
+      {/* The aside spans both rows so Invoice client (the third grid child) lands under the
+          left column on desktop, while the single mobile column keeps DOM order and puts it
+          at the very bottom of the page (01/08 feedback). */}
+      <aside className="lg:row-span-2">
         <div className="rounded-card border border-line bg-card p-5 shadow-card" style={{ borderColor: "var(--color-tint)" }}>
-          <h2 className="font-display text-lg text-ink">Active authorisations</h2>
+          <button onClick={() => setShowAuths((v) => !v)} aria-expanded={showAuths} className="flex w-full items-center justify-between gap-2 text-left">
+            <h2 className="font-display text-lg text-ink">Active authorisations ({active.length})</h2>
+            <span className="micro text-ink-soft">{showAuths ? "Hide" : "Show"}</span>
+          </button>
+          {showAuths && (
+          <>
           <ul className="mt-3 flex flex-col gap-3">
             {active.map((a) => (
               <li key={a.id}>
@@ -466,6 +483,8 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
               </ul>
             </div>
           )}
+          </>
+          )}
         </div>
 
         <div className="mt-4 rounded-card border border-line bg-card p-5 shadow-card">
@@ -534,6 +553,11 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         )}
         <p className="mt-3 text-xs text-ink-faint">Formal name on documents: {fullName(patient)}</p>
       </aside>
+
+      {/* Manual client invoicing — works in demo and live (spec: 2026-07-24). Grid-placed into
+          the left column on desktop; last in the mobile flow. The grid gap supplies the top
+          spacing, so the component's default mt-8 is replaced by the placement classes. */}
+      <ClientInvoiceSection patient={patient} className="lg:col-start-1 lg:row-start-2" />
 
       {directionFor && (() => {
         const authorisation = active.find((a) => a.id === directionFor);
