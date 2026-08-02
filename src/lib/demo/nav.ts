@@ -16,8 +16,9 @@ const CLINICAL_NAV: NavItem[] = [
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/patients", label: "Patients" },
   { href: "/app/authorisations", label: "Authorisations" },
+  // 02/08: Availability is no longer its own tab — the whole section lives at the bottom of
+  // the Calendar page, and /app/availability redirects there.
   { href: "/app/calendar", label: "Calendar" },
-  { href: "/app/availability", label: "Availability" },
   { href: "/app/billing", label: "Invoice" },
   { href: "/app/templates", label: "Templates" },
   { href: "/app/bookings", label: "Bookings" },

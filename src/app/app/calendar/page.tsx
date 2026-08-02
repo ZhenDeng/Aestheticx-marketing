@@ -6,6 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { isoDay, isLeadAppointment, leadName, appointmentChipTitle, appointmentChipNote, appointmentContact, authCallDetails, draftFromLead, canCreatePatient, canRescheduleAppointment, canManageAppointment, appointmentOwnerScope, BackendError } from "@/lib/demo/backend";
 import { PendingBookings } from "@/components/app/PendingBookings";
+import { AvailabilitySection } from "@/components/app/AvailabilitySection";
 import { NotifyClientProvider, useNotifyClient } from "@/components/app/NotifyClient";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
@@ -182,6 +183,11 @@ function CalendarInner({ identity, view, setView, showNew, setShowNew }: {
           showNew={showNew} setShowNew={setShowNew} />
       )}
       {view === "month" && <MonthView ownerID={ownerID} selectedISO={selectedISO} todayISO={todayISO} me={me} openDay={openDay} />}
+
+      {/* The whole former Availability page lives at the bottom of the calendar now (owner
+          feedback 02/08) — the day/week grids scroll internally, so this sits past the fold
+          and page-scrolls like the day view's reminder settings. */}
+      <AvailabilitySection me={me} />
     </div>
     </NotifyClientProvider>
   );
@@ -429,7 +435,7 @@ function BusyBlocks({ ownerID, dateISO }: { ownerID: string; dateISO: string }) 
 }
 
 // Availability treatment blocks as muted, non-interactive bands (2026-07-24: blocks added
-// under Availability → Treatment now show on the calendar). Solid muted fill distinguishes
+// under Availability → Treatment, below, now show on the calendar). Solid muted fill distinguishes
 // them from the external-calendar "Busy" hatch; pointer-events-none so empty-slot taps pass through.
 function BlockedBands({ ownerID, dateISO }: { ownerID: string; dateISO: string }) {
   const store = useDemoStore();
