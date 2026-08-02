@@ -7,7 +7,7 @@ import { useDemoStore } from "@/lib/demo/store";
 import { missingFields } from "@/lib/demo/backend";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import { useAddressBias } from "@/components/app/useAddressBias";
-import type { Patient, PatientDraft } from "@/lib/demo/types";
+import { emergencyContactFromDraft, type Patient, type PatientDraft } from "@/lib/demo/types";
 
 function dobToInput(d: PatientDraft["dateOfBirth"]): string {
   if (!d) return "";
@@ -57,6 +57,7 @@ export function PatientForm({ mode, initial, existing, create, onCancel, compact
           phone: draft.phone.trim(), email: draft.email.trim(), allergies: draft.allergies.trim(),
           currentMedications: draft.currentMedications.trim(),
           alert: draft.alert.trim() || undefined, preferredName: draft.preferredName.trim() || undefined,
+          emergencyContact: emergencyContactFromDraft(draft),
         };
         store.updatePatient(updated, identity!);
         router.push(`/app/patients/${existing.id}`);
@@ -98,6 +99,14 @@ export function PatientForm({ mode, initial, existing, create, onCancel, compact
           <input className={FIELD} value={draft.currentMedications} onChange={(e) => set("currentMedications", e.target.value)} /></label>
         <label className="block sm:col-span-2"><span className="micro">Alert (optional)</span>
           <input className={FIELD} value={draft.alert} onChange={(e) => set("alert", e.target.value)} /></label>
+        {/* Emergency contact (owner feedback 02/08) — a fully optional group; the file shows
+            "Nil" when left blank. */}
+        <label className="block"><span className="micro">Emergency contact name (optional)</span>
+          <input className={FIELD} value={draft.emergencyContactName} onChange={(e) => set("emergencyContactName", e.target.value)} /></label>
+        <label className="block"><span className="micro">Emergency contact phone (optional)</span>
+          <input className={FIELD} value={draft.emergencyContactPhone} onChange={(e) => set("emergencyContactPhone", e.target.value)} /></label>
+        <label className="block sm:col-span-2"><span className="micro">Emergency contact relationship (optional)</span>
+          <input className={FIELD} value={draft.emergencyContactRelationship} onChange={(e) => set("emergencyContactRelationship", e.target.value)} /></label>
       </div>
       {error && <p className="mt-4 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
       <div className="mt-6 flex gap-3">

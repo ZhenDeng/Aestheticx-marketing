@@ -128,6 +128,14 @@ describe("encodePatientEdits", () => {
     // Unset avatar stays a null field, matching iOS's always-present key.
     expect(encodePatientEdits(patient).avatarFileId).toBeNull();
   });
+  it("writes emergencyContact as a map, null when the patient has none", () => {
+    const doc = encodePatientEdits({
+      ...patient,
+      emergencyContact: { name: "Tomas Boyd", phone: "0401 887 662", relationship: "Husband" },
+    });
+    expect(doc.emergencyContact).toEqual({ name: "Tomas Boyd", phone: "0401 887 662", relationship: "Husband" });
+    expect(encodePatientEdits(patient).emergencyContact).toBeNull();
+  });
 });
 
 describe("parseDob / formatDob", () => {
@@ -164,6 +172,15 @@ describe("mapPatient", () => {
       .toBe("patients/p3/avatar/a.jpg");
     expect(mapPatient("p4", { ownerId: "u-sarah" }).avatarFileId).toBeUndefined();
     expect(mapPatient("p5", { ownerId: "u-sarah", avatarFileId: null }).avatarFileId).toBeUndefined();
+  });
+  it("maps the optional emergencyContact map; absent/null/all-blank -> undefined", () => {
+    expect(mapPatient("p6", {
+      ownerId: "u-sarah",
+      emergencyContact: { name: "Tomas Boyd", phone: "0401 887 662", relationship: "Husband" },
+    }).emergencyContact).toEqual({ name: "Tomas Boyd", phone: "0401 887 662", relationship: "Husband" });
+    expect(mapPatient("p7", { ownerId: "u-sarah" }).emergencyContact).toBeUndefined();
+    expect(mapPatient("p8", { ownerId: "u-sarah", emergencyContact: null }).emergencyContact).toBeUndefined();
+    expect(mapPatient("p9", { ownerId: "u-sarah", emergencyContact: { name: "", phone: "", relationship: "" } }).emergencyContact).toBeUndefined();
   });
 });
 

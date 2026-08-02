@@ -100,6 +100,15 @@ export interface MedicationItem {
   route?: string;
 }
 
+// Optional emergency contact on the patient file (owner feedback 02/08). All three fields
+// travel together as one map on the wire (`emergencyContact`, iOS parity); a file without
+// one displays "Nil".
+export interface EmergencyContact {
+  name: string;
+  phone: string;
+  relationship: string;
+}
+
 export interface Patient {
   id: string;
   givenName: string;
@@ -111,6 +120,7 @@ export interface Patient {
   email: string;
   allergies: string;
   currentMedications: string;
+  emergencyContact?: EmergencyContact;
   owner: PatientOwner;
   prescribingDoctorIDs: string[];
   // Doctors with an open (pending/needsEdit) request for this patient — granted read-only
@@ -733,12 +743,16 @@ export interface PatientDraft {
   allergies: string;
   currentMedications: string;
   alert: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  emergencyContactRelationship: string;
 }
 
 export function emptyDraft(): PatientDraft {
   return {
     givenName: "", lastName: "", preferredName: "", dateOfBirth: null, gender: "",
     address: "", phone: "", email: "", allergies: "", currentMedications: "", alert: "",
+    emergencyContactName: "", emergencyContactPhone: "", emergencyContactRelationship: "",
   };
 }
 
@@ -748,5 +762,28 @@ export function draftFromPatient(p: Patient): PatientDraft {
     dateOfBirth: p.dateOfBirth, gender: p.gender, address: p.address, phone: p.phone,
     email: p.email, allergies: p.allergies, currentMedications: p.currentMedications,
     alert: p.alert ?? "",
+    emergencyContactName: p.emergencyContact?.name ?? "",
+    emergencyContactPhone: p.emergencyContact?.phone ?? "",
+    emergencyContactRelationship: p.emergencyContact?.relationship ?? "",
   };
+}
+
+// The draft's emergency-contact fields as the stored shape: undefined when every field is
+// blank (a fully-optional group — no partial-blank validation, whatever was typed is kept).
+export function emergencyContactFromDraft(d: PatientDraft): EmergencyContact | undefined {
+  const name = d.emergencyContactName.trim();
+  const phone = d.emergencyContactPhone.trim();
+  const relationship = d.emergencyContactRelationship.trim();
+  if (!name && !phone && !relationship) return undefined;
+  return { name, phone, relationship };
+}
+
+// One display line for the patient file: "Name · phone · relationship" from whichever
+// fields are present, or "Nil" when there is no contact at all (owner feedback 02/08 —
+// an absent contact must read Nil, never blank). Mirrors iOS Patient.emergencyContactLine.
+export function emergencyContactLine(c: EmergencyContact | undefined): string {
+  const parts = [c?.name, c?.phone, c?.relationship]
+    .map((s) => s?.trim() ?? "")
+    .filter(Boolean);
+  return parts.length ? parts.join(" · ") : "Nil";
 }

@@ -53,7 +53,7 @@ import type {
 } from "./types";
 import { LUMIERE, ownerLabel } from "./accounts";
 import { isoWeekday } from "./calendar";
-import { fullName, displayName, identityBadge, emptyDraft, ownerKeyOf, effectiveRelationshipKinds, RELATIONSHIP_KINDS } from "./types";
+import { fullName, displayName, identityBadge, emptyDraft, emergencyContactFromDraft, ownerKeyOf, effectiveRelationshipKinds, RELATIONSHIP_KINDS } from "./types";
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { computeInvoice, computeInclusiveTotals, computeManualInvoice, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
@@ -1952,6 +1952,7 @@ export function createPatient(
     openReviewerDoctorIDs: [],
     alert: draft.alert.trim() ? draft.alert.trim() : undefined,
     preferredName: draft.preferredName.trim() ? draft.preferredName.trim() : undefined,
+    emergencyContact: emergencyContactFromDraft(draft),
   };
   return { state: { ...state, patients: { ...state.patients, [patient.id]: patient } }, patient };
 }
