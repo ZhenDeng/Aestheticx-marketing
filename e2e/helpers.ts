@@ -30,7 +30,8 @@ export async function fillNewPatient(page: Page, given: string, last: string): P
   await page.getByLabel(/last name/i).fill(last);
   await page.getByLabel(/date of birth/i).fill("1990-05-02");
   await page.getByLabel(/gender/i).selectOption("Female");
-  await page.getByLabel(/phone/i).fill("0400 000 000");
+  // ^Phone anchors past the optional "Emergency contact phone" field (02/08).
+  await page.getByLabel(/^phone/i).fill("0400 000 000");
   await page.getByLabel(/address/i).fill("1 Test Street, Bondi NSW 2026");
   await page.getByLabel(/email/i).fill("e2e.patient@example.test");
   await page.getByLabel(/allergies/i).fill("None");
