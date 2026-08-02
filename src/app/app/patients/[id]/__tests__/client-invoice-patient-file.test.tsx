@@ -65,7 +65,9 @@ describe("patient file — Invoice client", () => {
   it("shows the Invoice client section and lists an issued client invoice", async () => {
     const id = findPatientId("Claire Donovan"); // owned by sarahIndependent
     await renderFile(id);
-    const section = screen.getByRole("heading", { name: "Invoice client" }).closest("section")!;
+    const section = screen.getByRole("heading", { name: /invoice client/i }).closest("section")!;
+    // The section is a collapsed accordion by default — expand it to reach the composer.
+    await userEvent.click(within(section).getByRole("button", { name: /invoice client/i }));
     await userEvent.type(within(section).getByLabelText("Line 1 description"), "Dermal filler");
     await userEvent.type(within(section).getByLabelText("Line 1 amount"), "500");
     await userEvent.click(within(section).getByRole("button", { name: "Issue invoice" }));

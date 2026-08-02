@@ -43,7 +43,9 @@ test("E3b — nurse submits an authorisation request for a patient", async ({ pa
   await firstPatient.click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
 
-  // A clinical file offers a "Raise authorisation request" entry.
+  // A clinical file offers a "Raise authorisation request" entry — inside the Active
+  // authorisations card, which is a collapsed accordion by default.
+  await page.getByRole("button", { name: /active authorisations/i }).click();
   await page.getByRole("link", { name: "Raise authorisation request" }).click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+\/request/);
   await expect(page.getByRole("heading", { name: "Raise authorisation request" })).toBeVisible();

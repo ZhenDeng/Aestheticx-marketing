@@ -17,6 +17,9 @@ test("E8 — a clinic authorisation prefills Premises of administration from the
   await page.locator('a[href^="/app/patients/"]').filter({ hasText: /Boyd/i }).first().click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
 
+  // The Active authorisations card is a collapsed accordion by default — expand it first.
+  await page.getByRole("button", { name: /active authorisations/i }).click();
+
   // Labelled for the document, not the clause: "68C" alone read as jargon (18/07 feedback).
   // The citation stays in the accessible name and on hover.
   const open = page.getByRole("button", { name: "Clause 68C direction" }).first();
@@ -44,6 +47,7 @@ test("E8b — an unresolved field is marked at the field, and gates the export u
   await page.getByRole("navigation").getByRole("link", { name: /patients/i }).first().click();
   await page.waitForURL(/\/app\/patients/);
   await page.locator('a[href^="/app/patients/"]').filter({ hasText: /Boyd/i }).first().click();
+  await page.getByRole("button", { name: /active authorisations/i }).click();
   await page.getByRole("button", { name: "Clause 68C direction" }).first().click();
 
   const premises = page.getByLabel(/premises of administration/i);

@@ -90,6 +90,7 @@ test("a11y — direction capture dialog with an unresolved field", async ({ page
   await page.getByRole("navigation").getByRole("link", { name: /patients/i }).first().click();
   await page.waitForURL(/\/app\/patients/);
   await page.locator('a[href^="/app/patients/"]').filter({ hasText: /Boyd/i }).first().click();
+  await page.getByRole("button", { name: /active authorisations/i }).click();
   await page.getByRole("button", { name: "Clause 68C direction" }).first().click();
 
   const premises = page.getByLabel(/premises of administration/i);
