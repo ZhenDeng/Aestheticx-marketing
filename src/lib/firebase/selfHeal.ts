@@ -61,6 +61,8 @@ export async function resolveClaimsWithSelfHeal(
     uid,
     roles: validRoles(raw.roles),
     clinics: validClinics(raw.clinics),
+    // Only when set: ordinary accounts keep the historical {uid, roles, clinics} shape.
+    ...(raw.employeeOnly === true ? { employeeOnly: true } : {}),
   });
   let claims = parse(await deps.readTokenClaims(false));
   const userDoc = await deps.readUserDoc();

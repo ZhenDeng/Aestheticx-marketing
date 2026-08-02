@@ -12,6 +12,7 @@ export const LUMIERE: ClinicRef = {
 const sarah: UserRef = { id: "u-sarah", name: "Sarah Chen" };
 const ruby: UserRef = { id: "u-ruby", name: "Ruby Walsh" };
 const nadia: UserRef = { id: "u-nadia", name: "Nadia Okafor" };
+const mia: UserRef = { id: "u-mia", name: "Mia Torres" };
 const voss: UserRef = { id: "u-voss", name: "Dr Elena Voss" };
 const ava: UserRef = { id: "u-ava", name: "Ava Lim" };
 const priya: UserRef = { id: "u-admin", name: "Priya Nair" };
@@ -20,6 +21,10 @@ export interface DemoAccount {
   label: string;
   /** Identities the account can act as; the first is the default on sign-in. */
   identities: Identity[];
+  /** Clinic-employee-only nurse (02/08): registered without an ABN — never an independent
+   *  clinician, and every billing surface is withheld. Demo analogue of the live
+   *  `employeeOnly` claim. */
+  employeeOnly?: boolean;
 }
 
 export const DEMO_ACCOUNTS: DemoAccount[] = [
@@ -54,6 +59,14 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     // DEMO_ACCOUNTS[n] index references (Voss at 2, etc.) elsewhere in the codebase stay valid.
     label: "Nadia Okafor — Nurse",
     identities: [{ user: nadia, role: "nurse", context: { kind: "independent" } }],
+  },
+  {
+    // Clinic-employee-only nurse (02/08): registered without an ABN, so her ONLY workspace
+    // is the employing clinic — no independent identity, no billing surfaces. Appended last
+    // to keep existing DEMO_ACCOUNTS[n] index references stable.
+    label: "Mia Torres — Nurse (clinic employee)",
+    identities: [{ user: mia, role: "nurse", context: { kind: "clinic", clinic: LUMIERE } }],
+    employeeOnly: true,
   },
 ];
 

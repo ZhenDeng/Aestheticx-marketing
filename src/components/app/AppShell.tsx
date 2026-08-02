@@ -10,14 +10,14 @@ import { navItemsFor, activeNavHref } from "@/lib/demo/nav";
 import { tintStyle } from "@/lib/demo/tint";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { identity, signOut } = useDemoAuth();
+  const { identity, signOut, employeeOnly } = useDemoAuth();
   const { status, refreshing, lastSyncError } = useDemoStore();
   const pathname = usePathname();
   if (!identity) return null;
 
   // Role-aware primary nav — Platform Admin gets the admin modules, not the clinical shell
-  // (constitution §16/Rule 7).
-  const nav = navItemsFor(identity.role);
+  // (constitution §16/Rule 7). Clinic-employee-only nurses get no Invoice tab (02/08).
+  const nav = navItemsFor(identity.role, { employeeOnly });
   const activeHref = activeNavHref(nav, pathname);
 
   return (

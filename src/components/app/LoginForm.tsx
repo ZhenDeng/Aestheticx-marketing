@@ -22,7 +22,7 @@ function nextDestination(role: Role): string {
  * sandboxed store.
  */
 export function LiveLoginForm() {
-  const { signInLive, identity, exitDemoMode } = useDemoAuth();
+  const { signInLive, identity, exitDemoMode, noWorkspace, signOut } = useDemoAuth();
   const router = useRouter();
 
   useEffect(() => { exitDemoMode(); }, [exitDemoMode]);
@@ -85,6 +85,22 @@ export function LiveLoginForm() {
         Remember me on this device
       </label>
       {error && <p className="mt-3 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
+      {/* Zero identities resolved (02/08): e.g. a clinic-employee-only nurse whose last
+          membership was revoked. Without this the page silently did nothing — the same
+          invisible failure as the clinic-scope lockout family. */}
+      {noWorkspace && !busy && (
+        <div className="mt-3 text-sm text-ink-soft">
+          <p>
+            Your account signed in but has no workspace assigned. Ask your administrator to add
+            you to a clinic, then sign in again.
+          </p>
+          {/* Without this the Firebase session lingers with nothing to do — signing out is
+              the only way to retry with a different account. */}
+          <button type="button" onClick={signOut} className="mt-2 underline hover:text-ink">
+            Sign out and try a different account
+          </button>
+        </div>
+      )}
       <button type="submit" disabled={busy}
         className="mt-6 w-full rounded-btn px-4 py-3 text-center text-sm font-medium text-card transition-colors disabled:opacity-60"
         style={{ background: "var(--color-tint)" }}>

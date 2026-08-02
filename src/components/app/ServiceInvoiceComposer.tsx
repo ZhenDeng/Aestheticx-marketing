@@ -28,7 +28,7 @@ function centsOf(amount: string): number | null {
 }
 
 export function ServiceInvoiceComposer() {
-  const { identity, availableIdentities } = useDemoAuth();
+  const { identity, availableIdentities, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine()]);
   const [clinicChoice, setClinicChoice] = useState("");
@@ -40,6 +40,9 @@ export function ServiceInvoiceComposer() {
 
   if (!identity || !store.serviceInvoicingEnabled) return null;
   if (identity.role !== "nurse" && identity.role !== "doctor") return null;
+  // Clinic-employee-only nurse (02/08): no ABN means she cannot issue a tax invoice to her
+  // clinic — her pay is the clinic's payroll concern, not a service-fee invoice stream.
+  if (employeeOnly) return null;
 
   // The clinics this account belongs to, whichever identity is active — a nurse
   // practising independently today is still the clinic's employee. Doctors gain clinic

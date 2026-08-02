@@ -141,7 +141,7 @@ function PremiseSwitcher({ me }: { me: Identity }) {
 }
 
 export default function DashboardPage() {
-  const { identity, availableIdentities } = useDemoAuth();
+  const { identity, availableIdentities, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   if (!identity) return null;
   if (store.status === "loading") return <p className="text-ink-soft">Loading your data…</p>;
@@ -178,10 +178,19 @@ export default function DashboardPage() {
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Link href="/app/billing" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
-          <p className="font-display text-3xl text-ink">{approvedCount}</p>
-          <p className="mt-1 text-sm text-ink-soft">Authorisation approved this month</p>
-        </Link>
+        {/* Clinic-employee-only nurse (02/08): no billing surface to link to — the count
+            stays (it is clinical throughput), the Invoice destination goes. */}
+        {employeeOnly ? (
+          <div className="rounded-card border border-line bg-card p-6 shadow-card">
+            <p className="font-display text-3xl text-ink">{approvedCount}</p>
+            <p className="mt-1 text-sm text-ink-soft">Authorisation approved this month</p>
+          </div>
+        ) : (
+          <Link href="/app/billing" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
+            <p className="font-display text-3xl text-ink">{approvedCount}</p>
+            <p className="mt-1 text-sm text-ink-soft">Authorisation approved this month</p>
+          </Link>
+        )}
         {asDoctor && (
           <Link href="/app/authorisations" className="rounded-card border border-line bg-card p-6 shadow-card transition-colors hover:border-tint/50">
             <p className="font-display text-3xl text-ink">{pending.length}</p>

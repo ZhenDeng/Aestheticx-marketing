@@ -23,6 +23,7 @@ vi.mock("@/lib/firebase/auth", () => ({
   watchUser: (cb: WatchCb) => { watchCb = cb; return () => {}; },
   identitiesForUser: () => identitiesImpl(),
   mustChangePasswordForUser: async () => false,
+  employeeOnlyForUser: async () => false,
   currentUserUid: () => currentUid,
   watchClaimsRevision: (uid: string) => watchClaimsRevision(uid),
 }));

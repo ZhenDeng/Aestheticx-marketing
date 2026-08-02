@@ -648,5 +648,8 @@ export function mapAccount(id: string, data: Doc): AccountRecord {
     roles,
     clinicIDs,
     mustChangePassword: data.mustChangePassword === true,
+    // Clinic-employee-only nurse (02/08): server-managed flag mirrored from claims onto
+    // the users doc by createUser — lets admin surfaces label and safeguard the account.
+    ...(data.employeeOnly === true ? { employeeOnly: true } : {}),
   };
 }

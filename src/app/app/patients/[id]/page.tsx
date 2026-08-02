@@ -45,11 +45,13 @@ function apptTime(minute: number): string {
 // the heading is gated on the same check so it never stands over an empty box. Demo persists
 // issued invoices and lists them here (live hands off the PDF only).
 function ClientInvoiceSection({ patient, className = "mt-8" }: { patient: Patient; className?: string }) {
-  const { identity } = useDemoAuth();
+  const { identity, employeeOnly } = useDemoAuth();
   const store = useDemoStore();
   // Collapsed by default (01/08 feedback) — same accordion pattern as Notes/Consent forms.
   const [open, setOpen] = useState(false);
-  if (!identity || store.patientAccess(patient, identity) === "none") return null;
+  // Clinic-employee-only nurse (02/08): invoicing belongs to the clinic admin — the composer
+  // self-guards too, but the heading must not stand over an empty box.
+  if (!identity || employeeOnly || store.patientAccess(patient, identity) === "none") return null;
   const issued = store.status === "demo"
     ? store.state.invoices.filter((i) => resolveInvoiceKind(i) === "client-invoice" && i.patientID === patient.id)
     : [];

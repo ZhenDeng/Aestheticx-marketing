@@ -81,6 +81,48 @@ describe("validateNewUser", () => {
     // Clinic accounts skip the practitioner requirements even with clinical roles absent.
     expect(validateNewUser({ ...clinic, ahpra: undefined })).toEqual([]);
   });
+
+  // Clinic-employee-only nurse (02/08): registered WITHOUT an ABN — nurse-only, no
+  // ABN/business name/premises, but the employing clinic is mandatory (zero memberships
+  // would resolve zero identities: a login lockout at first sign-in).
+  describe("employee-only nurse (no ABN)", () => {
+    const employee = {
+      ...base, abn: "", businessName: "", premises: undefined,
+      employeeOnly: true, employingClinicId: "clinic-lumiere",
+    };
+
+    it("accepts a complete employee-only nurse without ABN, business name, or premises", () => {
+      expect(validateNewUser(employee)).toEqual([]);
+    });
+
+    it("requires the employing clinic", () => {
+      expect(validateNewUser({ ...employee, employingClinicId: "" })).toContain("employingClinicId");
+      expect(validateNewUser({ ...employee, employingClinicId: undefined })).toContain("employingClinicId");
+    });
+
+    it("still requires AHPRA — she is a registered practitioner", () => {
+      expect(validateNewUser({ ...employee, ahpra: "" })).toContain("ahpra");
+    });
+
+    it("rejects any roles other than exactly nurse", () => {
+      expect(validateNewUser({ ...employee, roles: ["nurse", "doctor"] }))
+        .toContain("roles (clinic-employee accounts are nurse-only)");
+      expect(validateNewUser({ ...employee, roles: ["doctor"] }))
+        .toContain("roles (clinic-employee accounts are nurse-only)");
+    });
+
+    it("rejects a personal supervising-doctor link — her requests ride the clinic's relationships", () => {
+      expect(validateNewUser({ ...employee, supervisingDoctorId: "u-voss" }))
+        .toContain("supervisingDoctorId (clinic-employee nurses use the clinic's doctor relationships)");
+      expect(validateNewUser({ ...employee, supervisingDoctorId: "  " })).toEqual([]);
+    });
+
+    it("keeps the ABN requirement for ordinary nurses when the flag is absent/false", () => {
+      expect(validateNewUser({ ...base, abn: "" })).toContain("abn");
+      expect(validateNewUser({ ...employee, employeeOnly: false, abn: "", employingClinicId: undefined }))
+        .toContain("abn");
+    });
+  });
 });
 
 describe("accountsInventory", () => {
@@ -105,5 +147,12 @@ describe("seeded demo accounts", () => {
     expect(records).toHaveLength(DEMO_ACCOUNTS.length);
     const sarah = records.find((r) => r.name === "Sarah Chen");
     expect(sarah).toMatchObject({ roles: ["nurse"], mustChangePassword: false });
+  });
+
+  it("marks Mia Torres as employee-only with the Lumière membership, and nobody else", () => {
+    const records = accountsInventory(buildSeedState());
+    const mia = records.find((r) => r.name === "Mia Torres");
+    expect(mia).toMatchObject({ roles: ["nurse"], employeeOnly: true, clinicIDs: ["clinic-lumiere"] });
+    expect(records.filter((r) => r.employeeOnly)).toHaveLength(1);
   });
 });
