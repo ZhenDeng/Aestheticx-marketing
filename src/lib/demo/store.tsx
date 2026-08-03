@@ -12,6 +12,11 @@ import * as isolation from "./isolation";
 // Pure (no firebase SDK), safe to import statically — categorises mirror failures so the
 // banner distinguishes a permission lockout from a transient blip (16/07 feedback bug 1).
 import { syncErrorMessage } from "@/lib/firebase/syncError";
+import {
+  PATIENT_FORM_SUBMISSIONS_KEY, formLinkAccountKey, loadPatientFormSubmissions,
+  removePatientFormSubmission, savePatientFormLink, submissionsForAccount,
+  type PatientFormSubmission,
+} from "./patientFormLinks";
 import { useDemoAuth } from "./auth";
 
 type Status = "demo" | "loading" | "ready" | "error";
@@ -125,6 +130,17 @@ interface StoreValue {
   createPatient: (draft: import("./types").PatientDraft, identity: Identity) => string;
   /** Create a patient file from a lead appointment and link it, atomically. Returns the new patient id. */
   createPatientForAppointment: (apptId: string, draft: import("./types").PatientDraft, identity: Identity) => string;
+  // New-patient form links (change: patient-form-link-generation): mint a tokenised link to
+  // the public /intake form; submissions surface as pending-review cards visible only to the
+  // generating account, which approves (the normal createPatient path, edits allowed) or
+  // declines. Browser-local storage in both modes — see patientFormLinks.ts.
+  /** Mints a link for this account and returns its token. Throws when storage is unavailable. */
+  createPatientFormLink: (identity: Identity) => string;
+  patientFormSubmissionsFor: (identity: Identity) => PatientFormSubmission[];
+  /** Approve = create the patient through the normal path (validation/ownership identical to
+   *  the New patient form) + remove the pending card. Returns the new patient id. */
+  approvePatientFormSubmission: (submissionID: string, draft: import("./types").PatientDraft, identity: Identity) => string;
+  declinePatientFormSubmission: (submissionID: string, identity: Identity) => void;
   updatePatient: (patient: import("./types").Patient, identity: Identity) => void;
   setPatientAvatar: (patientID: string, avatar: backend.PatientAvatarEdit, identity: Identity) => void;
   deletePatient: (id: string, identity: Identity) => void;
@@ -233,6 +249,34 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
   // Stamp for a NEW record. Live has a real clock; demo advances a per-provider sequence so
   // each write lands strictly after the seed, and after every earlier write in the session.
   const writeNow = useCallback(() => (live ? Date.now() : demoWriteClock()), [live, demoWriteClock]);
+
+  // New-patient form-link submissions (change: patient-form-link-generation). Browser-local
+  // and NOT part of DemoState: a submission exists before any patient record does, must
+  // survive demo reseeds, and a live hydrate must never clobber it. The public /intake page
+  // writes from its own tab, so reload on cross-tab storage events; the focus listener covers
+  // a same-tab round trip through the intake page and back.
+  const [formSubmissions, setFormSubmissions] = useState<Record<string, PatientFormSubmission>>({});
+  useEffect(() => {
+    const reload = () => setFormSubmissions(loadPatientFormSubmissions(window.localStorage));
+    reload();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === PATIENT_FORM_SUBMISSIONS_KEY) reload();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", reload);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", reload);
+    };
+  }, []);
+  const dropFormSubmission = useCallback((id: string) => {
+    removePatientFormSubmission(window.localStorage, id);
+    setFormSubmissions((subs) => {
+      const rest = { ...subs };
+      delete rest[id];
+      return rest;
+    });
+  }, []);
 
   // Latest patients map for the requests listener's hasPatient check — a ref, not a dep,
   // so the subscription isn't torn down on every state change.
@@ -902,6 +946,40 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         }
         return patient.id;
       },
+      createPatientFormLink: (identity) => {
+        const token = crypto.randomUUID();
+        const saved = savePatientFormLink(window.localStorage, {
+          token, accountKey: formLinkAccountKey(identity), accountName: identity.user.name,
+          createdAt: Date.now(),
+        });
+        // Never hand out a link that can't be persisted — the visitor would hit "invalid link".
+        if (!saved) throw new backend.BackendError("validationFailed");
+        return token;
+      },
+      patientFormSubmissionsFor: (identity) => submissionsForAccount(formSubmissions, identity),
+      approvePatientFormSubmission: (submissionID, draft, identity) => {
+        // Scope check mirrors the selector: only the generating account may act on a card.
+        const sub = formSubmissions[submissionID];
+        if (!sub || sub.accountKey !== formLinkAccountKey(identity)) throw new backend.BackendError("notFound");
+        // Same eager-create + mirror shape as createPatient above (Strict Mode: mint outside
+        // the updater). One action, create first: a validation/permission throw must leave
+        // the pending card intact for another attempt.
+        const { patient } = backend.createPatient(state, draft, identity);
+        setState((s) => ({ ...s, patients: { ...s.patients, [patient.id]: patient } }));
+        if (live) {
+          void (async () => {
+            try { const m = await import("@/lib/firebase/mirror"); await m.mirrorCreatePatient(patient); }
+            catch (e) { setLastSyncError(syncErrorMessage(e)); setRefreshTick((t) => t + 1); }
+          })();
+        }
+        dropFormSubmission(submissionID);
+        return patient.id;
+      },
+      declinePatientFormSubmission: (submissionID, identity) => {
+        const sub = formSubmissions[submissionID];
+        if (!sub || sub.accountKey !== formLinkAccountKey(identity)) return;
+        dropFormSubmission(submissionID);
+      },
       createPatientForAppointment: (apptId, draft, identity) => {
         // Create + link as ONE action (28/07): the calendar's create-from-lead used to be
         // two same-tick calls, and the link's eager validation ran against a closure that
@@ -1081,7 +1159,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           (m) => m.mirrorUpdateProfile(identity.user.id, edits),
         ),
     }),
-    [state, now, writeNow, status, refreshing, pendingWrites, lastSyncError, applyAndMirror, runLiveWrite, live],
+    [state, now, writeNow, status, refreshing, pendingWrites, lastSyncError, applyAndMirror, runLiveWrite, live, formSubmissions, dropFormSubmission],
   );
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
