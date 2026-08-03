@@ -19,15 +19,23 @@ export default function PatientsPage() {
   // Under a doctor account the list splits into the doctor's own patients and
   // everything else, grouped on a subpage (iOS PatientListView.split).
   const { own, others } = splitPatients(results, identity);
+  // Form-link submissions awaiting this account's review (change: patient-form-link-generation).
+  // Scoped to the generating account by the selector — other identities never see them.
+  const pending = store.patientFormSubmissionsFor(identity);
 
   return (
     <div>
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-display text-3xl text-ink">Patients</h1>
         {canCreatePatient(identity) && (
-          <Link href="/app/patients/new" className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
-            New patient
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/app/patients/form-link" className="rounded-btn border border-line px-4 py-2 text-sm text-ink-soft hover:border-tint">
+              Form link
+            </Link>
+            <Link href="/app/patients/new" className="rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+              New patient
+            </Link>
+          </div>
         )}
       </div>
       <input
@@ -36,6 +44,35 @@ export default function PatientsPage() {
         placeholder="Search by name, date of birth (dd/mm/yyyy), or phone"
         className="mt-5 w-full rounded-field border border-line bg-card px-4 py-2.5 text-ink outline-none focus:border-tint"
       />
+
+      {pending.length > 0 && (
+        // Submissions from the account's form link, awaiting approve/decline. Not patient
+        // records yet — a separate block above the list rather than rows inside it.
+        <div className="mt-5">
+          <h2 className="micro">Pending review</h2>
+          <ul className="mt-2 divide-y divide-line overflow-hidden rounded-card border border-line">
+            {pending.map((s) => {
+              const name = `${s.draft.givenName} ${s.draft.lastName}`.trim() || "Unnamed submission";
+              return (
+                <li key={s.id}>
+                  <Link href={`/app/patients/pending/${s.id}`} className="flex items-center gap-4 bg-card px-5 py-4 transition-colors hover:bg-line-soft">
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-ink">{name}</span>
+                      <span className="block truncate text-sm text-ink-soft">
+                        Submitted {new Date(s.submittedAt).toLocaleDateString("en-AU")} via form link
+                      </span>
+                    </span>
+                    <span className="micro flex-none rounded-full px-2.5 py-0.5" style={{ background: "var(--color-tint-soft)", color: "var(--color-tint)" }}>
+                      Pending review
+                    </span>
+                    <span aria-hidden className="flex-none text-ink-soft">›</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {own.length === 0 && others.length > 0 ? (
         // iOS parity: with only other-owned patients visible, say so instead of an empty card.
