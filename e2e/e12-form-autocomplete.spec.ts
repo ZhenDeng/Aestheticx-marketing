@@ -30,7 +30,7 @@ test("E12a — a doctor picks a medication from the catalog on a treatment note"
   await page.waitForURL(/\/app\/patients$/);
   // The first real patient FILE — excluding the list links that share the href prefix.
   await page
-    .locator('a[href^="/app/patients/"]:not([href="/app/patients/new"]):not([href="/app/patients/other"])')
+    .locator('a[href^="/app/patients/"]:not([href="/app/patients/new"]):not([href="/app/patients/other"]):not([href="/app/patients/form-link"])')
     .first().click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
 

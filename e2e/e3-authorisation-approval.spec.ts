@@ -38,7 +38,7 @@ test("E3b — nurse submits an authorisation request for a patient", async ({ pa
   // Open the first real patient FILE (exclude the "New patient" and "other" list links, which
   // share the /app/patients/ href prefix).
   const firstPatient = page
-    .locator('a[href^="/app/patients/"]:not([href="/app/patients/new"]):not([href="/app/patients/other"])')
+    .locator('a[href^="/app/patients/"]:not([href="/app/patients/new"]):not([href="/app/patients/other"]):not([href="/app/patients/form-link"])')
     .first();
   await firstPatient.click();
   await expect(page).toHaveURL(/\/app\/patients\/[^/]+$/);
