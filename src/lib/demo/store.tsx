@@ -95,6 +95,9 @@ interface StoreValue {
   /** Clinic directory for the admin console's cooperation picker (live: super-admin
    *  hydration of the clinics collection; demo: the seeded clinic). */
   clinics: () => ReturnType<typeof backend.clinicDirectoryList>;
+  /** Directory row for one clinic, or null when not hydrated (live hydrates the directory for
+   *  super-admins only — clinic identities carry their own address on the ClinicRef instead). */
+  clinicByID: (id: string) => import("./types").ClinicRef | null;
   relationshipAuditFor: (relationshipID: string) => ReturnType<typeof backend.relationshipAuditForRelationship>;
   setCooperationRelationship: (input: import("./backend").SetCooperationRelationshipInput, actor: Identity) => void;
   removeCooperationRelationship: (relationshipID: string, actor: Identity) => void;
@@ -1063,6 +1066,7 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       cooperatingDoctors: (identity) => backend.cooperatingDoctors(state, identity),
       cooperationRelationships: () => backend.cooperationRelationshipsList(state),
       clinics: () => backend.clinicDirectoryList(state),
+      clinicByID: (id) => state.clinicsByID[id] ?? null,
       relationshipAuditFor: (relationshipID) => backend.relationshipAuditForRelationship(state, relationshipID),
       setCooperationRelationship: (input, actor) => {
         // Eager-validate (throws before the async live branch); relationships are demo-writable.
