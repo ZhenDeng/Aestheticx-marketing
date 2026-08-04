@@ -8,7 +8,7 @@ import {
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firebaseAuth, firestore, functions } from "./client";
-import { identitiesFromClaims } from "./identity";
+import { identitiesFromClaims, type ClinicInfo } from "./identity";
 import { resolveClaimsWithSelfHeal } from "./selfHeal";
 import type { Identity } from "@/lib/demo/types";
 
@@ -51,12 +51,14 @@ export async function identitiesForUser(user: User): Promise<Identity[]> {
       await httpsCallable(functions(), "syncUserClaims")({ userId: user.uid });
     },
   }, healGuard);
-  return identitiesFromClaims(claims, userDoc, await clinicNamesFor(claims.clinics));
+  return identitiesFromClaims(claims, userDoc, await clinicInfoFor(claims.clinics));
 }
 
 /**
- * Names for the caller's OWN clinics, read from `clinics/{id}`. Claims carry ids only, so without
- * this the acting identity showed the raw clinic id wherever its name is rendered.
+ * Name + street address for the caller's OWN clinics, read from `clinics/{id}`. Claims carry ids
+ * only, so without this the acting identity showed the raw clinic id wherever its name is
+ * rendered — and the address is the clinic's fixed premise of administration, which the profile
+ * shows for a clinic-context nurse identity (owner feedback 04/08 bug 1).
  *
  * Safe to read here specifically because these are the caller's own memberships:
  * firestore.rules allows `clinics/{id}` to `inClinic(clinicId) || isSuperAdmin()`, which every
@@ -67,19 +69,21 @@ export async function identitiesForUser(user: User): Promise<Identity[]> {
  * Best-effort per clinic: a failed or missing read yields no entry, which the resolver renders as
  * a blank name rather than an id. Sign-in must not fail because a clinic doc is unreadable.
  */
-async function clinicNamesFor(clinics: Record<string, string>): Promise<Record<string, string>> {
+async function clinicInfoFor(clinics: Record<string, string>): Promise<Record<string, ClinicInfo>> {
   const ids = Object.keys(clinics ?? {});
   if (ids.length === 0) return {};
-  const entries = await Promise.all(ids.map(async (id): Promise<[string, string] | null> => {
+  const entries = await Promise.all(ids.map(async (id): Promise<[string, ClinicInfo] | null> => {
     try {
       const snap = await getDoc(doc(firestore(), "clinics", id));
-      const name = snap.exists() ? (snap.data() as { name?: unknown }).name : undefined;
-      return typeof name === "string" && name.trim() ? [id, name.trim()] : null;
+      const data = snap.exists() ? (snap.data() as { name?: unknown; address?: unknown }) : null;
+      if (!data || typeof data.name !== "string" || !data.name.trim()) return null;
+      const address = typeof data.address === "string" && data.address.trim() ? { address: data.address.trim() } : {};
+      return [id, { name: data.name.trim(), ...address }];
     } catch {
       return null; // unreadable clinic → blank name, never the id
     }
   }));
-  return Object.fromEntries(entries.filter((e): e is [string, string] => e !== null));
+  return Object.fromEntries(entries.filter((e): e is [string, ClinicInfo] => e !== null));
 }
 
 // The signed-in user's uid right now, or null. Lets the auth watcher discard a stale

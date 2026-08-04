@@ -7,7 +7,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities } from "@/lib/demo/identity";
-import { identityBadge, type Identity, type Premise, type Role, type UserProfile, type UserProfileEdit } from "@/lib/demo/types";
+import { identityBadge, type ClinicRef, type Identity, type Premise, type Role, type UserProfile, type UserProfileEdit } from "@/lib/demo/types";
 import { activePremise, premisesAfterDelete, premisesAfterSave, premisesAfterSelect } from "@/lib/demo/backend";
 import { identityKey } from "@/lib/demo/identityPrefs";
 import { landingFor } from "@/lib/demo/authRedirect";
@@ -99,7 +99,14 @@ export default function ProfilePage() {
           requests stamp the CLINIC's premise — so she keeps the plain Address field. */}
       <ProfileFields me={me} profile={profile} showsAhpra={isClinician || holdsClinicalRole} showsPrincipalPlace={holdsDoctorRole} showsAddress={!holdsNurseRole || employeeOnly} />
 
-      {holdsNurseRole && !employeeOnly && <PremisesSection me={me} profile={profile} />}
+      {/* Owner feedback 04/08 bug 1: the premises display follows the ACTIVE identity. A
+          clinic-context nurse's premise of administration IS the employing clinic's address
+          (submitRequest stamps null and the documents print the clinic's premise), so switching
+          "Practise as" between clinics switches this card with it. The personal premise manager
+          belongs to the independent nurse identity only. */}
+      {me.role === "nurse" && me.context.kind === "clinic"
+        ? <ClinicPremiseCard clinic={me.context.clinic} />
+        : holdsNurseRole && !employeeOnly && <PremisesSection me={me} profile={profile} />}
 
       {/* 15/07 feedback: the Invoice section is doctor-only; nurses/clinics receive invoices by email. */}
       {me.role === "doctor" && (
@@ -426,6 +433,33 @@ function ProfileFieldsEditor({ me, profile, identityAddress, showsAhpra, showsPr
           </button>
         </div>
       )}
+    </section>
+  );
+}
+
+// The clinic identity's premises display (owner feedback 04/08 bug 1): read-only — the clinic's
+// fixed premise is set by its administrator, not the acting nurse. The address rides on the
+// ClinicRef (live: resolved from the member-readable clinics/{id} doc at sign-in; demo: baked
+// into the seed clinic), with the store's clinic directory as a fallback for demo employment
+// grants whose ClinicRef carries no address. Unresolvable → say so, never substitute the
+// nurse's personal premise (the wrong-address-on-a-legal-document failure premiseForCapture
+// guards against).
+function ClinicPremiseCard({ clinic }: { clinic: ClinicRef }) {
+  const store = useDemoStore();
+  const directory = typeof store.clinicByID === "function" ? store.clinicByID(clinic.id) : null;
+  const name = clinic.name.trim() || directory?.name.trim() || "Your clinic";
+  const address = clinic.address?.trim() || directory?.address?.trim() || "";
+  return (
+    <section className="mt-7 rounded-card border border-line bg-card px-5 py-4 shadow-card">
+      <h2 className="micro tracking-widest">Premises of administration</h2>
+      <p className="mt-1 text-sm text-ink-soft">
+        Set by the clinic — authorisations you submit while practising here print the
+        clinic&rsquo;s premises.
+      </p>
+      <div className="mt-3 rounded-inner border border-line px-4 py-2.5" style={{ borderLeftWidth: 3, borderLeftColor: "var(--color-tint)" }}>
+        <span className="block text-sm font-medium text-ink">{name}</span>
+        <span className="block text-sm text-ink-soft">{address || "Address managed by the clinic"}</span>
+      </div>
     </section>
   );
 }

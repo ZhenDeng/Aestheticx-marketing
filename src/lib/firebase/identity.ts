@@ -16,20 +16,29 @@ function isRole(r: string): r is Role {
   return r === "doctor" || r === "nurse" || r === "clinicAdmin" || r === "superAdmin";
 }
 
+/** What `clinics/{id}` resolves to for the caller's own memberships: the display name plus
+ *  the clinic's fixed street address (its premise of administration — the profile's premises
+ *  display for a clinic identity, owner feedback 04/08 bug 1). */
+export interface ClinicInfo {
+  name: string;
+  address?: string;
+}
+
 /**
- * Claims carry only clinic IDs, so the human-readable name is resolved separately from the
- * caller's own `clinics/{id}` docs (see `identitiesForUser`) and passed in here, keeping this
- * module pure.
+ * Claims carry only clinic IDs, so the human-readable name (and street address) is resolved
+ * separately from the caller's own `clinics/{id}` docs (see `identitiesForUser`) and passed in
+ * here, keeping this module pure.
  *
  * An unresolved clinic yields a BLANK name, never the clinic id. The id reached the dashboard as
  * "Acting as nurse · xY3kf9…" — the same defect class as the raw-uid prescriber name on the
  * Clause 68C direction. Blank is detectable by the caller, which omits the clause; an id is a
- * non-empty string that every consumer renders as though it were a real name.
+ * non-empty string that every consumer renders as though it were a real name. The address key
+ * is omitted (never empty-string) when the clinic doc has none.
  */
 export function identitiesFromClaims(
   claims: DemoClaims,
   userDoc: { name?: string } | null,
-  clinicNames: Record<string, string> = {},
+  clinicInfo: Record<string, ClinicInfo> = {},
 ): Identity[] {
   const user = { id: claims.uid, name: userDoc?.name ?? "" };
   const identities: Identity[] = [];
@@ -46,8 +55,10 @@ export function identitiesFromClaims(
 
   // One identity per clinic membership; "admin" => clinicAdmin, else the user's clinical role.
   for (const [clinicId, kind] of Object.entries(claims.clinics)) {
-    const resolved = clinicNames[clinicId];
-    const clinic = { id: clinicId, name: typeof resolved === "string" ? resolved.trim() : "" };
+    const resolved = clinicInfo[clinicId];
+    const name = typeof resolved?.name === "string" ? resolved.name.trim() : "";
+    const address = typeof resolved?.address === "string" ? resolved.address.trim() : "";
+    const clinic = { id: clinicId, name, ...(address ? { address } : {}) };
     if (kind === "admin") {
       identities.push({ user, role: "clinicAdmin", context: { kind: "clinic", clinic } });
     } else {

@@ -17,14 +17,34 @@ describe("identitiesFromClaims", () => {
 
   it("adds a clinic identity per clinic membership, named from the clinic doc", () => {
     const claims: DemoClaims = { uid: "u-sarah", roles: ["nurse"], clinics: { "clinic-lumiere": "employee" } };
-    const ids = identitiesFromClaims(claims, userDoc, { "clinic-lumiere": "Lumière Clinic" });
+    const ids = identitiesFromClaims(claims, userDoc, { "clinic-lumiere": { name: "Lumière Clinic" } });
     expect(ids).toHaveLength(2);
+    expect(ids[1].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } });
+  });
+
+  // Owner feedback 04/08 bug 1: the profile's premises display for a clinic identity is the
+  // CLINIC's premise, so the address resolved from the member-readable clinics/{id} doc must
+  // ride on the ClinicRef. Absent or blank → omitted (never an empty-string address).
+  it("carries the clinic's street address on the ClinicRef when resolved", () => {
+    const claims: DemoClaims = { uid: "u-sarah", roles: ["nurse"], clinics: { "clinic-lumiere": "employee" } };
+    const ids = identitiesFromClaims(claims, userDoc, {
+      "clinic-lumiere": { name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" },
+    });
+    expect(ids[1].context).toEqual({
+      kind: "clinic",
+      clinic: { id: "clinic-lumiere", name: "Lumière Clinic", address: "2 Notts Ave, Bondi Beach NSW 2026" },
+    });
+  });
+
+  it("omits the address key entirely when the clinic doc has none", () => {
+    const claims: DemoClaims = { uid: "u-sarah", roles: ["nurse"], clinics: { "clinic-lumiere": "employee" } };
+    const ids = identitiesFromClaims(claims, userDoc, { "clinic-lumiere": { name: "Lumière Clinic", address: "   " } });
     expect(ids[1].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } });
   });
 
   it("maps a clinic admin membership to the clinicAdmin role", () => {
     const claims: DemoClaims = { uid: "u-ava", roles: [], clinics: { "clinic-lumiere": "admin" } };
-    const ids = identitiesFromClaims(claims, { name: "Ava Lim" }, { "clinic-lumiere": "Lumière Clinic" });
+    const ids = identitiesFromClaims(claims, { name: "Ava Lim" }, { "clinic-lumiere": { name: "Lumière Clinic" } });
     expect(ids).toHaveLength(1);
     expect(ids[0].role).toBe("clinicAdmin");
     expect(ids[0].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } });
@@ -39,13 +59,13 @@ describe("identitiesFromClaims", () => {
     const unresolved = identitiesFromClaims(claims, userDoc);
     expect(unresolved[1].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "" } });
 
-    const missingEntry = identitiesFromClaims(claims, userDoc, { "clinic-other": "Other" });
+    const missingEntry = identitiesFromClaims(claims, userDoc, { "clinic-other": { name: "Other" } });
     expect(missingEntry[1].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "" } });
   });
 
   it("ignores a blank or whitespace-only clinic name", () => {
     const claims: DemoClaims = { uid: "u-sarah", roles: ["nurse"], clinics: { "clinic-lumiere": "employee" } };
-    const ids = identitiesFromClaims(claims, userDoc, { "clinic-lumiere": "   " });
+    const ids = identitiesFromClaims(claims, userDoc, { "clinic-lumiere": { name: "   " } });
     expect(ids[1].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "" } });
   });
 
@@ -62,7 +82,7 @@ describe("identitiesFromClaims", () => {
       const claims: DemoClaims = {
         uid: "u-mia", roles: ["nurse"], clinics: { "clinic-lumiere": "employee" }, employeeOnly: true,
       };
-      const ids = identitiesFromClaims(claims, { name: "Mia Torres" }, { "clinic-lumiere": "Lumière Clinic" });
+      const ids = identitiesFromClaims(claims, { name: "Mia Torres" }, { "clinic-lumiere": { name: "Lumière Clinic" } });
       expect(ids).toHaveLength(1);
       expect(ids[0].role).toBe("nurse");
       expect(ids[0].context).toEqual({ kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } });
