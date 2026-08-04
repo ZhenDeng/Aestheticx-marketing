@@ -14,7 +14,8 @@ import * as isolation from "./isolation";
 import { syncErrorMessage } from "@/lib/firebase/syncError";
 import {
   PATIENT_FORM_SUBMISSIONS_KEY, formLinkAccountKey, loadPatientFormSubmissions,
-  removePatientFormSubmission, savePatientFormLink, submissionsForAccount,
+  removePatientFormSubmission, savePatientFormLink, siloAccountKey,
+  submissionsForAccount, submissionsForSilo,
   type PatientFormSubmission,
 } from "./patientFormLinks";
 import { useDemoAuth } from "./auth";
@@ -250,13 +251,15 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
   // each write lands strictly after the seed, and after every earlier write in the session.
   const writeNow = useCallback(() => (live ? Date.now() : demoWriteClock()), [live, demoWriteClock]);
 
-  // New-patient form-link submissions (change: patient-form-link-generation). Browser-local
-  // and NOT part of DemoState: a submission exists before any patient record does, must
-  // survive demo reseeds, and a live hydrate must never clobber it. The public /intake page
-  // writes from its own tab, so reload on cross-tab storage events; the focus listener covers
-  // a same-tab round trip through the intake page and back.
+  // New-patient form-link submissions (change: patient-form-link-generation). NOT part of
+  // DemoState: a submission exists before any patient record does and must survive demo
+  // reseeds. Demo: browser-local (the /intake page writes from its own tab, so reload on
+  // cross-tab storage events; the focus listener covers a same-tab round trip). Live
+  // (round 2): server-backed — hydrated from the `patientIntakes` collection below, so the
+  // link works from ANY device; localStorage plays no part and the listeners stay off.
   const [formSubmissions, setFormSubmissions] = useState<Record<string, PatientFormSubmission>>({});
   useEffect(() => {
+    if (live) return;
     const reload = () => setFormSubmissions(loadPatientFormSubmissions(window.localStorage));
     reload();
     const onStorage = (e: StorageEvent) => {
@@ -268,15 +271,28 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", reload);
     };
-  }, []);
+  }, [live]);
   const dropFormSubmission = useCallback((id: string) => {
-    removePatientFormSubmission(window.localStorage, id);
+    if (live) {
+      // Mirror the delete (rules: the owning silo may remove its own docs). The local
+      // card is already gone; a failure leaves the sync banner and rehydrate restores it.
+      void (async () => {
+        try {
+          const m = await import("@/lib/firebase/patientIntake");
+          await m.deletePatientIntake(id);
+        } catch (e) {
+          setLastSyncError(syncErrorMessage(e));
+        }
+      })();
+    } else {
+      removePatientFormSubmission(window.localStorage, id);
+    }
     setFormSubmissions((subs) => {
       const rest = { ...subs };
       delete rest[id];
       return rest;
     });
-  }, []);
+  }, [live]);
 
   // Latest patients map for the requests listener's hasPatient check — a ref, not a dep,
   // so the subscription isn't torn down on every state change.
@@ -383,6 +399,16 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
           if (cancelled) unsubscribeAppointments(); // cleanup ran while the module was loading
         } catch {
           // Stay on the one-shot snapshot; manual rehydrate still works.
+        }
+        // Pending form-link submissions (round 2): server-backed, loaded alongside the
+        // snapshot. An enhancement over the hydrated store — its failure must not error
+        // a store that already loaded, so it gets its own catch.
+        try {
+          const { fetchPatientIntakes } = await import("@/lib/firebase/patientIntake");
+          const intakes = await fetchPatientIntakes(identity.user.id, Object.keys(allClinics));
+          if (!cancelled) setFormSubmissions(Object.fromEntries(intakes.map((s) => [s.id, s])));
+        } catch {
+          // Keep whatever cards are already shown; manual rehydrate still works.
         }
       } catch (e) {
         // A failed REFRESH keeps the already-rendered data and reports through the
@@ -956,11 +982,15 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         if (!saved) throw new backend.BackendError("validationFailed");
         return token;
       },
-      patientFormSubmissionsFor: (identity) => submissionsForAccount(formSubmissions, identity),
+      // Demo scopes per identity (localStorage key); live scopes per data silo — the
+      // server stamps submissions with ownerType/ownerId, matching iOS and the rules.
+      patientFormSubmissionsFor: (identity) =>
+        live ? submissionsForSilo(formSubmissions, identity) : submissionsForAccount(formSubmissions, identity),
       approvePatientFormSubmission: (submissionID, draft, identity) => {
         // Scope check mirrors the selector: only the generating account may act on a card.
         const sub = formSubmissions[submissionID];
-        if (!sub || sub.accountKey !== formLinkAccountKey(identity)) throw new backend.BackendError("notFound");
+        const scopeKey = live ? siloAccountKey(identity) : formLinkAccountKey(identity);
+        if (!sub || sub.accountKey !== scopeKey) throw new backend.BackendError("notFound");
         // Same eager-create + mirror shape as createPatient above (Strict Mode: mint outside
         // the updater). One action, create first: a validation/permission throw must leave
         // the pending card intact for another attempt.
@@ -977,7 +1007,8 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
       },
       declinePatientFormSubmission: (submissionID, identity) => {
         const sub = formSubmissions[submissionID];
-        if (!sub || sub.accountKey !== formLinkAccountKey(identity)) return;
+        const scopeKey = live ? siloAccountKey(identity) : formLinkAccountKey(identity);
+        if (!sub || sub.accountKey !== scopeKey) return;
         dropFormSubmission(submissionID);
       },
       createPatientForAppointment: (apptId, draft, identity) => {

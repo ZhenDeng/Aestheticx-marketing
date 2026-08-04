@@ -13,11 +13,27 @@ import { emptyDraft, type Identity, type PatientDraft } from "./types";
 export const PATIENT_FORM_LINKS_KEY = "ax.patientFormLinks";
 export const PATIENT_FORM_SUBMISSIONS_KEY = "ax.patientFormSubmissions";
 
-/** The account scope a link belongs to: user id + practising identity (role/clinic context).
- *  Only this exact account sees the resulting pending-review cards — the same user practising
- *  under a different role or clinic does not. */
+/** The account scope a DEMO link belongs to: user id + practising identity (role/clinic
+ *  context). Only this exact account sees the resulting pending-review cards — the same
+ *  user practising under a different role or clinic does not. */
 export function formLinkAccountKey(identity: Identity): string {
   return `${identity.user.id}|${identityKey(identity)}`;
+}
+
+/** The identity's data silo as `${ownerType}:${ownerId}` — the ownerFor rule patients
+ *  use: clinic context → the clinic, independent doctor → the doctor, else the nurse. */
+export function siloOwnerParts(identity: Identity): { type: "doctor" | "nurse" | "clinic"; id: string } {
+  if (identity.context.kind === "clinic") return { type: "clinic", id: identity.context.clinic.id };
+  if (identity.role === "doctor") return { type: "doctor", id: identity.user.id };
+  return { type: "nurse", id: identity.user.id };
+}
+
+/** LIVE scope key (round 2): server-backed submissions are stamped with the generating
+ *  silo, so live cards are shared silo-wide (clinic members see clinic cards — matching
+ *  iOS and the Firestore rules), unlike the demo's per-identity key. */
+export function siloAccountKey(identity: Identity): string {
+  const owner = siloOwnerParts(identity);
+  return `${owner.type}:${owner.id}`;
 }
 
 export interface PatientFormLink {
@@ -174,11 +190,23 @@ export function removePatientFormSubmission(storage: Storage, id: string): void 
   }
 }
 
-/** The pending cards this identity may see: exact account-key match, newest first. */
+/** The pending cards this identity may see in DEMO: exact account-key match, newest first. */
 export function submissionsForAccount(
   submissions: Record<string, PatientFormSubmission>, identity: Identity,
 ): PatientFormSubmission[] {
-  const key = formLinkAccountKey(identity);
+  return submissionsForKey(submissions, formLinkAccountKey(identity));
+}
+
+/** The pending cards this identity may see in LIVE: silo-key match, newest first. */
+export function submissionsForSilo(
+  submissions: Record<string, PatientFormSubmission>, identity: Identity,
+): PatientFormSubmission[] {
+  return submissionsForKey(submissions, siloAccountKey(identity));
+}
+
+function submissionsForKey(
+  submissions: Record<string, PatientFormSubmission>, key: string,
+): PatientFormSubmission[] {
   return Object.values(submissions)
     .filter((s) => s.accountKey === key)
     .sort((a, b) => b.submittedAt - a.submittedAt);
