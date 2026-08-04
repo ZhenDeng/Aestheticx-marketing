@@ -320,13 +320,16 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                     {imageAttachments(n).length > 0 && <AttachmentThumbStrip photos={imageAttachments(n)} />}
                     <span className="micro">{new Date(n.createdAt).toLocaleDateString()}</span>
                   </span>
-                  <span className="flex flex-none items-center gap-2">
+                  {/* Owner feedback 04/08 bug 2 (mobile): a long "name @ clinic" badge must
+                      shrink and ellipsise, not widen the row past the screen — so this cluster
+                      is shrinkable (min-w-0, no flex-none) and only the kind pill stays rigid. */}
+                  <span className="flex min-w-0 items-center gap-2">
                     {n.kind !== "general" && (
-                      <span className="micro rounded-full border border-line px-2 py-0.5">
+                      <span className="micro flex-none rounded-full border border-line px-2 py-0.5">
                         {n.kind === "treatment" ? "Treatment" : "Aftercare"}
                       </span>
                     )}
-                    <span className="micro">{n.authorBadge}</span>
+                    <span className="micro min-w-0 truncate">{n.authorBadge}</span>
                   </span>
                 </button>
                 {isOpen && (
