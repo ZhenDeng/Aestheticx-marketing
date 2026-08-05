@@ -136,9 +136,11 @@ function AttachmentImage({ a, size, decorative = false }: { a: NoteAttachment; s
 // Spec: list rows with photos show a thumbnail strip beneath the title without opening.
 // The strip sits inside the row-toggle <button>, so it is decorative there — hidden from
 // the accessible name (the note title is the row's label; opening reads the real photos).
+// The fixed 40px tiles wrap onto further lines — a non-wrapping strip grew wider than the
+// row's left column and slid under the kind pill on mobile (owner feedback 04/08).
 export function AttachmentThumbStrip({ photos }: { photos: NoteAttachment[] }) {
   return (
-    <span aria-hidden className="mt-1 flex gap-1">
+    <span aria-hidden className="mt-1 flex flex-wrap gap-1">
       {photos.map((a) => <AttachmentImage key={a.fileID} a={a} size="h-10 w-10" decorative />)}
     </span>
   );
