@@ -312,9 +312,9 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                     if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
                     return next;
                   })}
-                  className="flex w-full items-center justify-between gap-3 text-left"
+                  className="flex w-full flex-col items-start gap-1.5 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
-                  <span className="min-w-0">
+                  <span className="min-w-0 max-w-full">
                     <span className="block truncate font-medium text-ink">{notePreview(n)}</span>
                     {/* Spec: photo notes show a thumbnail strip in the list without being opened. */}
                     {imageAttachments(n).length > 0 && <AttachmentThumbStrip photos={imageAttachments(n)} />}
@@ -322,8 +322,10 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                   </span>
                   {/* Owner feedback 04/08 bug 2 (mobile): a long "name @ clinic" badge must
                       shrink and ellipsise, not widen the row past the screen — so this cluster
-                      is shrinkable (min-w-0, no flex-none) and only the kind pill stays rigid. */}
-                  <span className="flex min-w-0 items-center gap-2">
+                      is shrinkable (min-w-0, no flex-none) and only the kind pill stays rigid.
+                      A phone row cannot also fit a photo strip alongside, so the whole cluster
+                      drops to its own line below the title/photos until the sm breakpoint. */}
+                  <span className="flex min-w-0 max-w-full items-center gap-2">
                     {n.kind !== "general" && (
                       <span className="micro flex-none rounded-full border border-line px-2 py-0.5">
                         {n.kind === "treatment" ? "Treatment" : "Aftercare"}
