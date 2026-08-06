@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
-import { patientPermissions } from "@/lib/demo/backend";
+import { activePremise, patientPermissions, resolvePremise } from "@/lib/demo/backend";
 import { doctorRequestStats, rankDoctors, mostRecentlyRequestedDoctor } from "@/lib/demo/doctorRanking";
 import { type MedicationItem, type ProductCategory } from "@/lib/demo/types";
 // Clause 68C route selector (round 6): exactly the five options, never pre-chosen — the nurse
@@ -172,6 +172,9 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [doctorId, setDoctorId] = useState<string>("");
+  // null = "not touched on this form", so the default keeps tracking the profile / the request's
+  // own stamp until the clinician actually picks something (owner feedback 06/08).
+  const [premiseId, setPremiseId] = useState<string | null>(null);
   // iOS ProductPickerView loads recently-used onAppear (device-local store).
   // loadRecentlyUsed is SSR-guarded (returns [] without window), so a lazy
   // initializer is safe and avoids an effect + extra render.
@@ -235,6 +238,21 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
   const editingPending = editing && editRequest?.status === "pending";
   const me = identity;
 
+  // Premises of administration (owner feedback 06/08). The stamped location is chosen HERE
+  // rather than inherited from a selection made earlier on the dashboard or in Profile — that
+  // indirection is what let a request go out with the wrong address. Independent identities
+  // only: a clinic-context request deliberately stamps null so the document prints the
+  // CLINIC's premises (see premiseForCapture / clinicRequestCarriesNoPremise).
+  const profile = store.profileForUser(me.user.id);
+  const picksPremise = me.context.kind === "independent" && profile.premises.length > 0;
+  // Editing preselects the stamp the request already carries, so saving without touching the
+  // field leaves the address exactly as it was; a legacy request with no stamp falls back to
+  // the profile's active premise.
+  const defaultPremiseId =
+    (editing ? editRequest?.premise?.id : undefined) ?? activePremise(profile)?.id ?? "";
+  const chosenPremiseId = premiseId ?? defaultPremiseId;
+  const chosenPremise = resolvePremise(profile, chosenPremiseId) ?? activePremise(profile);
+
   // Default to the last-requested doctor, else the patient's prescribing doctor, else the
   // top-ranked (most-requested) doctor. A live in-session pick overrides via doctorId.
   const lastRequested = mostRecentlyRequestedDoctor(stats, doctors.map((d) => d.id));
@@ -276,15 +294,18 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
     // Timing is fixed on every submitted item — lines prefilled from an older request
     // (blank or free-text timing) are normalised here too.
     const items = lines.map((l) => ({ ...l.item, timing: REQUEST_ITEM_TIMING }));
+    // Only send a premise when this form actually offers the choice: a clinic-context request
+    // must keep stamping null, and an account with no premises has nothing to name.
+    const premise = picksPremise ? { premiseId: chosenPremiseId } : {};
     if (editing && editRequest) {
       // Pending → edit in place (status stays pending); needsEdit → resubmit (re-opens review).
       if (editRequest.status === "pending") {
-        store.editPendingRequest({ requestID: editRequest.id, items, identity: me });
+        store.editPendingRequest({ requestID: editRequest.id, items, identity: me, ...premise });
       } else {
-        store.resubmitRequest({ requestID: editRequest.id, items, identity: me });
+        store.resubmitRequest({ requestID: editRequest.id, items, identity: me, ...premise });
       }
     } else {
-      store.submitRequest({ patientID: id, doctorID: chosenDoctor, items, identity: me });
+      store.submitRequest({ patientID: id, doctorID: chosenDoctor, items, identity: me, ...premise });
     }
     router.push(`/app/patients/${id}`);
   }
@@ -401,6 +422,38 @@ export default function RequestBuilderPage({ params }: { params: Promise<{ id: s
         )}
         {editing && <span className="mt-1 block text-xs text-ink-faint">The addressed doctor can’t change while editing.</span>}
       </label>
+
+      {/* Owner feedback 06/08: shown right above Submit so the address that will print is
+          visible before submitting, instead of being inherited from another page. */}
+      {picksPremise && (
+        <div className="mt-5 max-w-md">
+          {profile.premises.length > 1 ? (
+            <label className="block">
+              <span className="micro">Location</span>
+              <select
+                aria-label="Location"
+                value={chosenPremiseId}
+                onChange={(e) => setPremiseId(e.target.value)}
+                className="mt-1 w-full rounded-field border border-line bg-card px-3 py-2 text-ink"
+              >
+                {profile.premises.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — {p.address}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            // One premise: nothing to choose, but still state it — seeing the address is the
+            // point, and a single-option dropdown would be a dead control.
+            <>
+              <span className="micro">Location</span>
+              <p className="mt-1 text-sm text-ink">{chosenPremise?.name} — {chosenPremise?.address}</p>
+            </>
+          )}
+          <p className="mt-1 text-xs text-ink-faint">
+            Printed on the authorisation as the premises of administration.
+          </p>
+        </div>
+      )}
 
       <div className="mt-6 flex gap-3">
         <button type="button" onClick={submit} disabled={!canSubmit}

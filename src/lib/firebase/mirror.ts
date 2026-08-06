@@ -4,7 +4,16 @@ import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { firestore, functions } from "./client";
 import { encodeAuthRequest, encodeMedication, encodeNote, encodePatientForCreate, encodePatientEdits, encodeForm, encodeNoteTemplate, encodeFollowUpTask } from "./mappers";
-import type { AppointmentReminderLead, AuthorisationRequest, MedicationItem, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
+import type { AppointmentReminderLead, AuthorisationRequest, MedicationItem, Note, NoteTemplate, FollowUpTask, FollowUpSettings, FollowUpStatus, Patient, Premise, TreatmentMedication, SignedFormRecord } from "@/lib/demo/types";
+
+/** The premise field for an edit write — present ONLY when the caller re-stamped (06/08).
+ *  Sending it unconditionally would add `premise` to the update's affected keys on every
+ *  items-only edit, which firestore.rules rejects for any session still on the pre-06/08
+ *  rules. `undefined` therefore means "don't touch it", not "clear it". */
+function premiseWrite(premise: Premise | null | undefined): { premise?: unknown } {
+  if (premise === undefined) return {};
+  return { premise: premise ? { id: premise.id, name: premise.name, address: premise.address } : null };
+}
 
 // Direct creates (rules-enforced), matching iOS LiveBackend.
 export async function mirrorCreateRequest(request: AuthorisationRequest): Promise<void> {
@@ -118,10 +127,11 @@ export async function mirrorBackfillCooperationRelationships(): Promise<{ create
 
 // The nurse's edit-and-resubmit is a direct client update (not a Function): the rules allow
 // the raising nurse to change items + flip status needsEdit → pending, and nothing else.
-export async function mirrorResubmitRequest(requestId: string, items: MedicationItem[]): Promise<void> {
+export async function mirrorResubmitRequest(requestId: string, items: MedicationItem[], premise?: Premise | null): Promise<void> {
   await updateDoc(doc(firestore(), "authRequests", requestId), {
     items: items.map(encodeMedication),
     status: "pending",
+    ...premiseWrite(premise),
   });
 }
 
@@ -129,9 +139,10 @@ export async function mirrorResubmitRequest(requestId: string, items: Medication
 // the rules allow for the raising nurse — items ONLY, status untouched (stays pending). If the
 // doctor has approved/returned in the meantime the request is no longer pending and the rule
 // rejects this write (the "actioned elsewhere" guard), surfaced as the lastSyncError banner.
-export async function mirrorEditPendingRequest(requestId: string, items: MedicationItem[]): Promise<void> {
+export async function mirrorEditPendingRequest(requestId: string, items: MedicationItem[], premise?: Premise | null): Promise<void> {
   await updateDoc(doc(firestore(), "authRequests", requestId), {
     items: items.map(encodeMedication),
+    ...premiseWrite(premise),
   });
 }
 
