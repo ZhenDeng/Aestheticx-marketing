@@ -30,6 +30,9 @@ vi.mock("@/lib/demo/store", () => ({
     submitRequest,
     editPendingRequest: vi.fn(),
     resubmitRequest: vi.fn(),
+    // 06/08: the form reads the profile to offer the premises-of-administration picker. No
+    // premises here, so the Location field stays hidden and this test is unaffected by it.
+    profileForUser: () => ({ ahpra: "", abn: "", phone: "", address: "", principalPlace: "", premises: [] }),
   }),
 }));
 
