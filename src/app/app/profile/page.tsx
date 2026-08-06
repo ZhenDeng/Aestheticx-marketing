@@ -8,7 +8,7 @@ import { avatarFileError } from "@/lib/demo/avatarFile";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities } from "@/lib/demo/identity";
 import { identityBadge, type ClinicRef, type Identity, type Premise, type Role, type UserProfile, type UserProfileEdit } from "@/lib/demo/types";
-import { activePremise, premisesAfterDelete, premisesAfterSave, premisesAfterSelect } from "@/lib/demo/backend";
+import { activePremise, premisesAfterDelete, premisesAfterSave, premisesAfterSelect, premisesAfterSetDefault } from "@/lib/demo/backend";
 import { identityKey } from "@/lib/demo/identityPrefs";
 import { landingFor } from "@/lib/demo/authRedirect";
 import { tintStyle } from "@/lib/demo/tint";
@@ -501,6 +501,11 @@ function PremisesSection({ me, profile }: { me: Identity; profile: UserProfile }
     }
     apply(() => premisesAfterDelete(profile, id));
   }
+  // 06/08: the Default badge used to be pinned to whichever premise was created first, with
+  // nothing anywhere to move it. Separate from `select` on purpose — see premisesAfterSetDefault.
+  function setDefault(id: string) {
+    apply(() => premisesAfterSetDefault(profile, id));
+  }
   function select(id: string) {
     if (id === active?.id) return;
     setError(null);
@@ -552,7 +557,10 @@ function PremisesSection({ me, profile }: { me: Identity; profile: UserProfile }
                   {editing?.id === p.id ? (
                     <PremiseForm draft={editing} onChange={setEditing} onSave={save} onCancel={() => setEditing(null)} />
                   ) : (
-                    <div className="flex items-start justify-between gap-3">
+                    // Three actions do not fit beside the name on a phone — they squeezed
+                    // "Sarah Chen Aesthetics" down to "Sarah". Stack them under the premise on
+                    // mobile and restore the side-by-side row from sm up.
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                       <button type="button" onClick={() => select(p.id)} aria-pressed={on} className="flex min-w-0 flex-1 items-start gap-3 text-left">
                         <span aria-hidden className="flex-none text-base" style={{ color: on ? "var(--color-tint)" : "var(--color-line)" }}>
                           {on ? "●" : "○"}
@@ -562,7 +570,10 @@ function PremisesSection({ me, profile }: { me: Identity; profile: UserProfile }
                           <span className="block text-sm text-ink-soft">{p.address}</span>
                         </span>
                       </button>
-                      <div className="flex flex-none gap-2">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 sm:justify-end">
+                        {p.id !== profile.defaultPremiseId && (
+                          <button onClick={() => setDefault(p.id)} className="text-sm text-ink-soft hover:text-ink">Set as default</button>
+                        )}
                         <button onClick={() => { setError(null); setEditing(p); }} className="text-sm text-ink-soft hover:text-ink">Edit</button>
                         <button onClick={() => remove(p.id)} className="text-sm text-ink-soft hover:text-ink" disabled={profile.premises.length <= 1}
                           style={profile.premises.length <= 1 ? { opacity: 0.4 } : undefined}>
