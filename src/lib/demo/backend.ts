@@ -404,6 +404,9 @@ export interface SubmitRequestInput {
   doctorID: string;
   items: MedicationItem[];
   identity: Identity;
+  /** Premise chosen ON THE REQUEST FORM (owner feedback 06/08). Absent → the profile's active
+   *  premise, i.e. the pre-06/08 behaviour. Ignored under a clinic identity, which stamps null. */
+  premiseId?: string;
 }
 
 // A call still on the books. Cancelled/completed/noShow end the grant the moment the doctor
@@ -461,8 +464,10 @@ export function submitRequest(
   // Round 6: an independent nurse's active premise is STAMPED onto the request at
   // submission (immutable afterwards). Clinic-context requests stamp null — the
   // generated document always uses the clinic's address (backend buildApprovalDocumentModel).
+  // 06/08: the form may name the premise explicitly; an absent or stale choice falls back to
+  // the profile's active premise so a request is never stamped with a blank address.
   const premise = input.identity.context.kind === "independent"
-    ? activePremise(profileForUser(state, input.identity.user.id))
+    ? stampedPremise(state, input.identity, input.premiseId)
     : null;
   const request: AuthorisationRequest = {
     id: makeID("req"),
@@ -715,12 +720,32 @@ export interface ResubmitRequestInput {
   requestID: string;
   items: MedicationItem[];
   identity: Identity;
+  /** Re-stamp the premise (owner feedback 06/08). Absent → the existing stamp is kept
+   *  untouched, so an items-only edit writes no premise at all. */
+  premiseId?: string;
 }
 
 // The nurse edits a doctor-returned request and sends it back for review (port of iOS
 // InMemoryBackend.resubmitRequest). Only the raising nurse may resubmit, only while the
 // request is in needsEdit, and only the items change — the addressed doctor is fixed
 // (Firestore rules allow the client update to touch items + status only).
+/** The premise an independent-context request is stamped with: the caller's explicit choice,
+ *  else the profile's active premise. A stale id (deleted in another tab) falls back rather
+ *  than blanking the stamp — see resolvePremise. */
+function stampedPremise(state: DemoState, identity: Identity, premiseId: string | undefined): Premise | null {
+  const profile = profileForUser(state, identity.user.id);
+  return resolvePremise(profile, premiseId) ?? activePremise(profile);
+}
+
+/** Re-stamp patch shared by the two edit paths. Only when the caller passed a choice — an
+ *  items-only edit must leave `premise` untouched, so the live mirror writes no premise key and
+ *  the update keeps the affected-key set it had before 06/08. Never under a clinic identity: a
+ *  clinic request's null premise is the signal meaning "use the clinic's address". */
+function premisePatch(request: AuthorisationRequest, state: DemoState, input: ResubmitRequestInput): { premise?: Premise | null } {
+  if (!input.premiseId || request.context.kind !== "independent") return {};
+  return { premise: stampedPremise(state, input.identity, input.premiseId) };
+}
+
 export function resubmitRequest(state: DemoState, input: ResubmitRequestInput): DemoState {
   const request = state.requests[input.requestID];
   if (!request) throw new BackendError("notFound");
@@ -735,7 +760,7 @@ export function resubmitRequest(state: DemoState, input: ResubmitRequestInput): 
     ...state,
     requests: {
       ...state.requests,
-      [input.requestID]: { ...request, items: input.items, status: "pending" },
+      [input.requestID]: { ...request, items: input.items, status: "pending", ...premisePatch(request, state, input) },
     },
   };
 }
@@ -761,7 +786,7 @@ export function editPendingRequest(state: DemoState, input: ResubmitRequestInput
     ...state,
     requests: {
       ...state.requests,
-      [input.requestID]: { ...request, items: input.items },
+      [input.requestID]: { ...request, items: input.items, ...premisePatch(request, state, input) },
     },
   };
 }
@@ -1418,6 +1443,20 @@ export function updateProfile(state: DemoState, userID: string, edits: UserProfi
 export function activePremise(profile: UserProfile): Premise | null {
   const byId = (id?: string) => profile.premises.find((p) => p.id === id);
   return byId(profile.selectedPremiseId) ?? byId(profile.defaultPremiseId) ?? profile.premises[0] ?? null;
+}
+
+/**
+ * The premise with this id, or null when the id is absent/unknown — e.g. it was deleted in
+ * another tab between the request form loading and submitting (owner feedback 06/08).
+ *
+ * Callers fall back to `activePremise` rather than stamping nothing: a blank premises of
+ * administration blocks the Clause 68C direction export downstream, so "no premise" is a worse
+ * outcome than "the premise that was active anyway". firestore.rules enforces the same rule
+ * from the other side — a re-stamp may replace the field but never remove it.
+ */
+export function resolvePremise(profile: UserProfile, premiseId: string | undefined): Premise | null {
+  if (!premiseId) return null;
+  return profile.premises.find((p) => p.id === premiseId) ?? null;
 }
 
 const blankStr = (v: string) => v.trim() === "";
