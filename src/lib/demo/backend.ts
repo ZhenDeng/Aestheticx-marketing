@@ -1499,6 +1499,22 @@ export function premisesAfterSelect(profile: UserProfile, premiseId: string): Us
   return { selectedPremiseId: premiseId };
 }
 
+/**
+ * Profile patch that moves the DEFAULT premise (owner feedback 06/08: "the default address
+ * cannot be changed"). Until now `defaultPremiseId` was written in exactly two places — the
+ * first premise ever saved, and the repoint after a delete — so the "Default" badge was pinned
+ * to whichever premise happened to be created first, with no way to move it.
+ *
+ * Deliberately separate from `premisesAfterSelect`: the default is the FALLBACK `activePremise`
+ * uses when nothing is selected (a fresh session, or the selected premise having been deleted),
+ * while the selection is "the one I'm working from now". Collapsing them would silently change
+ * that fallback every time the clinician switched location for an afternoon.
+ */
+export function premisesAfterSetDefault(profile: UserProfile, premiseId: string): UserProfileEdit {
+  if (!profile.premises.some((p) => p.id === premiseId)) throw new BackendError("notFound");
+  return { defaultPremiseId: premiseId };
+}
+
 // Per-identity address (owner feedback #2). Key: `${uid}:${identityKey}` so the same user
 // under a different role/context can hold a different address. Falls back to the per-user
 // default in profileByUser (e.g. the value seeded at createUser) until an override is set.
