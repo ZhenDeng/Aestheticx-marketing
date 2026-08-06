@@ -40,11 +40,13 @@ interface StoreValue {
   activeEmergencyAuthorisations: (patientID: string) => ReturnType<typeof emergency.activeEmergencyAuthorisationsForPatient>;
   pendingRequestsForDoctor: (doctorID: string) => ReturnType<typeof backend.pendingRequestsForDoctor>;
   openRequestsForPatient: (patientID: string, nurseID: string) => ReturnType<typeof backend.openRequestsForPatient>;
-  submitRequest: (input: { patientID: string; doctorID: string; items: MedicationItem[]; identity: Identity }) => void;
+  // premiseId (06/08): the premise of administration chosen ON THE REQUEST FORM. Absent keeps
+  // the pre-06/08 behaviour — the profile's currently active premise.
+  submitRequest: (input: { patientID: string; doctorID: string; items: MedicationItem[]; identity: Identity; premiseId?: string }) => void;
   approveRequest: (requestID: string, identity: Identity) => void;
   requireEdit: (requestID: string, identity: Identity) => void;
-  resubmitRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity }) => void;
-  editPendingRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity }) => void;
+  resubmitRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity; premiseId?: string }) => void;
+  editPendingRequest: (input: { requestID: string; items: MedicationItem[]; identity: Identity; premiseId?: string }) => void;
   withdrawRequest: (requestID: string, identity: Identity) => void;
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
@@ -616,21 +618,32 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         // auditNow: demo writes the §21 `request_edit_requested` entry with the session clock; live
         // passes undefined so the requireEdit Cloud Function + hydrate own the durable entry.
         applyAndMirror((s) => backend.requireEdit(s, requestID, id, live ? undefined : writeNow()), (m) => m.mirrorRequireEdit(requestID)),
-      resubmitRequest: (input) =>
+      resubmitRequest: (input) => {
+        // The premise the reducer will stamp, read off a run against the SAME state the local
+        // apply starts from, so the mirrored doc and the local copy can never disagree.
+        // undefined when the caller did not re-stamp — that keeps `premise` out of the update's
+        // affected keys entirely, which is what lets an items-only edit keep working for a
+        // session still on the pre-06/08 rules.
+        const restamped = input.premiseId
+          ? backend.resubmitRequest(state, input).requests[input.requestID]?.premise ?? null
+          : undefined;
         applyAndMirror(
           (s) => backend.resubmitRequest(s, input),
-          (m) => m.mirrorResubmitRequest(input.requestID, input.items),
-        ),
+          (m) => m.mirrorResubmitRequest(input.requestID, input.items, restamped),
+        );
+      },
       // Amend an untouched pending request in place — items only, status stays pending
       // (Tier 3 #7). Eager-validate FIRST (like confirmAppointment): if the doctor approved/
       // returned the request between opening the editor and submitting, backend.editPendingRequest
       // throws `notPermitted` — doing it before applyAndMirror keeps that throw in the event
       // handler, not inside the setState updater (a render-phase crash with no error boundary).
       editPendingRequest: (input) => {
-        backend.editPendingRequest(state, input); // eager validate — throws synchronously if actioned elsewhere
+        const validated = backend.editPendingRequest(state, input); // eager validate — throws synchronously if actioned elsewhere
+        // Same reasoning as resubmitRequest: reuse the validated run rather than recomputing.
+        const restamped = input.premiseId ? validated.requests[input.requestID]?.premise ?? null : undefined;
         applyAndMirror(
           (s) => backend.editPendingRequest(s, input),
-          (m) => m.mirrorEditPendingRequest(input.requestID, input.items),
+          (m) => m.mirrorEditPendingRequest(input.requestID, input.items, restamped),
         );
       },
       withdrawRequest: (requestID, id) =>
