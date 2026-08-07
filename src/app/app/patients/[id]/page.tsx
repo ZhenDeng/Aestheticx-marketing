@@ -16,6 +16,7 @@ import { invoiceNumber } from "@/lib/demo/invoicePdf";
 import { TreatmentNoteForm } from "@/components/app/TreatmentNoteForm";
 import { AftercareForm } from "@/components/app/AftercareForm";
 import { NoteAttachmentsInput, NoteAttachmentList, AttachmentThumbStrip } from "@/components/app/NoteAttachments";
+import { NoteAmendment } from "@/components/app/NoteAmendment";
 import { PatientAvatarPicker } from "@/components/app/PatientAvatar";
 import { useConsultCall } from "@/components/app/ConsultCall";
 import { DirectionDialog } from "@/components/app/DirectionDialog";
@@ -262,7 +263,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         {showNotes && (
           <>
         {(perms.canWriteTreatmentNote || canAftercare) && (
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-2 flex items-center gap-2">
             {perms.canWriteTreatmentNote && (
               <button onClick={() => { setShowTreatment((v) => !v); setShowAftercare(false); }}
                       className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
@@ -286,39 +287,49 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         )}
 
         {perms.canWriteGeneralNote && (
-          <form onSubmit={addNote} className="mt-3">
+          <form onSubmit={addNote} className="mt-2">
             <textarea
               value={noteBody}
               onChange={(e) => setNoteBody(e.target.value)}
               placeholder="Add a general note…"
               rows={2}
-              className="w-full rounded-inner border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint"
+              className="w-full rounded-inner border border-line bg-card px-3 py-1.5 text-sm leading-snug text-ink outline-none focus:border-tint"
             />
-            <NoteAttachmentsInput patientID={id} value={noteAttachments} onChange={setNoteAttachments} />
-            <button type="submit" className="mt-2 rounded-btn px-4 py-2 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
-              Save note
-            </button>
+            {/* Attach + Save share one row: the composer sat three rows tall above the
+                stream, pushing the notes themselves below the fold (owner feedback 06/08). */}
+            <div className="mt-1.5 flex items-start gap-2">
+              <NoteAttachmentsInput patientID={id} value={noteAttachments} onChange={setNoteAttachments} className="" />
+              <button type="submit" className="flex-none rounded-btn px-4 py-1.5 text-sm font-medium text-card" style={{ background: "var(--color-tint)" }}>
+                Save note
+              </button>
+            </div>
           </form>
         )}
 
-        <ul className="mt-4 flex flex-col gap-3">
+        {/* Owner feedback 06/08: the note stream reads as a dense list, not a stack of cards
+            — tight row padding, hairline gaps, and snug leading inside the open note. */}
+        <ul className="mt-2 flex flex-col gap-1">
           {notes.map((n) => {
             const isOpen = expanded.has(n.id);
             return (
-              <li key={n.id} className="rounded-inner border border-line bg-card px-4 py-3">
+              <li key={n.id} className="rounded-inner border border-line bg-card px-3 py-1.5">
                 <button
                   onClick={() => setExpanded((prev) => {
                     const next = new Set(prev);
                     if (next.has(n.id)) next.delete(n.id); else next.add(n.id);
                     return next;
                   })}
-                  className="flex w-full flex-col items-start gap-1.5 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                  className="flex w-full flex-col items-start gap-0.5 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
-                  <span className="min-w-0 max-w-full">
+                  <span className="min-w-0 max-w-full leading-snug">
                     <span className="block truncate font-medium text-ink">{notePreview(n)}</span>
                     {/* Spec: photo notes show a thumbnail strip in the list without being opened. */}
                     {imageAttachments(n).length > 0 && <AttachmentThumbStrip photos={imageAttachments(n)} />}
-                    <span className="micro">{new Date(n.createdAt).toLocaleDateString()}</span>
+                    <span className="micro">
+                      {new Date(n.createdAt).toLocaleDateString()}
+                      {/* An amendment is part of the record: say the note was changed, and when. */}
+                      {n.editedAt !== undefined && ` · edited ${new Date(n.editedAt).toLocaleDateString()}`}
+                    </span>
                   </span>
                   {/* Owner feedback 04/08 bug 2 (mobile): a long "name @ clinic" badge must
                       shrink and ellipsise, not widen the row past the screen — so this cluster
@@ -335,11 +346,12 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                   </span>
                 </button>
                 {isOpen && (
-                  <div className="mt-2 border-t border-line pt-2">
-                    <p className="whitespace-pre-wrap text-sm text-ink-soft">{n.body}</p>
+                  <div className="mt-1.5 border-t border-line pt-1.5">
+                    {/* Body + the same-day Edit affordance (owner feedback 06/08). */}
+                    <NoteAmendment note={n} identity={me} />
                     {(n.attachments?.length ?? 0) > 0 && <NoteAttachmentList attachments={n.attachments!} />}
                     {n.medications.length > 0 && (
-                      <ul className="mt-2 flex flex-col gap-1">
+                      <ul className="mt-1.5 flex flex-col gap-0.5">
                         {/* Index key is safe: TreatmentMedication has no stable id and this list is render-only (never reordered/deleted). */}
                         {n.medications.map((m, i) => (
                           <li key={i} className="text-xs text-ink-faint">

@@ -1954,6 +1954,70 @@ function appendNote(state: DemoState, note: Note): { state: DemoState; note: Not
   };
 }
 
+// --- Same-day amendment window (owner feedback 06/08) ------------------------------
+//
+// A clinical note is a record, not a document: the author gets the rest of the day they
+// wrote it to correct themselves, and from the next calendar day it is finalized and
+// read-only for everyone. Firestore enforces the same window server-side (notes are
+// otherwise append-only) — this is the client's copy of that rule, not the only guard.
+
+/**
+ * "yyyy-mm-dd" in the VIEWER's own timezone. Deliberately NOT isoDay (UTC): the window
+ * turns on the clinician's midnight, and in Australia the UTC day rolls over mid-morning —
+ * a note written before that would finalize the same morning it was written.
+ */
+export function localDayKey(epochMs: number): string {
+  const d = new Date(epochMs);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Whether this identity may still amend this note: its author, on the calendar day it was
+ * written, holding the write permission for its kind. Aftercare records are never amendable
+ * — they log an email that has already left, so editing one would falsify the audit trail.
+ */
+export function canAmendNote(state: DemoState, note: Note, identity: Identity, now: number): boolean {
+  if (note.kind === "aftercareRecord") return false;
+  if (note.authorID !== identity.user.id) return false;
+  if (localDayKey(note.createdAt) !== localDayKey(now)) return false;
+  const patient = state.patients[note.patientID];
+  if (!patient) return false;
+  const permissions = patientPermissions(identity, patient);
+  return note.kind === "treatment" ? permissions.canWriteTreatmentNote : permissions.canWriteGeneralNote;
+}
+
+export interface AmendNoteInput {
+  patientID: string;
+  noteID: string;
+  title: string;
+  body: string;
+  identity: Identity;
+}
+
+/**
+ * Correct a note's wording inside the same-day window. Only title + body move: the
+ * medications, consumed authorisations, attachments and author badge are what actually
+ * happened, and the repeats they consumed are already spent. `createdAt` never changes —
+ * `editedAt` records the amendment alongside it.
+ */
+export function amendNote(state: DemoState, input: AmendNoteInput, now: number): { state: DemoState; note: Note } {
+  const list = state.notesByPatient[input.patientID] ?? [];
+  const existing = list.find((n) => n.id === input.noteID);
+  if (!existing) throw new BackendError("notFound");
+  if (!canAmendNote(state, existing, input.identity, now)) throw new BackendError("notPermitted");
+  const note: Note = { ...existing, title: input.title, body: input.body, editedAt: now };
+  return {
+    state: {
+      ...state,
+      notesByPatient: {
+        ...state.notesByPatient,
+        [input.patientID]: list.map((n) => (n.id === note.id ? note : n)),
+      },
+    },
+    note,
+  };
+}
+
 // --- Patient CRUD + merge ---
 
 export const PATIENT_FIELDS: PatientField[] = [

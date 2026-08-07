@@ -129,6 +129,8 @@ export function mapNote(id: string, patientID: string, data: Doc): Note {
       name: str(m.name), batch: str(m.batch), expiry: str(m.expiry), dosage: str(m.dosage),
     })),
     attachments: mapAttachments(data.attachments),
+    // Absent (legacy + never-amended notes) stays undefined — "not amended", not "amended at 0".
+    ...(data.editedAt == null ? {} : { editedAt: toMillis(data.editedAt) }),
     aftercareCategories: strArray(data.aftercareCategories)
       .filter((c): c is AftercareCategory => (AFTERCARE_CATEGORIES as readonly string[]).includes(c)),
   };
@@ -478,6 +480,8 @@ export function encodeNote(n: Note): Doc {
     attachments: (n.attachments ?? []).map((a) => ({ fileId: a.fileID, displayName: a.displayName, mimeType: a.mimeType })),
     // Aftercare-only fields — omitted on general/treatment notes (iOS parity, no schema noise).
     ...(n.aftercareCategories !== undefined && { aftercareCategories: n.aftercareCategories }),
+    // editedAt is deliberately NOT written here: a note is never born amended, and the
+    // create rule's hasOnly() key list would reject the extra key. mirrorAmendNote adds it.
   };
 }
 

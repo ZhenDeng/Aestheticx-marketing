@@ -3,6 +3,7 @@ import {
   emptyState, recordAftercareSend, canSendAftercare, usableAuthorisations, notePreview,
   notesForPatient, visibleNotesForPatient, patientPermissions,
   saveGeneralNote, saveTreatmentNote, isImageAttachment, imageAttachments,
+  amendNote, canAmendNote, localDayKey,
   BackendError,
 } from "@/lib/demo/backend";
 import type { DemoState, Identity, Note, NoteAttachment, Patient } from "@/lib/demo/types";
@@ -289,6 +290,106 @@ describe("treatment note without an authorisation (rule 1)", () => {
       { patientID: "p1", tickedIDs: [], title: "", body: "x", medications: [], identity: clinicAdmin },
       1_000,
     )).toThrow(BackendError);
+  });
+});
+
+// Owner feedback 2026-08-06: a note stays editable by its author for the calendar day it was
+// written, and is finalized from the next day. Times are built with the LOCAL Date
+// constructor so the boundary cases hold in any timezone the suite runs in.
+describe("same-day amendment window", () => {
+  const MORNING = new Date(2026, 7, 6, 9, 0).getTime();      // 6 Aug, 09:00 local
+  const LATE = new Date(2026, 7, 6, 23, 59).getTime();       // same day, one minute to go
+  const NEXT_DAY = new Date(2026, 7, 7, 0, 1).getTime();     // 7 Aug, 00:01 local
+
+  function withNote(note: Partial<Note> = {}): { state: DemoState; note: Note } {
+    const p = nursePatient("p1", "u-sarah");
+    const n: Note = {
+      id: "n1", patientID: "p1", kind: "general", title: "Review", body: "Original wording.",
+      createdAt: MORNING, authorID: "u-sarah", authorBadge: "RN",
+      consumedAuthorisationIDs: [], medications: [], ...note,
+    };
+    return { state: { ...stateWith(p), notesByPatient: { p1: [n] } }, note: n };
+  }
+
+  it("rolls the day at LOCAL midnight, not UTC", () => {
+    expect(localDayKey(MORNING)).toBe(localDayKey(LATE));
+    expect(localDayKey(LATE)).not.toBe(localDayKey(NEXT_DAY));
+  });
+
+  it("lets the author correct the wording until midnight, stamping editedAt", () => {
+    const { state, note } = withNote();
+    expect(canAmendNote(state, note, nurse, LATE)).toBe(true);
+    const { state: next, note: amended } = amendNote(
+      state, { patientID: "p1", noteID: "n1", title: "Review call", body: "Corrected wording.", identity: nurse }, LATE,
+    );
+    expect(amended.title).toBe("Review call");
+    expect(amended.body).toBe("Corrected wording.");
+    expect(amended.editedAt).toBe(LATE);
+    expect(amended.createdAt).toBe(MORNING); // the record keeps the day it was filed under
+    expect(notesForPatient(next, "p1")).toHaveLength(1); // amended in place, not appended
+  });
+
+  it("finalizes the note on the next calendar day", () => {
+    const { state, note } = withNote();
+    expect(canAmendNote(state, note, nurse, NEXT_DAY)).toBe(false);
+    expect(() => amendNote(
+      state, { patientID: "p1", noteID: "n1", title: "", body: "too late", identity: nurse }, NEXT_DAY,
+    )).toThrow(BackendError);
+  });
+
+  it("keeps what actually happened: medications, consumed repeats and attachments are untouched", () => {
+    const photo: NoteAttachment = { fileID: "f1", displayName: "before.png", mimeType: "image/png" };
+    const { state } = withNote({
+      kind: "treatment", medications: [{ name: "Botox", batch: "B1", expiry: "12/26", dosage: "20u" }],
+      consumedAuthorisationIDs: ["a1"], attachments: [photo],
+    });
+    const { note: amended } = amendNote(
+      state, { patientID: "p1", noteID: "n1", title: "T", body: "b", identity: nurse }, LATE,
+    );
+    expect(amended.medications).toEqual([{ name: "Botox", batch: "B1", expiry: "12/26", dosage: "20u" }]);
+    expect(amended.consumedAuthorisationIDs).toEqual(["a1"]);
+    expect(amended.attachments).toEqual([photo]);
+  });
+
+  it("refuses a colleague with the same write access — amendment is the author's alone", () => {
+    const clinicP: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
+    const authorNote: Note = {
+      id: "n1", patientID: "p1", kind: "general", title: "", body: "b", createdAt: MORNING,
+      authorID: "u-mei", authorBadge: "RN", consumedAuthorisationIDs: [], medications: [],
+    };
+    const colleague: Identity = {
+      user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin",
+      context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+    };
+    const state: DemoState = { ...stateWith(clinicP), notesByPatient: { p1: [authorNote] } };
+    expect(patientPermissions(colleague, clinicP).canWriteGeneralNote).toBe(true); // they COULD write one
+    expect(canAmendNote(state, authorNote, colleague, LATE)).toBe(false);          // but not rewrite this
+  });
+
+  it("never amends an aftercare record — the email has already left", () => {
+    const { state, note } = withNote({ kind: "aftercareRecord" });
+    expect(canAmendNote(state, note, nurse, LATE)).toBe(false);
+  });
+
+  it("refuses an author who no longer holds the write permission for that kind", () => {
+    const clinicP: Patient = { ...nursePatient("p1", "x"), owner: { kind: "clinic", id: "clinic-lumiere" } };
+    const admin: Identity = {
+      user: { id: "u-ava", name: "Ava Lim" }, role: "clinicAdmin",
+      context: { kind: "clinic", clinic: { id: "clinic-lumiere", name: "Lumière Clinic" } },
+    };
+    // A clinic admin never writes treatment notes, so they may not amend one either.
+    const treatment: Note = {
+      id: "n1", patientID: "p1", kind: "treatment", title: "", body: "b", createdAt: MORNING,
+      authorID: "u-ava", authorBadge: "Admin", consumedAuthorisationIDs: [], medications: [],
+    };
+    const state: DemoState = { ...stateWith(clinicP), notesByPatient: { p1: [treatment] } };
+    expect(canAmendNote(state, treatment, admin, LATE)).toBe(false);
+  });
+
+  it("rejects an unknown note", () => {
+    const { state } = withNote();
+    expect(() => amendNote(state, { patientID: "p1", noteID: "nope", title: "", body: "x", identity: nurse }, LATE))
+      .toThrow(BackendError);
   });
 });
 
