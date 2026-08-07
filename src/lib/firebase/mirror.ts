@@ -37,6 +37,15 @@ export async function mirrorCreateNote(patientID: string, note: Note): Promise<v
   await setDoc(doc(firestore(), `patients/${patientID}/notes`, note.id), encodeNote(note));
 }
 
+/** Same-day amendment (owner feedback 06/08). Exactly the three keys firestore.rules admits
+ *  on a note update — the record of what happened (medications, consumed authorisations,
+ *  attachments, author, createdAt) is never rewritten, only the wording. */
+export async function mirrorAmendNote(patientID: string, note: Note): Promise<void> {
+  await updateDoc(doc(firestore(), `patients/${patientID}/notes`, note.id), {
+    title: note.title, body: note.body, editedAt: note.editedAt ?? null,
+  });
+}
+
 // Integrity-critical operations go through the existing Cloud Functions.
 export async function mirrorApproveRequest(requestId: string): Promise<void> {
   await httpsCallable(functions(), "approveRequest")({ requestId });

@@ -51,6 +51,11 @@ interface StoreValue {
   saveGeneralNote: (input: backend.SaveGeneralNoteInput) => void;
   saveTreatmentNote: (input: backend.SaveTreatmentNoteInput) => void;
   sendAftercare: (input: { patientID: string; content: string; medications: TreatmentMedication[]; categories: import("./aftercare").AftercareCategory[]; identity: Identity }) => void;
+  // Same-day amendment window (owner feedback 06/08): the author may correct their own note
+  // until midnight; from the next calendar day it is finalized. `canAmendNote` reads the
+  // window against the session clock so a view never offers an edit the write would reject.
+  canAmendNote: (note: import("./types").Note, identity: Identity) => boolean;
+  amendNote: (input: backend.AmendNoteInput) => void;
   noteTemplatesForOwner: (ownerID: string) => ReturnType<typeof backend.noteTemplatesForOwner>;
   saveNoteTemplate: (template: import("./types").NoteTemplate, identity: Identity) => void;
   deleteNoteTemplate: (id: string, identity: Identity) => void;
@@ -688,6 +693,15 @@ function ModeScopedStoreProvider({ children }: { children: ReactNode }) {
         // mirrored doc agree under Strict Mode's double-invoked updater.
         const { state: next, note } = backend.recordAftercareSend(state, input, writeNow());
         applyAndMirror(() => next, (m) => m.mirrorCreateNote(input.patientID, note));
+      },
+      // Read against the session `now` (demo: the frozen SEED_NOW), so the demo's seeded
+      // notes read as finalized while anything written in-session stays editable.
+      canAmendNote: (note, id) => backend.canAmendNote(state, note, id, now),
+      amendNote: (input) => {
+        // Validate + build eagerly, like saveGeneralNote: Strict Mode double-invokes the
+        // updater, and the mirrored doc must carry the same editedAt as the local copy.
+        const { state: next, note } = backend.amendNote(state, input, writeNow());
+        applyAndMirror(() => next, (m) => m.mirrorAmendNote(input.patientID, note));
       },
       noteTemplatesForOwner: (ownerID) => backend.noteTemplatesForOwner(state, ownerID),
       saveNoteTemplate: (template, identity) =>

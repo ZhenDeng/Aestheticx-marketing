@@ -243,6 +243,11 @@ export interface Note {
   medications: TreatmentMedication[];
   attachments?: NoteAttachment[];        // absent on legacy/aftercare notes
   aftercareCategories?: AftercareCategory[]; // audit trail of an aftercare send
+  /** When the author last amended the note, inside the same-calendar-day window (owner
+   *  feedback 06/08). Absent on a note that was never amended. The note itself keeps its
+   *  original createdAt — that is what the window is measured from, and what the record
+   *  is filed under. */
+  editedAt?: number;
 }
 
 export interface NoteTemplate {

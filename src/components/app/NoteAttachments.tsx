@@ -20,12 +20,15 @@ function readAsDataUrl(file: File): Promise<string> {
 // Composer attachment picker (spec: clinical-notes — photo and file attachments). Photos
 // preview as thumbnails; other files show a renameable display name — renaming touches only
 // displayName, never the minted fileID (the Storage object key).
-export function NoteAttachmentsInput({ patientID, value, onChange }: {
+export function NoteAttachmentsInput({ patientID, value, onChange, className = "mt-3" }: {
   patientID: string;
   value: NoteAttachment[];
   // Functional updates only: add() finishes after slow FileReader awaits, so merging into
   // a render-scope snapshot would lose attachments picked while a previous read ran.
   onChange: Dispatch<SetStateAction<NoteAttachment[]>>;
+  // Spacing override for callers that lay the picker out themselves — the dense general-note
+  // composer puts it on one row with Save (owner feedback 06/08).
+  className?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   // 26/07 feedback (dead-button audit): reading a multi-select of large files takes seconds —
@@ -68,7 +71,7 @@ export function NoteAttachmentsInput({ patientID, value, onChange }: {
   }
 
   return (
-    <div className="mt-3">
+    <div className={className}>
       <label className={`inline-block rounded-btn border border-line px-3 py-1.5 text-sm text-ink-soft ${reading > 0 ? "pointer-events-none opacity-60" : "cursor-pointer hover:border-tint"}`}>
         {reading > 0 ? `Reading ${reading} file${reading === 1 ? "" : "s"}…` : "Attach photo or file"}
         <input type="file" accept={ACCEPT} multiple className="hidden" disabled={reading > 0}
