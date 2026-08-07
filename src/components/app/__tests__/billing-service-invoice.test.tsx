@@ -1,8 +1,8 @@
 // Nurse Invoice page + manual service-invoice composer (spec: manual-service-invoicing,
-// 20/07 feedback): the nurse page is populated (client picker + clinic composer +
-// streams), and any employed practitioner can hand-write a service invoice to their
-// clinic. The store mock runs the REAL reducers over seed state (patient-account
-// test pattern) so interactions exercise true behavior.
+// 20/07 feedback): the nurse page is populated (clinic composer + streams — the client
+// picker left the page 07/08), and any employed practitioner can hand-write a service
+// invoice to their clinic. The store mock runs the REAL reducers over seed state
+// (patient-account test pattern) so interactions exercise true behavior.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -23,7 +23,6 @@ function applyState(updater: (s: DemoState) => DemoState) {
 }
 
 const sarahClinic: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "clinic", clinic: LUMIERE } };
-const sarahIndependent: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
 const voss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
 const solo: Identity = { user: { id: "u-solo", name: "Dr Ines Solo" }, role: "doctor", context: { kind: "independent" } };
 
@@ -78,30 +77,12 @@ beforeEach(() => {
 });
 
 describe("nurse Invoice page", () => {
-  it("lists checkout-eligible clients linking to their file", () => {
-    render(<BillingPage />);
-    const section = screen.getByText("Invoice a client").closest("section")!;
-    // Clinic identity ⇒ the clinic book. Amara "Mara" Boyd is Lumière-owned in the seed.
-    // Each row carries an inline Invoice button plus the link to the client's file.
-    const row = within(section).getByText(/Boyd/).closest("li")!;
-    expect(within(row).getByRole("button", { name: "Invoice" })).toBeInTheDocument();
-    expect(within(row).getByRole("link").getAttribute("href")).toMatch(/^\/app\/patients\//);
-  });
-
-  it("scopes the client list to the active identity (independent book when independent)", () => {
-    currentIdentity = sarahIndependent;
-    render(<BillingPage />);
-    const section = screen.getByText("Invoice a client").closest("section")!;
-    expect(within(section).getByText(/Donovan/)).toBeInTheDocument();
-    expect(within(section).queryByText(/Boyd/)).not.toBeInTheDocument();
-  });
-
-  it("live mode: the client picker stays available alongside the clinic composer", () => {
-    // 26/07: the manual client composer works in live (PDF hand-off), so the picker no
-    // longer hides behind the matrix gate and the old explainer paragraph is gone.
+  // 07/08: the full-book client picker left the Invoice tab — issuing lives on the
+  // client's file, and the tab keeps issued records only (invoice-client-selection test).
+  it("live mode: the clinic composer stays available without the client picker", () => {
     matrixEnabled = false;
     render(<BillingPage />);
-    expect(screen.getByText("Invoice a client")).toBeInTheDocument();
+    expect(screen.queryByText("Invoice a client")).not.toBeInTheDocument();
     expect(screen.getByText("Invoice the clinic")).toBeInTheDocument();
     expect(screen.queryByText(/client invoicing isn.t available in live mode yet/i)).not.toBeInTheDocument();
   });
