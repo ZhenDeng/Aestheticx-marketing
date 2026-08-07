@@ -1,10 +1,9 @@
-// Invoice-page client selection (spec: invoice-client visibility + selection, 2026-07-26):
-// the "Invoice a client" section opens to every clinical role in both modes, and each row
-// expands the manual composer inline so an invoice can be issued without leaving the page.
-// Seed-backed store mock (client-invoice-composer pattern) so patientAccess is the real gate.
+// Owner feedback 07/08 (supersedes invoice-client selection, 2026-07-26): the Invoice tab
+// no longer carries the full-book "Invoice a client" picker — issuing lives on the client's
+// file, and the tab shows issued client invoices only (the Client invoices stream).
+// Seed-backed store mock (client-invoice-composer pattern) kept from the picker tests.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { useSyncExternalStore } from "react";
 import * as backend from "@/lib/demo/backend";
 import { invoicesFor } from "@/lib/demo/invoicing";
@@ -17,7 +16,6 @@ const listeners = new Set<() => void>();
 function applyState(u: (s: DemoState) => DemoState) { demoState = u(demoState); for (const l of listeners) l(); }
 
 const sarahIndependent: Identity = { user: { id: "u-sarah", name: "Sarah Chen" }, role: "nurse", context: { kind: "independent" } };
-const voss: Identity = { user: { id: "u-voss", name: "Dr Elena Voss" }, role: "doctor", context: { kind: "independent" } };
 let currentIdentity: Identity = sarahIndependent;
 let storeMode: { status: "demo" | "ready"; matrixEnabled: boolean } = { status: "demo", matrixEnabled: true };
 
@@ -46,16 +44,23 @@ vi.mock("@/lib/demo/store", () => ({
       clinicEmployments: () => [],
       patientAccess: (p: Patient, id: Identity) => patientAccessLevel(state, id, p),
       createServiceInvoice: vi.fn(),
-      createClientInvoice: (input: backend.CreateClientInvoiceInput, id: Identity) => {
-        const invoice = backend.buildClientInvoice(state, input, id, SEED_NOW);
-        if (storeMode.matrixEnabled) applyState((s) => backend.recordClientInvoice(s, invoice, id, SEED_NOW));
-        return invoice;
-      },
+      createClientInvoice: vi.fn(),
     };
   },
 }));
 
 import BillingPage from "@/app/app/billing/page";
+
+// An invoice Sarah issued to her own client, recorded the way the file composer does it.
+function issueToClaire() {
+  const claire = Object.values(demoState.patients).find((p) => fullName(p) === "Claire Donovan")!;
+  const invoice = backend.buildClientInvoice(demoState, {
+    patientID: claire.id,
+    lines: [{ description: "Consult", amountCents: 10000 }],
+    chargeGst: false, gstIncluded: false,
+  }, sarahIndependent, SEED_NOW);
+  applyState((s) => backend.recordClientInvoice(s, invoice, sarahIndependent, SEED_NOW));
+}
 
 beforeEach(() => {
   demoState = buildSeedState();
@@ -63,43 +68,30 @@ beforeEach(() => {
   storeMode = { status: "demo", matrixEnabled: true };
 });
 
-describe("Invoice a client — selection", () => {
-  it("expands the manual composer inline for the picked client and issues to them", async () => {
+describe("Invoice tab — issued client invoices only (07/08)", () => {
+  it("no longer offers the full-book client picker", () => {
     render(<BillingPage />);
-    const section = screen.getByRole("heading", { name: "Invoice a client" }).closest("section")!;
-    const claire = Object.values(demoState.patients).find((p) => fullName(p) === "Claire Donovan")!;
-    const row = within(section).getByText("Claire Donovan").closest("li")!;
-
-    await userEvent.click(within(row).getByRole("button", { name: "Invoice" }));
-    expect(within(row).getByText(/billing to/i)).toHaveTextContent("Billing to Claire Donovan");
-
-    await userEvent.type(within(row).getByLabelText("Line 1 description"), "Consult");
-    await userEvent.type(within(row).getByLabelText("Line 1 amount"), "100");
-    const before = demoState.invoices.length;
-    await userEvent.click(within(row).getByRole("button", { name: "Issue invoice" }));
-    expect(demoState.invoices.length).toBe(before + 1);
-    const inv = demoState.invoices[demoState.invoices.length - 1];
-    expect(inv.kind).toBe("client-invoice");
-    expect(inv.patientID).toBe(claire.id);
+    expect(screen.queryByRole("heading", { name: "Invoice a client" })).not.toBeInTheDocument();
+    // No per-client Invoice rows either — Claire is in Sarah's book but gets no row here.
+    expect(screen.queryByText("Claire Donovan")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Invoice" })).not.toBeInTheDocument();
   });
 
-  it("opens to doctors too", () => {
-    currentIdentity = voss;
+  it("lists an issued client invoice in the Client invoices stream with the file pointer", () => {
+    issueToClaire();
     render(<BillingPage />);
-    expect(screen.getByRole("heading", { name: "Invoice a client" })).toBeInTheDocument();
+    const section = screen.getByTestId("client-invoices");
+    expect(within(section).getByText(/Claire Donovan/)).toBeInTheDocument();
+    expect(within(section).getByText("$100.00")).toBeInTheDocument();
+    // The pointer to where issuing lives now.
+    expect(within(section).getByText(/issue a new invoice from the client/i)).toBeInTheDocument();
   });
 
-  it("shows the empty state for an identity with no invoiceable clients", () => {
-    currentIdentity = { user: { id: "u-nobody", name: "Dr Nobody" }, role: "doctor", context: { kind: "independent" } };
-    render(<BillingPage />);
-    expect(screen.getByText(/no clients you can invoice yet/i)).toHaveTextContent(/your book/);
-  });
-
-  it("renders in live mode without the retired not-stored note (02/08: records persist)", () => {
+  it("shows the stream in live mode too (client invoices are stored records, 02/08)", () => {
+    issueToClaire();
     storeMode = { status: "ready", matrixEnabled: false };
     render(<BillingPage />);
-    expect(screen.getByRole("heading", { name: "Invoice a client" })).toBeInTheDocument();
-    expect(screen.queryByText(/aren't stored/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/isn't available in live mode/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("client-invoices")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Invoice a client" })).not.toBeInTheDocument();
   });
 });

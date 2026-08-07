@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { monthLabel, monthKey, type BillingParty } from "@/lib/demo/billing";
@@ -10,10 +9,8 @@ import { canDeleteInvoice, formatAUD, computeInvoice, resolveInvoiceKind, script
 import { invoiceNumber } from "@/lib/demo/invoicePdf";
 import { monthlyStatement, statementCsv, statementCsvFilename, statementEmailBody, statementEmailSubject } from "@/lib/demo/invoiceStatement";
 import { mailtoHref } from "@/lib/demo/remoteSigning";
-import { fullName } from "@/lib/demo/types";
 import { ConfirmAction } from "@/components/app/ConfirmAction";
 import { ServiceInvoiceComposer } from "@/components/app/ServiceInvoiceComposer";
-import { ClientInvoiceComposer } from "@/components/app/ClientInvoiceComposer";
 import { InvoiceActions } from "@/components/app/InvoiceActions";
 
 export default function BillingPage() {
@@ -142,10 +139,9 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* Client selection (spec: invoice-client visibility + selection, 2026-07-26): every
-          clinical role picks a client here and invoices inline — in live mode too, since
-          the manual composer only hands off a PDF there (nothing persisted). */}
-      <InvoiceClientSection />
+      {/* Owner feedback 07/08: the Invoice tab shows issued client invoices only (the
+          Client invoices stream below) — issuing one lives on the client's file, where
+          the composer and checkout already are. The old full-book picker is gone. */}
       <ServiceInvoiceComposer />
 
       {/* Billing matrix streams: client invoices, service fees (drafts to finalize),
@@ -224,69 +220,6 @@ export default function BillingPage() {
       </>
       )}
     </div>
-  );
-}
-
-// Client selection into invoicing (spec: invoice-client visibility + selection,
-// 2026-07-26): lists every client the active identity may bill (own book independently;
-// the clinic book in clinic context — the isolation gate, not a new rule). Each row
-// expands the manual composer inline; the link still opens the full file (where the
-// nurse checkout flow lives in demo).
-function InvoiceClientSection() {
-  const { identity } = useDemoAuth();
-  const store = useDemoStore();
-  const me = identity!;
-  const [openClientID, setOpenClientID] = useState<string | null>(null);
-  const clients = Object.values(store.state.patients)
-    .filter((p) => store.patientAccess(p, me) !== "none")
-    .sort((a, b) => fullName(a).localeCompare(fullName(b)));
-  const checkout = me.role === "nurse" && store.matrixEnabled;
-
-  return (
-    <section className="mt-6">
-      <h2 className="font-display text-xl text-ink">Invoice a client</h2>
-      <p className="mt-1 text-sm text-ink-soft">
-        {checkout
-          ? "Pick a client to invoice below, or open their account to check out — checkout issues the invoice."
-          : "Pick a client to invoice below, or open their file."}
-      </p>
-      {/* 02/08: issued invoices are stored records in both modes now — the list below
-          (Client invoices) keeps them re-downloadable, so no not-stored caveat. */}
-      {clients.length === 0 ? (
-        <p className="mt-2 text-sm text-ink-soft">
-          No clients you can invoice yet — clients appear here once they are in
-          {me.context.kind === "clinic" ? " the clinic's book." : " your book."}
-        </p>
-      ) : (
-        <ul className="mt-2 flex flex-col gap-1.5">
-          {clients.map((p) => (
-            <li key={p.id} className="rounded-inner border border-line bg-card px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 text-sm font-medium text-ink">
-                  {fullName(p)}
-                  <span className="micro ml-2">{ownerDisplayLabel(store.state, p.owner)}</span>
-                </span>
-                <span className="flex flex-none items-center gap-3">
-                  <button type="button" onClick={() => setOpenClientID((c) => (c === p.id ? null : p.id))}
-                    aria-expanded={openClientID === p.id}
-                    className="rounded-btn border border-line px-3 py-1 text-xs text-ink-soft hover:border-tint">
-                    {openClientID === p.id ? "Close" : "Invoice"}
-                  </button>
-                  <Link href={`/app/patients/${p.id}`} className="flex-none text-sm text-ink-soft hover:text-ink">
-                    {checkout ? "Check out ›" : "Open file ›"}
-                  </Link>
-                </span>
-              </div>
-              {openClientID === p.id && (
-                <div className="mt-3">
-                  <ClientInvoiceComposer patient={p} />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
 
@@ -373,6 +306,8 @@ function MatrixStreams() {
       {clientDocs.length > 0 && (
         <section className="mt-10" data-testid="client-invoices">
           <h2 className="font-display text-xl text-ink">Client invoices</h2>
+          {/* Issuing moved to the client's file (07/08) — this stream is records only. */}
+          <p className="mt-1 text-sm text-ink-soft">Issue a new invoice from the client&apos;s file — issued records stay here.</p>
           <ul className="mt-3 flex flex-col gap-1.5">
             {/* Client documents are only ever visible to their issuer silo (the bill-to
                 is a patient), so every viewer of this stream may settle them. */}
