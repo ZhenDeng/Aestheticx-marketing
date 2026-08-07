@@ -100,6 +100,15 @@ function ClientInvoiceSection({ patient, className = "mt-8" }: { patient: Patien
   );
 }
 
+// The three ways to add to the note stream. They share one pill row, so only one is open at a
+// time; the order here is also the fallback order when the viewer cannot write the default.
+type ComposerKind = "treatment" | "general" | "aftercare";
+const COMPOSER_LABELS: Record<ComposerKind, string> = {
+  treatment: "Treatment note",
+  general: "General note",
+  aftercare: "Send aftercare",
+};
+
 export default function PatientFilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { identity } = useDemoAuth();
@@ -111,8 +120,12 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mergeFrom, setMergeFrom] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [showTreatment, setShowTreatment] = useState(false);
-  const [showAftercare, setShowAftercare] = useState(false);
+  // One composer at a time, chosen by a pill row (owner feedback 07/08): general note sits
+  // alongside treatment note and aftercare instead of always occupying the top of the stream.
+  // Treatment note is the default selection; `composerKey` remounts the open form after a
+  // save/cancel so it comes back empty.
+  const [composer, setComposer] = useState<ComposerKind>("treatment");
+  const [composerKey, setComposerKey] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   // Notes + Consent forms collapse by default (01/08 feedback) — same accordion
   // pattern as Appointment history; counts stay visible in the collapsed header.
@@ -183,6 +196,13 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   // Aftercare is a note-write, so a read-only reviewer (open request, no write perms) must
   // not see it even though their role could otherwise send it (spec 2026-07-07 reviewer-file-access).
   const canAftercare = canSendAftercare(me) && (perms.canWriteTreatmentNote || perms.canWriteGeneralNote);
+  // Which pills this viewer gets, in fallback order. A clinic admin writes general notes but no
+  // treatment notes, so the default selection has to degrade to the first one they can write.
+  const composerOptions = (["treatment", "general", "aftercare"] as const).filter((kind) =>
+    kind === "treatment" ? perms.canWriteTreatmentNote : kind === "general" ? perms.canWriteGeneralNote : canAftercare,
+  );
+  const activeComposer: ComposerKind | null =
+    composerOptions.find((k) => k === composer) ?? composerOptions[0] ?? null;
   // Other same-clinic patients that can be merged INTO this one (clinic admins only).
   const mergeCandidates = canMerge && patient.owner.kind === "clinic"
     ? store.searchPatients("", identity).filter((p) => p.id !== id && p.owner.kind === "clinic" && p.owner.id === patient.owner.id)
@@ -262,31 +282,37 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
 
         {showNotes && (
           <>
-        {(perms.canWriteTreatmentNote || canAftercare) && (
-          <div className="mt-2 flex items-center gap-2">
-            {perms.canWriteTreatmentNote && (
-              <button onClick={() => { setShowTreatment((v) => !v); setShowAftercare(false); }}
-                      className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
-                Treatment note
+        {composerOptions.length > 0 && (
+          // Pill row (owner feedback 07/08): the three note kinds pick each other, radio-style,
+          // rather than a general-note box sitting permanently above two toggle buttons.
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {composerOptions.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => { setComposer(kind); setComposerKey((k) => k + 1); }}
+                aria-pressed={activeComposer === kind}
+                className={`rounded-btn px-3 py-1.5 text-sm font-medium ${
+                  activeComposer === kind ? "text-card" : "border border-line text-ink-soft hover:border-tint"
+                }`}
+                style={activeComposer === kind ? { background: "var(--color-tint)" } : undefined}
+              >
+                {COMPOSER_LABELS[kind]}
               </button>
-            )}
-            {canAftercare && (
-              <button onClick={() => { setShowAftercare((v) => !v); setShowTreatment(false); }}
-                      className="rounded-btn border border-line px-3 py-1.5 text-sm font-medium text-ink-soft hover:border-tint">
-                Send aftercare
-              </button>
-            )}
+            ))}
           </div>
         )}
 
-        {showTreatment && perms.canWriteTreatmentNote && (
-          <TreatmentNoteForm patientID={id} identity={me} onDone={() => setShowTreatment(false)} />
+        {activeComposer === "treatment" && (
+          // Saving or cancelling clears the form in place — the pill stays selected, so the
+          // composer never disappears out from under the writer.
+          <TreatmentNoteForm key={composerKey} patientID={id} identity={me} onDone={() => setComposerKey((k) => k + 1)} />
         )}
-        {showAftercare && canAftercare && (
-          <AftercareForm patientID={id} identity={me} onDone={() => setShowAftercare(false)} />
+        {activeComposer === "aftercare" && (
+          <AftercareForm key={composerKey} patientID={id} identity={me} onDone={() => setComposerKey((k) => k + 1)} />
         )}
 
-        {perms.canWriteGeneralNote && (
+        {activeComposer === "general" && (
           <form onSubmit={addNote} className="mt-2">
             <textarea
               value={noteBody}
