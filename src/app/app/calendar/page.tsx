@@ -338,9 +338,9 @@ function DayView({ ownerID, dateISO, todayISO, me, showNew, setShowNew }: {
 // Visible day window for the timeline views.
 const WIN_START = 7 * 60;   // 07:00
 const WIN_END = 19 * 60;    // 19:00
-const PX_PER_MIN = 1;       // 60px / hour — a 30-min chip is 30px (fits one text line)
-const TEXT_MIN_PX = 28;     // below this a chip is a colour-only bar
-const NOTE_MIN_PX = 45;     // two 11px lines + padding — a 45-min chip is the first that fits a note
+const PX_PER_MIN = 2;       // 120px / hour — a 15-min chip is 30px (fits one text line)
+const TEXT_MIN_PX = 18;     // below this a chip is a colour-only bar — a 10-min call chip (20px) clears it
+const NOTE_MIN_PX = 45;     // two 11px lines + padding — a ~23-min chip is the first that fits a note
 const DRAG_STEP = 5;        // snap dragged appointments to 5-minute steps
 const DRAG_THRESHOLD = 4;   // px of movement before a press becomes a drag (vs a tap)
 const MIN_DURATION = 15;    // an appointment can't be resized shorter than this
@@ -460,7 +460,7 @@ function BlockedBands({ ownerID, dateISO }: { ownerID: string; dateISO: string }
 }
 
 // " · {note}" for a chip's tooltip and accessible name, or "" when there is no note to
-// show. Every chip carries its note here regardless of height — that is how a 30-minute
+// show. Every chip carries its note here regardless of height — that is how a 15-minute
 // chip, and a sub-TEXT_MIN_PX colour-only bar, still surface one (spec: 2026-07-27).
 function noteSuffix(appt: Appointment): string {
   const note = appointmentChipNote(appt);
@@ -1373,10 +1373,9 @@ function AppointmentDetail({ appt, me, onDone }: { appt: Appointment; me: Identi
 
 /**
  * What a booked consult call is about (owner feedback 27/07). A teleconsult is booked in
- * 10-minute slots, so its chip is ~10px tall — under TEXT_MIN_PX, it draws as a colour-only
- * bar with no title. This modal is therefore the only place the call can actually be read,
- * and until now it showed nothing that said "call" at all. Same lines as the dashboard's
- * upcoming-calls rows, plus the medications on the open request behind the call.
+ * 10-minute slots, so its chip is ~20px tall — one truncated title line at most, so this
+ * modal is still where the call's full details can actually be read. Same lines as the
+ * dashboard's upcoming-calls rows, plus the medications on the open request behind the call.
  */
 function ConsultCallDetails({ appt, me }: { appt: Appointment; me: Identity }) {
   const store = useDemoStore();

@@ -21,13 +21,13 @@ const voss = DEMO_ACCOUNTS[2].identities[0]; // Dr Elena Voss — Doctor (indepe
 const TODAY_ISO = isoDay(SEED_NOW);
 
 const LONG_NOTE = "Lip filler review";   // on a 60-min booking → inline
-const SHORT_NOTE = "Brow consult";       // on a 30-min booking → tooltip only
+const SHORT_NOTE = "Brow consult";       // on a 15-min booking → tooltip only
 
 function Providers({ children }: { children: ReactNode }) {
   return <DemoAuthProvider><DemoStoreProvider>{children}</DemoStoreProvider></DemoAuthProvider>;
 }
 
-// Signs in, then books one 60-min and one 30-min appointment, both with notes. The guard is
+// Signs in, then books one 60-min and one 15-min appointment, both with notes. The guard is
 // idempotent so StrictMode's double-invoked effect books each only once.
 function Harness() {
   const { signIn, identity } = useDemoAuth();
@@ -45,7 +45,7 @@ function Harness() {
     }
     if (!existing.some((a) => a.appointmentNote === SHORT_NOTE)) {
       store.bookTreatmentAppointment({
-        dateISO: TODAY_ISO, startMinute: 14 * 60, durationMinutes: 30,
+        dateISO: TODAY_ISO, startMinute: 14 * 60, durationMinutes: 15,
         patientName: "Short Booking", patientID: "p-1", note: SHORT_NOTE, identity,
       });
     }
@@ -76,7 +76,7 @@ describe("appointment notes on the calendar grid", () => {
     expect(await screen.findByText(LONG_NOTE)).toBeInTheDocument();
   });
 
-  it("a 30-minute chip keeps one line — the note is not rendered inline", async () => {
+  it("a 15-minute chip keeps one line — the note is not rendered inline", async () => {
     await signInAndOpen("day");
     await screen.findByText(LONG_NOTE); // grid has settled
     expect(screen.queryByText(SHORT_NOTE)).not.toBeInTheDocument();
