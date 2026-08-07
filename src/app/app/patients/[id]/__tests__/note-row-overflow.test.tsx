@@ -63,6 +63,8 @@ vi.mock("@/lib/demo/store", () => ({
     activeAuthorisations: () => [], activeEmergencyAuthorisations: () => [],
     formsForPatient: () => [], appointmentsForPatient: () => [], openRequestsForPatient: () => [],
     searchPatients: () => [], recordAdminAccess: vi.fn(),
+    // The composer pills open on Treatment note (07/08), so that form mounts with the file.
+    noteTemplatesForOwner: () => [], saveTreatmentNote: vi.fn(),
     deletePatient: vi.fn(), mergePatients: vi.fn(), saveGeneralNote: vi.fn(),
     retryAftercare: vi.fn(), withdrawRequest: vi.fn(),
   }),

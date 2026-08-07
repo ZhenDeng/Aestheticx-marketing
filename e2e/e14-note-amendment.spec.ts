@@ -18,6 +18,8 @@ test("E14 — nurse corrects a note she wrote today", async ({ page }) => {
 
   // Notes is a collapsed accordion by default (01/08 feedback).
   await page.getByRole("button", { name: /^notes \(/i }).click();
+  // The composer is a pill row that opens on Treatment note (07/08) — pick the general one.
+  await page.getByRole("button", { name: "General note" }).click();
   await page.getByPlaceholder("Add a general note…").fill(ORIGINAL);
   await page.getByRole("button", { name: "Save note" }).click();
 
