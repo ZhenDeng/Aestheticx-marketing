@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { checkPasswordPolicy } from "@/lib/demo/securityPolicy";
+import PasswordInput from "@/components/app/PasswordInput";
 
 // Forced first-login password change (port of iOS FirstLoginPasswordView, feedback-round-2 /
 // auth-accounts screen 06). Shown live-only when the account's mustChangePassword claim is
@@ -59,10 +60,9 @@ export function FirstLoginPassword() {
         <div className="mt-6 rounded-card border border-line bg-card p-5 shadow-card">
           <label className="block">
             <span className="micro">New password</span>
-            <input
-              type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            <PasswordInput
+              value={password} onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
-              className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint"
             />
           </label>
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -80,10 +80,9 @@ export function FirstLoginPassword() {
           </div>
           <label className="mt-4 block">
             <span className="micro">Confirm password</span>
-            <input
-              type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+            <PasswordInput
+              value={confirm} onChange={(e) => setConfirm(e.target.value)}
               autoComplete="new-password"
-              className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint"
             />
           </label>
           {confirm.length > 0 && !matches && (

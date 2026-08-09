@@ -6,6 +6,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { safeNextPath, redirectForRole } from "@/lib/demo/authRedirect";
 import { rememberedEmail, saveLoginPrefs } from "@/lib/demo/loginPrefs";
 import { identityBadge, type Role } from "@/lib/demo/types";
+import PasswordInput from "@/components/app/PasswordInput";
 
 // The post-login destination: the guarded page that sent us here (?next=), or the role's home.
 // Read from window.location at call time — useSearchParams would force a Suspense boundary and
@@ -72,8 +73,8 @@ export function LiveLoginForm() {
       </label>
       <label className="mt-4 block">
         <span className="micro">Password</span>
-        <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-          className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint" />
+        <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password" />
       </label>
       <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
         <input
@@ -139,8 +140,7 @@ export function DemoLoginForm() {
       </fieldset>
       <label className="mt-5 block">
         <span className="micro">Password (any value works in the demo)</span>
-        <input type="password" defaultValue="demo"
-          className="mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 text-ink outline-none focus:border-tint" />
+        <PasswordInput defaultValue="demo" />
       </label>
       <button type="submit" className="mt-6 w-full rounded-btn px-4 py-3 text-center text-sm font-medium text-card transition-colors"
         style={{ background: "var(--color-tint)" }}>
