@@ -204,13 +204,14 @@ export async function notesRowsForPatient(
   } catch (e) {
     if (!isPermissionDenied(e)) throw e;
   }
-  const treatment = await q(notesPath, { field: "kind", value: "treatment" });
-  let own: Row[] = [];
-  try {
-    own = await q(notesPath, { field: "authorId", value: uid });
-  } catch (e) {
-    if (!isPermissionDenied(e)) throw e; // authorId grant not deployed yet → [] ; real outage → loud
-  }
+  // Both fallback queries are independent — in flight together, not a serial round trip.
+  const [treatment, own] = await Promise.all([
+    q(notesPath, { field: "kind", value: "treatment" }),
+    q(notesPath, { field: "authorId", value: uid }).catch((e): Row[] => {
+      if (!isPermissionDenied(e)) throw e; // authorId grant not deployed yet → [] ; real outage → loud
+      return [];
+    }),
+  ]);
   const byId = new Map(treatment.map((r) => [r.id, r] as const));
   for (const r of own) byId.set(r.id, r);
   return [...byId.values()];
@@ -242,13 +243,15 @@ export async function appointmentRowsForScopes(
       throw e;
     }
   };
+  // Every scope is independent (merged by id below) — issue them together so the load
+  // costs one region round trip, not one per scope.
+  const scopes = await Promise.all([
+    q("ownerId", uid),
+    deniedToEmpty("bookedById", uid),
+    ...clinicIds.flatMap((cid) => [deniedToEmpty("ownerId", cid), deniedToEmpty("bookedById", cid)]),
+  ]);
   const byId = new Map<string, Row>();
-  for (const row of await q("ownerId", uid)) byId.set(row.id, row);
-  for (const row of await deniedToEmpty("bookedById", uid)) byId.set(row.id, row);
-  for (const cid of clinicIds) {
-    for (const row of await deniedToEmpty("ownerId", cid)) byId.set(row.id, row);
-    for (const row of await deniedToEmpty("bookedById", cid)) byId.set(row.id, row);
-  }
+  for (const rows of scopes) for (const row of rows) byId.set(row.id, row);
   return [...byId.values()];
 }
 
@@ -272,16 +275,19 @@ async function partyRowsForScopes(
   clinicIds: string[],
   q: (field: PartyField, value: string) => Promise<Row[]>,
 ): Promise<Row[]> {
+  // Independent scopes in flight together (merged by id below) — a serial chain here
+  // multiplied the region round trip by the scope count on every login.
+  const scopes = await Promise.all([
+    q("nurseId", uid),
+    q("doctorId", uid),
+    ...clinicIds.map((cid) =>
+      q("clinicId", cid).catch((e): Row[] => {
+        if (!isPermissionDenied(e)) throw e;
+        return [];
+      })),
+  ]);
   const byId = new Map<string, Row>();
-  for (const row of await q("nurseId", uid)) byId.set(row.id, row);
-  for (const row of await q("doctorId", uid)) byId.set(row.id, row);
-  for (const cid of clinicIds) {
-    try {
-      for (const row of await q("clinicId", cid)) byId.set(row.id, row);
-    } catch (e) {
-      if (!isPermissionDenied(e)) throw e;
-    }
-  }
+  for (const rows of scopes) for (const row of rows) byId.set(row.id, row);
   return [...byId.values()];
 }
 
@@ -319,35 +325,29 @@ export async function invoiceRowsForScopes(
   clinics: Record<string, string>,
   q: (scope: "doctorId" | "issuer" | "nurseCounterparty" | "clinicCounterparty", id: string) => Promise<Row[]>,
 ): Promise<Row[]> {
+  const deniedToEmpty = (p: Promise<Row[]>): Promise<Row[]> =>
+    p.catch((e): Row[] => {
+      if (!isPermissionDenied(e)) throw e;
+      return [];
+    });
+  // Independent scopes in flight together (merged by id below), same per-scope hardness
+  // as before — parallel issue changes latency, never which failures abort the hydrate.
+  const scopes = await Promise.all([
+    q("doctorId", uid),
+    // Manual service invoices key on issuerRef, not doctorId (their doctorId is "" by
+    // convention) — without this scope a nurse issuer never hydrates her own invoices.
+    // Degrades on denial (unlike the own-doctor scope): the issuer read-rule clause ships
+    // with backend PR #115, and a not-yet-deployed rule must not lock out billing hydration.
+    deniedToEmpty(q("issuer", uid)),
+    // Clinic-issued records (02/08: client invoices for the clinic's book) key on
+    // issuerRef.id == the CLINIC id. Every membership queries (the read rule is inClinic,
+    // not admin-only); degrades on denial while the rules clause deploys.
+    ...Object.keys(clinics).map((cid) => deniedToEmpty(q("issuer", cid))),
+    q("nurseCounterparty", uid),
+    ...adminClinicIdsOf(clinics).map((cid) => deniedToEmpty(q("clinicCounterparty", cid))),
+  ]);
   const byId = new Map<string, Row>();
-  for (const row of await q("doctorId", uid)) byId.set(row.id, row);
-  // Manual service invoices key on issuerRef, not doctorId (their doctorId is "" by
-  // convention) — without this scope a nurse issuer never hydrates her own invoices.
-  // Degrades on denial (unlike the own-doctor scope): the issuer read-rule clause ships
-  // with backend PR #115, and a not-yet-deployed rule must not lock out billing hydration.
-  try {
-    for (const row of await q("issuer", uid)) byId.set(row.id, row);
-  } catch (e) {
-    if (!isPermissionDenied(e)) throw e;
-  }
-  // Clinic-issued records (02/08: client invoices for the clinic's book) key on
-  // issuerRef.id == the CLINIC id. Every membership queries (the read rule is inClinic,
-  // not admin-only); degrades on denial while the rules clause deploys.
-  for (const cid of Object.keys(clinics)) {
-    try {
-      for (const row of await q("issuer", cid)) byId.set(row.id, row);
-    } catch (e) {
-      if (!isPermissionDenied(e)) throw e;
-    }
-  }
-  for (const row of await q("nurseCounterparty", uid)) byId.set(row.id, row);
-  for (const cid of adminClinicIdsOf(clinics)) {
-    try {
-      for (const row of await q("clinicCounterparty", cid)) byId.set(row.id, row);
-    } catch (e) {
-      if (!isPermissionDenied(e)) throw e;
-    }
-  }
+  for (const rows of scopes) for (const row of rows) byId.set(row.id, row);
   return [...byId.values()];
 }
 
@@ -445,52 +445,86 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
   const clinicIds = Object.keys(claims.clinics);
 
   // Super admin reads everything (the rules allow unconstrained queries for that
-  // role) — mirrors iOS LiveBackend.hydrateEverything().
+  // role) — mirrors iOS LiveBackend.hydrateEverything(). Every collection read is
+  // independent, so they are all in flight together: a serial await chain multiplied
+  // the region round trip by the collection count and dominated the post-login load.
   if (claims.roles.includes("superAdmin")) {
-    const profile = await readUserProfile(uid);
-    const all = await runQuery("patients");
-    const notes: Record<string, Row[]> = {};
-    await Promise.all(all.map(async (p) => { notes[p.id] = await runQuery(`patients/${p.id}/notes`); }));
-    const forms: Record<string, Row[]> = {};
-    await Promise.all(all.map(async (p) => { forms[p.id] = await runQuery(`patients/${p.id}/forms`); }));
+    const patientsPromise = runQuery("patients");
+    const notesPromise = patientsPromise.then(async (all) => {
+      const notes: Record<string, Row[]> = {};
+      await Promise.all(all.map(async (p) => { notes[p.id] = await runQuery(`patients/${p.id}/notes`); }));
+      return notes;
+    });
+    const formsPromise = patientsPromise.then(async (all) => {
+      const forms: Record<string, Row[]> = {};
+      await Promise.all(all.map(async (p) => { forms[p.id] = await runQuery(`patients/${p.id}/forms`); }));
+      return forms;
+    });
+    const [
+      all, notes, forms, profile,
+      authorisations, requests, appointments, invoices, scriptPricing,
+      noteTemplates, followUpTasks, slotPublications, treatmentAvailability, externalBusy,
+      accounts, emergencyAuthorisations, cooperationRelationships, relationshipAudit,
+      auditLog, products, businessEntities, clinics,
+    ] = await Promise.all([
+      patientsPromise, notesPromise, formsPromise, readUserProfile(uid),
+      runQuery("authorisations"),
+      runQuery("authRequests"),
+      runQuery("appointments"),
+      runQuery("invoices"),
+      runQuery("scriptPricing"),
+      // Note templates + follow-ups are private per-owner even for a super admin (rules
+      // only allow users/{uid}/… where uid()==userId), so these load the caller's own only.
+      runQuery(`users/${uid}/noteTemplates`),
+      runQuery(`users/${uid}/followUpTasks`),
+      runQuery("slotPublications", where("doctorId", "==", uid)),
+      readAvailability([uid]),
+      readExternalBusy(uid, []),
+      // The admin console's account inventory (rules: users list is superAdmin-only).
+      runQuery("users"),
+      runQuerySafe("emergencyAuthorisations"),
+      runQuerySafe("cooperationRelationships"),
+      runQuerySafe("relationshipAudit"),
+      // Platform audit log (§21): superAdmin-read only. Deploy-order-safe via runQuerySafe —
+      // a not-yet-deployed read rule degrades to "none" instead of failing the whole hydrate.
+      runQuerySafe("auditLog"),
+      runQuerySafe("products"),
+      runQuerySafe("businessEntities"),
+      // The clinic directory for the admin console's cooperation picker (rules: the
+      // clinics collection is superAdmin- or member-readable; unconstrained list is
+      // provable for a super admin only). Denial-only degradation — NOT runQuerySafe:
+      // a swallowed outage would render "No clinic accounts yet" and misinform the
+      // admin into provisioning a duplicate; a transient must fail the hydrate loudly.
+      runQueryDeniedToEmpty("clinics"),
+    ]);
     return assembleState({
       patients: all,
       notesByPatient: notes,
-      authorisations: await runQuery("authorisations"),
-      requests: await runQuery("authRequests"),
-      appointments: await runQuery("appointments"),
+      authorisations,
+      requests,
+      appointments,
       formsByPatient: forms,
-      invoices: await runQuery("invoices"),
-      scriptPricing: await runQuery("scriptPricing"),
-      // Note templates + follow-ups are private per-owner even for a super admin (rules
-      // only allow users/{uid}/… where uid()==userId), so these load the caller's own only.
-      noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
-      followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
+      invoices,
+      scriptPricing,
+      noteTemplates,
+      followUpTasks,
       followUpSettings: profile.followUpSettings,
       appointmentReminderLead: profile.appointmentReminderLead,
       bookingToken: profile.bookingToken,
       doctorStatus: profile.doctorStatus,
       lastCalledDoctorId: profile.lastCalledDoctorId,
       profile: profile.profile,
-      slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
-      treatmentAvailability: await readAvailability([uid]),
-      externalBusy: await readExternalBusy(uid, []),
-      // The admin console's account inventory (rules: users list is superAdmin-only).
-      accounts: await runQuery("users"),
-      emergencyAuthorisations: await runQuerySafe("emergencyAuthorisations"),
-      cooperationRelationships: await runQuerySafe("cooperationRelationships"),
-      relationshipAudit: await runQuerySafe("relationshipAudit"),
-      // Platform audit log (§21): superAdmin-read only. Deploy-order-safe via runQuerySafe —
-      // a not-yet-deployed read rule degrades to "none" instead of failing the whole hydrate.
-      auditLog: await runQuerySafe("auditLog"),
-      products: await runQuerySafe("products"),
-      businessEntities: await runQuerySafe("businessEntities"),
-      // The clinic directory for the admin console's cooperation picker (rules: the
-      // clinics collection is superAdmin- or member-readable; unconstrained list is
-      // provable for a super admin only). Denial-only degradation — NOT runQuerySafe:
-      // a swallowed outage would render "No clinic accounts yet" and misinform the
-      // admin into provisioning a duplicate; a transient must fail the hydrate loudly.
-      clinics: await runQueryDeniedToEmpty("clinics"),
+      slotPublications,
+      treatmentAvailability,
+      externalBusy,
+      accounts,
+      emergencyAuthorisations,
+      cooperationRelationships,
+      relationshipAudit,
+      auditLog,
+      products,
+      businessEntities,
+      clinics,
       currentUserID: uid,
     });
   }
@@ -511,67 +545,37 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
       ? [[where("openReviewerDoctorIds", "array-contains", uid)]]
       : []),
   ];
-  const patientsById = new Map<string, Row>();
-  for (const constraints of ownPatientQueries) {
-    for (const row of await runQuery("patients", ...constraints)) patientsById.set(row.id, row);
-  }
-  for (const cid of clinicIds) {
-    const rows = await runQueryDeniedToEmpty("patients", where("ownerType", "==", "clinic"), where("ownerId", "==", cid));
-    for (const row of rows) patientsById.set(row.id, row);
-  }
-  const patients = [...patientsById.values()];
+  const patientsPromise = (async () => {
+    const scopeRows = await Promise.all([
+      ...ownPatientQueries.map((constraints) => runQuery("patients", ...constraints)),
+      ...clinicIds.map((cid) =>
+        runQueryDeniedToEmpty("patients", where("ownerType", "==", "clinic"), where("ownerId", "==", cid))),
+    ]);
+    const patientsById = new Map<string, Row>();
+    for (const rows of scopeRows) for (const row of rows) patientsById.set(row.id, row);
+    return [...patientsById.values()];
+  })();
 
   // Each patient's notes subcollection is independent — fetch them concurrently, each with the
-  // provably-safe fallback (see notesRowsForPatient).
-  const notesByPatient: Record<string, Row[]> = {};
-  await Promise.all(
-    patients.map(async (p) => {
-      notesByPatient[p.id] = await notesRowsForPatient(
-        `patients/${p.id}/notes`, uid,
-        (path, filter) => (filter ? runQuery(path, where(filter.field, "==", filter.value)) : runQuery(path)),
-      );
-    }),
-  );
-
-  const formsByPatient: Record<string, Row[]> = {};
-  await Promise.all(patients.map(async (p) => { formsByPatient[p.id] = await runQuery(`patients/${p.id}/forms`); }));
-
-  // Authorisations + requests scoped to this user (nurse-owned or clinic-shared). The
-  // two collections have DIFFERENT clinic-scope rules: authorisations reads are member-
-  // wide (`inClinic`), while authRequests clinic reads are admin-only (`isClinicAdmin`)
-  // — so requestRowsForScopes only issues the clinic query for admin memberships.
-  // Issuing it for an employee/contractor membership (a doctor linked to a clinic by a
-  // cooperation relationship) was rejected wholesale and locked the account out at
-  // login (19/07 platform-admin bug).
-  const authorisationRows = await authorisationRowsForScopes(uid, claims.clinics, (field, value) =>
-    runQuery("authorisations", where(field, "==", value)));
-  const requestRows = await requestRowsForScopes(uid, claims.clinics, (field, value) =>
-    runQuery("authRequests", where(field, "==", value)));
-  // Emergency authorisations carry the same nurseId/doctorId/clinicId ownership fields
-  // and the member-wide read audience of /authorisations. Best-effort: its read rule
-  // ships in a separate backend deploy (see runQuerySafe).
-  const emergencyRows = await authorisationRowsForScopes(uid, claims.clinics, (field, value) =>
-    runQuerySafe("emergencyAuthorisations", where(field, "==", value)));
-
-  // Appointments owned by the user or their clinics, plus auth slots they (or their clinic) booked
-  // with a doctor — owned by the doctor but carrying the booker's scope in `bookedById`.
-  // Scope hardness lives in appointmentRowsForScopes: own calendar loud, clinic calendar +
-  // bookedById degrade on denial so a rules/web deploy skew can't lock a clinic account out.
-  const appointments = await appointmentRowsForScopes(uid, clinicIds, (field, owner) =>
-    runQuery("appointments", where(field, "==", owner)));
-
-  // Invoices scoped to this user. The clinic-counterparty read rule is `isClinicAdmin`,
-  // so invoiceRowsForScopes only issues that query for admin memberships (same lockout
-  // class as authRequests above). scriptPricing is doctor-readable.
-  const invoiceRows = await invoiceRowsForScopes(uid, claims.clinics, (scope, id) =>
-    scope === "doctorId"
-      ? runQuery("invoices", where("doctorId", "==", id))
-      : scope === "issuer"
-      ? runQuery("invoices", where("issuerRef.id", "==", id))
-      : runQuery("invoices",
-          where("counterpartyType", "==", scope === "nurseCounterparty" ? "nurse" : "clinic"),
-          where("counterpartyId", "==", id)));
-  const scriptPricingRows = await runQuery("scriptPricing", where("doctorId", "==", uid));
+  // provably-safe fallback (see notesRowsForPatient). Forms don't wait for notes: both fan out
+  // as soon as the patient list lands.
+  const notesPromise = patientsPromise.then(async (patients) => {
+    const notesByPatient: Record<string, Row[]> = {};
+    await Promise.all(
+      patients.map(async (p) => {
+        notesByPatient[p.id] = await notesRowsForPatient(
+          `patients/${p.id}/notes`, uid,
+          (path, filter) => (filter ? runQuery(path, where(filter.field, "==", filter.value)) : runQuery(path)),
+        );
+      }),
+    );
+    return notesByPatient;
+  });
+  const formsPromise = patientsPromise.then(async (patients) => {
+    const formsByPatient: Record<string, Row[]> = {};
+    await Promise.all(patients.map(async (p) => { formsByPatient[p.id] = await runQuery(`patients/${p.id}/forms`); }));
+    return formsByPatient;
+  });
 
   // Cooperation relationships this user is party to (doctor side or nurse/clinic counterparty),
   // for the request-picker gate. Best-effort until the rule deploys (runQuerySafe).
@@ -580,36 +584,91 @@ export async function hydrate(claims: DemoClaims): Promise<DemoState> {
     ...clinicIds.map((cid) => [where("counterpartyType", "==", "clinic"), where("counterpartyId", "==", cid)]),
     [where("doctorId", "==", uid)],
   ];
-  const coopById = new Map<string, Row>();
-  for (const constraints of relConstraints) {
-    for (const row of await runQuerySafe("cooperationRelationships", ...constraints)) coopById.set(row.id, row);
-  }
-  const profile = await readUserProfile(uid);
+  const coopPromise = (async () => {
+    const perScope = await Promise.all(
+      relConstraints.map((constraints) => runQuerySafe("cooperationRelationships", ...constraints)));
+    const coopById = new Map<string, Row>();
+    for (const rows of perScope) for (const row of rows) coopById.set(row.id, row);
+    return [...coopById.values()];
+  })();
+
+  // One concurrent phase for every remaining collection — each entry keeps its own
+  // hardness contract (hard / denied-to-empty / best-effort), so parallel issue changes
+  // latency only, never which failures abort the hydrate:
+  // - Authorisations + requests have DIFFERENT clinic-scope rules: authorisations reads are
+  //   member-wide (`inClinic`), while authRequests clinic reads are admin-only
+  //   (`isClinicAdmin`) — so requestRowsForScopes only issues the clinic query for admin
+  //   memberships. Issuing it for an employee/contractor membership (a doctor linked to a
+  //   clinic by a cooperation relationship) was rejected wholesale and locked the account
+  //   out at login (19/07 platform-admin bug).
+  // - Emergency authorisations carry the same ownership fields and the member-wide read
+  //   audience of /authorisations. Best-effort: its read rule ships in a separate backend
+  //   deploy (see runQuerySafe).
+  // - Appointments: own calendar loud, clinic calendar + bookedById degrade on denial so a
+  //   rules/web deploy skew can't lock a clinic account out (see appointmentRowsForScopes).
+  // - Invoices: the clinic-counterparty read rule is `isClinicAdmin`, so
+  //   invoiceRowsForScopes only issues that query for admin memberships (same lockout
+  //   class as authRequests). scriptPricing is doctor-readable.
+  const [
+    patients, notesByPatient, formsByPatient,
+    authorisationRows, requestRows, emergencyRows, appointments, invoiceRows,
+    scriptPricingRows, cooperationRelationships, profile,
+    noteTemplates, followUpTasks, slotPublications, treatmentAvailability, externalBusy,
+    products, businessEntities,
+  ] = await Promise.all([
+    patientsPromise, notesPromise, formsPromise,
+    authorisationRowsForScopes(uid, claims.clinics, (field, value) =>
+      runQuery("authorisations", where(field, "==", value))),
+    requestRowsForScopes(uid, claims.clinics, (field, value) =>
+      runQuery("authRequests", where(field, "==", value))),
+    authorisationRowsForScopes(uid, claims.clinics, (field, value) =>
+      runQuerySafe("emergencyAuthorisations", where(field, "==", value))),
+    appointmentRowsForScopes(uid, clinicIds, (field, owner) =>
+      runQuery("appointments", where(field, "==", owner))),
+    invoiceRowsForScopes(uid, claims.clinics, (scope, id) =>
+      scope === "doctorId"
+        ? runQuery("invoices", where("doctorId", "==", id))
+        : scope === "issuer"
+        ? runQuery("invoices", where("issuerRef.id", "==", id))
+        : runQuery("invoices",
+            where("counterpartyType", "==", scope === "nurseCounterparty" ? "nurse" : "clinic"),
+            where("counterpartyId", "==", id))),
+    runQuery("scriptPricing", where("doctorId", "==", uid)),
+    coopPromise,
+    readUserProfile(uid),
+    runQuery(`users/${uid}/noteTemplates`),
+    runQuery(`users/${uid}/followUpTasks`),
+    runQuery("slotPublications", where("doctorId", "==", uid)),
+    readAvailability([uid, ...clinicIds]),
+    readExternalBusy(uid, clinicIds),
+    runQuerySafe("products"),
+    runQuerySafe("businessEntities"),
+  ]);
 
   return assembleState({
     patients,
     notesByPatient,
     authorisations: authorisationRows,
     emergencyAuthorisations: emergencyRows,
-    cooperationRelationships: [...coopById.values()],
+    cooperationRelationships,
     requests: requestRows,
     appointments,
     formsByPatient,
     invoices: invoiceRows,
     scriptPricing: scriptPricingRows,
-    noteTemplates: await runQuery(`users/${uid}/noteTemplates`),
-    followUpTasks: await runQuery(`users/${uid}/followUpTasks`),
+    noteTemplates,
+    followUpTasks,
     followUpSettings: profile.followUpSettings,
     appointmentReminderLead: profile.appointmentReminderLead,
     bookingToken: profile.bookingToken,
     doctorStatus: profile.doctorStatus,
     lastCalledDoctorId: profile.lastCalledDoctorId,
     profile: profile.profile,
-    slotPublications: await runQuery("slotPublications", where("doctorId", "==", uid)),
-    treatmentAvailability: await readAvailability([uid, ...clinicIds]),
-    externalBusy: await readExternalBusy(uid, clinicIds),
-    products: await runQuerySafe("products"),
-    businessEntities: await runQuerySafe("businessEntities"),
+    slotPublications,
+    treatmentAvailability,
+    externalBusy,
+    products,
+    businessEntities,
     currentUserID: uid,
   });
 }
