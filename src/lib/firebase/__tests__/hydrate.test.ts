@@ -345,6 +345,65 @@ describe("invoiceRowsForScopes (admin-gated clinic counterparty)", () => {
   });
 });
 
+// Login-latency guard: every scope walker merges independent equality queries by id, so
+// the queries must be IN FLIGHT TOGETHER — a serial await chain multiplies the region
+// round trip (~200ms to australia-southeast1) by the scope count and was the dominant
+// cost of the post-login "Loading your data…" screen. Each fake query parks on a macrotask
+// so the walker can only reach the asserted high-water mark by issuing them concurrently.
+describe("scope walkers issue their queries concurrently", () => {
+  function concurrencyProbe() {
+    let inFlight = 0;
+    let peak = 0;
+    const enter = async (): Promise<void> => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 0));
+      inFlight -= 1;
+    };
+    return { enter, peak: () => peak };
+  }
+
+  it("authorisationRowsForScopes runs own + clinic scopes together", async () => {
+    const probe = concurrencyProbe();
+    const q = async () => { await probe.enter(); return []; };
+    await authorisationRowsForScopes("me", { "c-emp": "employee", "c-admin": "admin" }, q);
+    expect(probe.peak()).toBe(4); // nurseId + doctorId + 2 clinic scopes
+  });
+
+  it("requestRowsForScopes runs own + admin-clinic scopes together", async () => {
+    const probe = concurrencyProbe();
+    const q = async () => { await probe.enter(); return []; };
+    await requestRowsForScopes("me", { "c-admin": "admin" }, q);
+    expect(probe.peak()).toBe(3); // nurseId + doctorId + admin clinic
+  });
+
+  it("appointmentRowsForScopes runs every calendar scope together", async () => {
+    const probe = concurrencyProbe();
+    const q = async () => { await probe.enter(); return []; };
+    await appointmentRowsForScopes("me", ["clinic-1"], q);
+    expect(probe.peak()).toBe(4); // ownerId/bookedById × (me + clinic)
+  });
+
+  it("invoiceRowsForScopes runs every invoice scope together", async () => {
+    const probe = concurrencyProbe();
+    const q = async () => { await probe.enter(); return []; };
+    await invoiceRowsForScopes("me", { "c-admin": "admin" }, q);
+    expect(probe.peak()).toBe(5); // doctorId + issuer:me + issuer:clinic + nurse + clinic counterparty
+  });
+
+  it("notesRowsForPatient runs the denial-fallback queries together", async () => {
+    const denied = new FirebaseError("permission-denied", "Missing or insufficient permissions.");
+    const probe = concurrencyProbe();
+    const q = async (_path: string, filter?: { field: string; value: string }) => {
+      if (!filter) throw denied; // wide list denied → fallback pair
+      await probe.enter();
+      return [];
+    };
+    await notesRowsForPatient("patients/p1/notes", "me", q);
+    expect(probe.peak()).toBe(2); // treatment + own-authored
+  });
+});
+
 describe("appointmentRowsForScopes (clinic-scope lockout hardening)", () => {
   const denied = new FirebaseError("permission-denied", "Missing or insufficient permissions.");
   const own = { id: "ap-own", data: { ownerId: "me" } };
