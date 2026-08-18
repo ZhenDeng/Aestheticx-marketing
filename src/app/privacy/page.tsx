@@ -81,14 +81,15 @@ export default function Privacy() {
                   authorised users.
                 </li>
                 <li>
-                  Google Places / Google Maps processes partial address text and a
-                  Google session token to return Australian address suggestions. If a suggestion is
-                  selected, Google resolves the selected address, which is then stored only as
-                  part of the relevant patient or profile transaction. Google content is not
-                  cached and is not used for advertising or tracking by AestheticX. The
-                  AestheticX address proxy and primary record storage are in Australia, but
-                  Google processing is separate and processing may occur outside Australia.
-                  Read{" "}
+                  <strong>Live signed-in PatientForm.</strong> The live signed-in PatientForm
+                  uses the protected AestheticX proxy for Google Places / Google Maps. Google
+                  processes partial address text and a Google session token to return Australian
+                  address suggestions. If a suggestion is selected, Google resolves the selected
+                  address, which is then stored only as part of the relevant patient or profile
+                  transaction. Google content is not cached. Google Places / Google Maps is not
+                  used for advertising or tracking by AestheticX. The AestheticX address proxy
+                  and primary record storage are in Australia, but Google processing is separate
+                  and processing may occur outside Australia. Read{" "}
                   <a
                     href="https://policies.google.com/privacy"
                     className="text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
@@ -103,6 +104,12 @@ export default function Privacy() {
                     Google Maps Platform Terms
                   </a>
                   .
+                </li>
+                <li>
+                  <strong>Legacy address fields.</strong> The profile, administration, and
+                  public-intake address fields still use Photon. They send partial address text
+                  and any derived bias coordinates directly from your browser to
+                  photon.komoot.io. These requests do not use the protected Google proxy.
                 </li>
                 <li>
                   Emails the practice asks us to send (such as aftercare instructions or
