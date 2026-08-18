@@ -131,6 +131,36 @@ describe("PatientForm", () => {
     expect(saved.address).not.toBe("12 Smith Street, Richmond VIC 3121, Australia");
   });
 
+  it("merges a delayed resolved address into the latest patient field edits", async () => {
+    authMode = "live";
+    vi.useFakeTimers();
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("d9428888-122b-4a8f-a585-89e1f51ed487");
+    let finishResolution!: (address: string) => void;
+    resolveAddress.mockReturnValue(new Promise<string>((resolve) => {
+      finishResolution = resolve;
+    }));
+    render(<PatientForm mode="create" initial={validDraft()} />);
+
+    const address = screen.getByRole("combobox", { name: /address/i });
+    fireEvent.focus(address);
+    fireEvent.input(address, { target: { value: "Unit 5/12 Smith" }, inputType: "insertText" });
+    await act(async () => vi.advanceTimersByTime(250));
+    fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
+
+    fireEvent.change(screen.getByLabelText(/^phone/i), { target: { value: "0499 111 222" } });
+    fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: "latest@x.test" } });
+    await act(async () => finishResolution("Unit 5/12 Smith Street, Richmond VIC 3121, Australia"));
+    fireEvent.click(screen.getByRole("button", { name: /create patient/i }));
+
+    expect(createPatient).toHaveBeenCalledTimes(1);
+    const [saved] = createPatient.mock.calls[0] as [PatientDraft, Identity];
+    expect(saved).toEqual(expect.objectContaining({
+      address: "Unit 5/12 Smith Street, Richmond VIC 3121, Australia",
+      phone: "0499 111 222",
+      email: "latest@x.test",
+    }));
+  });
+
   it("updates a live patient with the resolved address instead of the prediction label", async () => {
     authMode = "live";
     vi.useFakeTimers();

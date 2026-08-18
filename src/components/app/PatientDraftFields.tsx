@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import type { GeoPoint } from "@/lib/addressSearch";
 import type { PatientDraft } from "@/lib/demo/types";
@@ -24,7 +24,7 @@ const FIELD = "mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 
 // mode-specific address control while every other caller retains Photon by default.
 export function PatientDraftFields({ draft, onChange, near, renderAddress }: {
   draft: PatientDraft;
-  onChange: (next: PatientDraft) => void;
+  onChange: Dispatch<SetStateAction<PatientDraft>>;
   near?: GeoPoint;
   renderAddress?: (props: {
     value: string;
@@ -32,7 +32,7 @@ export function PatientDraftFields({ draft, onChange, near, renderAddress }: {
     className: string;
   }) => ReactNode;
 }) {
-  const set = (k: keyof PatientDraft, v: string) => onChange({ ...draft, [k]: v });
+  const set = (k: keyof PatientDraft, v: string) => onChange((current) => ({ ...current, [k]: v }));
 
   return (
     <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -44,7 +44,7 @@ export function PatientDraftFields({ draft, onChange, near, renderAddress }: {
         <input className={FIELD} value={draft.preferredName} onChange={(e) => set("preferredName", e.target.value)} /></label>
       <label className="block"><span className="micro">Date of birth *</span>
         <input type="date" className={FIELD} value={dobToInput(draft.dateOfBirth)}
-          onChange={(e) => onChange({ ...draft, dateOfBirth: inputToDob(e.target.value) })} /></label>
+          onChange={(e) => onChange((current) => ({ ...current, dateOfBirth: inputToDob(e.target.value) }))} /></label>
       <label className="block"><span className="micro">Gender *</span>
         <select className={FIELD} value={draft.gender} onChange={(e) => set("gender", e.target.value)}>
           <option value="">Select…</option><option>Male</option><option>Female</option><option>Other</option>
