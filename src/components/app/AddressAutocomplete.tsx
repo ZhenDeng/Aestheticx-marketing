@@ -12,38 +12,37 @@ import {
 type AutocompleteAddress = (input: string, sessionToken: string) => Promise<AddressPrediction[]>;
 type ResolveAddress = (placeId: string, input: string, sessionToken: string) => Promise<string>;
 
-export interface AddressAutocompleteProps {
+interface SharedAddressAutocompleteProps {
   value: string;
   onChange: (address: string) => void;
   className?: string;
   placeholder?: string;
+  ariaLabel?: string;
+}
+
+export interface GoogleAddressAutocompleteProps extends SharedAddressAutocompleteProps {
   autocomplete?: AutocompleteAddress;
   resolve?: ResolveAddress;
-  /** @deprecated Compatibility for the existing Photon-assisted non-patient forms. */
-  ariaLabel?: string;
-  /** @deprecated Compatibility for the existing Photon-assisted non-patient forms. */
+}
+
+export interface AddressAutocompleteProps extends SharedAddressAutocompleteProps {
   debounceMs?: number;
-  /** @deprecated Compatibility for the existing Photon-assisted non-patient forms. */
   near?: GeoPoint;
 }
 
 /**
- * A controlled Google Places combobox. Typed text remains authoritative until the user
- * explicitly activates a prediction and Place Details resolves successfully.
+ * The existing Photon-assisted input retained for profile, admin, and public-intake callers.
+ * Live patient forms use the separate `GoogleAddressAutocomplete` API.
  *
  * @example
- * <AddressAutocomplete value={address} onChange={setAddress} />
+ * <AddressAutocomplete value={address} onChange={setAddress} near={near} />
  */
 export function AddressAutocomplete(props: AddressAutocompleteProps) {
-  const legacyCaller = props.autocomplete === undefined
-    && props.resolve === undefined
-    && ("near" in props || props.ariaLabel !== undefined || props.debounceMs !== undefined);
-
-  if (legacyCaller) return <LegacyAddressAutocomplete {...props} />;
-  return <GoogleAddressAutocomplete {...props} />;
+  return <LegacyAddressAutocomplete {...props} />;
 }
 
-function GoogleAddressAutocomplete({
+/** Controlled Google Places combobox for authenticated live address entry. */
+export function GoogleAddressAutocomplete({
   value,
   onChange,
   className,
@@ -51,7 +50,7 @@ function GoogleAddressAutocomplete({
   ariaLabel = "Address",
   autocomplete = autocompleteAddress,
   resolve = resolveAddress,
-}: AddressAutocompleteProps) {
+}: GoogleAddressAutocompleteProps) {
   const generatedId = useId();
   const listId = `${generatedId}-address-listbox`;
   const [predictions, setPredictions] = useState<AddressPrediction[]>([]);
@@ -116,33 +115,59 @@ function GoogleAddressAutocomplete({
     };
   }, []);
 
-  function handleChange(nextValue: string) {
+  function handleChange(nextValue: string, nativeEvent: Event) {
     cancelScheduledLookup();
     generationRef.current += 1;
     const generation = generationRef.current;
 
     setPredictions([]);
-    setDismissed(false);
     setActiveIndex(-1);
     const selectionWasPending = selectionRef.current !== null;
     selectionRef.current = null;
-    if (selectionWasPending) sessionRef.current = null;
+    const inputType = "inputType" in nativeEvent && typeof nativeEvent.inputType === "string"
+      ? nativeEvent.inputType
+      : null;
+    // Native autofill is exposed as a replacement input (Safari) or an input/change event
+    // without a typing inputType (Chromium). Actual typing, deletion, and paste all provide
+    // their own inputType and remain eligible for suggestions.
+    const autofillSettlement = nativeEvent.type === "change"
+      || inputType === "insertReplacementText"
+      || (nativeEvent.type === "input" && inputType === null);
+    if (selectionWasPending || autofillSettlement) sessionRef.current = null;
     queryRef.current = nextValue;
     valueRef.current = nextValue;
     onChange(nextValue);
 
+    if (autofillSettlement) {
+      setDismissed(true);
+      return;
+    }
+    setDismissed(false);
+
     const input = nextValue.trim();
-    if (!input) {
+    if (input.length < 4) {
       sessionRef.current = null;
       return;
     }
-    if (input.length < 4) return;
 
     const sessionToken = sessionRef.current ?? crypto.randomUUID();
     sessionRef.current = sessionToken;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      void autocomplete(input, sessionToken)
+      let request: Promise<AddressPrediction[]>;
+      try {
+        request = autocomplete(input, sessionToken);
+      } catch {
+        if (mountedRef.current
+          && generationRef.current === generation
+          && queryRef.current === nextValue
+          && sessionRef.current === sessionToken) {
+          setPredictions([]);
+          setActiveIndex(-1);
+        }
+        return;
+      }
+      void request
         .then((results) => {
           if (!mountedRef.current
             || generationRef.current !== generation
@@ -215,7 +240,7 @@ function GoogleAddressAutocomplete({
           setFocused(false);
           settleSession();
         }}
-        onChange={(event) => handleChange(event.target.value)}
+        onChange={(event) => handleChange(event.target.value, event.nativeEvent)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" && open) {
             event.preventDefault();
@@ -239,7 +264,7 @@ function GoogleAddressAutocomplete({
       />
       {open && (
         <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-inner border border-line bg-card shadow-card">
-          <ul id={listId} role="listbox" className="max-h-56 overflow-auto py-1">
+          <ul id={listId} role="listbox" aria-label={`${ariaLabel} suggestions`} className="max-h-56 overflow-auto py-1">
             {predictions.map((prediction, index) => (
               <li
                 key={prediction.placeId}

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { emptyDraft, type Identity, type Patient, type PatientDraft } from "@/lib/demo/types";
+import { PatientDraftFields } from "@/components/app/PatientDraftFields";
 
 // PatientForm (in components/app, 23.8% dir coverage) is the clinical create/edit surface. It
 // gates submit on missingFields (real helper), creates or updates via the store, and routes to
@@ -26,13 +28,7 @@ vi.mock("@/lib/firebase/addressLookup", () => ({
 
 const createPatient = vi.fn(() => "p-new");
 const updatePatient = vi.fn();
-// The address field biases its suggestions by the signed-in user's own recorded state, so the
-// form now reads their profile (see useAddressBias).
-const profileForUser = vi.fn(() => ({
-  ahpra: "", abn: "", phone: "", address: "14 Acland St, St Kilda VIC 3182",
-  principalPlace: "", premises: [],
-}));
-vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ createPatient, updatePatient, profileForUser }) }));
+vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ createPatient, updatePatient }) }));
 
 import { PatientForm } from "@/components/app/PatientForm";
 
@@ -72,6 +68,29 @@ afterEach(() => {
 });
 
 describe("PatientForm", () => {
+  it("keeps the shared patient field grid while allowing its address control to be injected", () => {
+    function DraftFieldsHarness() {
+      const [draft, setDraft] = useState(validDraft());
+      return (
+        <PatientDraftFields
+          draft={draft}
+          onChange={setDraft}
+          renderAddress={({ value, onChange, className }) => (
+            <input aria-label="Slotted address" className={className} value={value}
+              onChange={(event) => onChange(event.target.value)} />
+          )}
+        />
+      );
+    }
+    render(<DraftFieldsHarness />);
+
+    const address = screen.getByRole("textbox", { name: "Slotted address" });
+    fireEvent.change(address, { target: { value: "22 Shared Grid Road" } });
+    expect(address).toHaveValue("22 Shared Grid Road");
+    expect(screen.getByLabelText(/date of birth/i)).toHaveValue("1990-05-02");
+    expect(screen.getByLabelText(/emergency contact relationship/i)).toBeInTheDocument();
+  });
+
   it("renders nothing without an identity", () => {
     identity = null;
     const { container } = render(<PatientForm mode="create" initial={emptyDraft()} />);
@@ -100,7 +119,7 @@ describe("PatientForm", () => {
 
     const address = screen.getByRole("combobox", { name: /address/i });
     fireEvent.focus(address);
-    fireEvent.change(address, { target: { value: "Unit 5/12 Smith" } });
+    fireEvent.input(address, { target: { value: "Unit 5/12 Smith" }, inputType: "insertText" });
     await act(async () => vi.advanceTimersByTime(250));
     fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
     await act(async () => {});
@@ -120,7 +139,7 @@ describe("PatientForm", () => {
 
     const address = screen.getByRole("combobox", { name: /address/i });
     fireEvent.focus(address);
-    fireEvent.change(address, { target: { value: "Unit 5/12 Smith" } });
+    fireEvent.input(address, { target: { value: "Unit 5/12 Smith" }, inputType: "insertText" });
     await act(async () => vi.advanceTimersByTime(250));
     fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
     await act(async () => {});

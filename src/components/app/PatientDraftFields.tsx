@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import type { GeoPoint } from "@/lib/addressSearch";
 import type { PatientDraft } from "@/lib/demo/types";
@@ -19,12 +20,17 @@ const FIELD = "mt-1.5 w-full rounded-field border border-line bg-card px-3 py-2 
 
 // The new-patient field grid, shared by the in-app PatientForm and the public /intake page
 // (change: patient-form-link-generation) so both always collect the identical field set.
-// `near` is a prop rather than useAddressBias() here because the intake page renders outside
-// the store provider — it simply passes nothing and suggestions rank unbiased.
-export function PatientDraftFields({ draft, onChange, near }: {
+// Public intake can omit `near` for unbiased Photon suggestions. PatientForm injects its
+// mode-specific address control while every other caller retains Photon by default.
+export function PatientDraftFields({ draft, onChange, near, renderAddress }: {
   draft: PatientDraft;
   onChange: (next: PatientDraft) => void;
   near?: GeoPoint;
+  renderAddress?: (props: {
+    value: string;
+    onChange: (value: string) => void;
+    className: string;
+  }) => ReactNode;
 }) {
   const set = (k: keyof PatientDraft, v: string) => onChange({ ...draft, [k]: v });
 
@@ -47,7 +53,9 @@ export function PatientDraftFields({ draft, onChange, near }: {
         <input className={FIELD} value={draft.phone} onChange={(e) => set("phone", e.target.value)} /></label>
       <label className="block sm:col-span-2"><span className="micro">Address *</span>
         {/* 22/07 feedback: suggestions fill the field; typed text stays valid as-is. */}
-        <AddressAutocomplete className={FIELD} value={draft.address} onChange={(v) => set("address", v)} near={near} /></label>
+        {renderAddress
+          ? renderAddress({ value: draft.address, onChange: (value) => set("address", value), className: FIELD })
+          : <AddressAutocomplete className={FIELD} value={draft.address} onChange={(value) => set("address", value)} near={near} />}</label>
       <label className="block sm:col-span-2"><span className="micro">Email *</span>
         <input type="email" className={FIELD} value={draft.email} onChange={(e) => set("email", e.target.value)} /></label>
       <label className="block"><span className="micro">Allergies *</span>

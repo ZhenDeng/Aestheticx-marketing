@@ -3,7 +3,18 @@ import { StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AddressPrediction } from "@/lib/firebase/addressLookup";
 
-import { AddressAutocomplete } from "@/components/app/AddressAutocomplete";
+const searchAddresses = vi.fn();
+const defaultAutocomplete = vi.fn();
+const defaultResolve = vi.fn();
+vi.mock("@/lib/addressSearch", () => ({
+  searchAddresses: (...args: unknown[]) => searchAddresses(...args),
+}));
+vi.mock("@/lib/firebase/addressLookup", () => ({
+  autocompleteAddress: (...args: unknown[]) => defaultAutocomplete(...args),
+  resolveAddress: (...args: unknown[]) => defaultResolve(...args),
+}));
+
+import { AddressAutocomplete, GoogleAddressAutocomplete } from "@/components/app/AddressAutocomplete";
 
 const SESSION_ONE = "d9428888-122b-4a8f-a585-89e1f51ed487";
 const SESSION_TWO = "745dce9c-2ad7-4948-a456-8de53be4fe4e";
@@ -36,7 +47,7 @@ function Harness({
     <form onSubmit={onSubmit}>
       <label>
         Address
-        <AddressAutocomplete
+        <GoogleAddressAutocomplete
           value={address}
           onChange={setAddress}
           className="address-field"
@@ -52,7 +63,7 @@ function Harness({
 function typeAddress(value: string) {
   const input = screen.getByRole("combobox", { name: "Address" });
   fireEvent.focus(input);
-  fireEvent.change(input, { target: { value } });
+  fireEvent.input(input, { target: { value }, inputType: "insertText" });
   return input;
 }
 
@@ -64,6 +75,9 @@ async function advance(milliseconds = 250) {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  searchAddresses.mockReset();
+  defaultAutocomplete.mockReset();
+  defaultResolve.mockReset();
   vi.spyOn(globalThis.crypto, "randomUUID")
     .mockReturnValueOnce(SESSION_ONE)
     .mockReturnValue(SESSION_TWO);
@@ -93,6 +107,13 @@ describe("AddressAutocomplete", () => {
     await advance();
     expect(autocomplete).toHaveBeenLastCalledWith("12345", SESSION_ONE);
     expect(globalThis.crypto.randomUUID).toHaveBeenCalledTimes(1);
+
+    typeAddress("123");
+    await advance();
+    typeAddress("12345");
+    await advance();
+    expect(autocomplete).toHaveBeenLastCalledWith("12345", SESSION_TWO);
+    expect(globalThis.crypto.randomUUID).toHaveBeenCalledTimes(2);
   });
 
   it("continues accepting lookup results after the Strict Mode effect probe", async () => {
@@ -224,7 +245,7 @@ describe("AddressAutocomplete", () => {
     await advance();
 
     fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
-    fireEvent.change(input, { target: { value: "Lot 7 Bushmans Rd" } });
+    fireEvent.input(input, { target: { value: "Lot 7 Bushmans Rd" }, inputType: "insertText" });
     await advance();
     expect(autocomplete).toHaveBeenLastCalledWith("Lot 7 Bushmans Rd", SESSION_TWO);
     await act(async () => pending.resolve("12 Smith Street, Richmond VIC 3121, Australia"));
@@ -267,7 +288,103 @@ describe("AddressAutocomplete", () => {
 
     typeAddress("34 Jones");
     await advance();
-    expect(autocomplete).toHaveBeenCalledWith("34 Jones", SESSION_TWO);
+    expect(autocomplete).toHaveBeenCalledWith("34 Jones", SESSION_ONE);
+  });
+
+  it("settles browser autofill without blur and invalidates pending lookup work", async () => {
+    const pending = deferred<AddressPrediction[]>();
+    const autocomplete = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce(PREDICTIONS);
+    render(<Harness autocomplete={autocomplete} />);
+    const input = typeAddress("12 Smith");
+    await advance();
+
+    fireEvent.input(input, {
+      target: { value: " 99 Autofilled Avenue, Sydney NSW 2000 " },
+      inputType: "insertReplacementText",
+    });
+    expect(input).toHaveValue(" 99 Autofilled Avenue, Sydney NSW 2000 ");
+    await act(async () => pending.resolve(PREDICTIONS));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    fireEvent.input(input, { target: { value: "34 Jones" }, inputType: "insertText" });
+    await advance();
+    expect(autocomplete).toHaveBeenLastCalledWith("34 Jones", SESSION_TWO);
+  });
+
+  it("settles browser autofill without blur and invalidates pending resolution", async () => {
+    const pending = deferred<string>();
+    const resolve = vi.fn().mockReturnValue(pending.promise);
+    const autocomplete = vi.fn().mockResolvedValue(PREDICTIONS);
+    render(<Harness autocomplete={autocomplete} resolve={resolve} />);
+    const input = typeAddress("12 Smith");
+    await advance();
+    fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
+
+    fireEvent.change(input, { target: { value: "Lot 7 Browser Filled Road " } });
+    expect(input).toHaveValue("Lot 7 Browser Filled Road ");
+    await act(async () => pending.resolve("12 Smith Street, Richmond VIC 3121, Australia"));
+    expect(input).toHaveValue("Lot 7 Browser Filled Road ");
+
+    fireEvent.input(input, { target: { value: "56 Brown" }, inputType: "insertText" });
+    await advance();
+    expect(autocomplete).toHaveBeenLastCalledWith("56 Brown", SESSION_TWO);
+  });
+
+  it("treats a synchronous autocomplete exception as an empty free-text outcome", async () => {
+    const autocomplete = vi.fn(() => {
+      throw new Error("synchronous adapter failure");
+    });
+    render(<Harness autocomplete={autocomplete} />);
+    const input = typeAddress("Lot 7 Bushmans Rd");
+
+    await expect(advance()).resolves.toBeUndefined();
+    expect(input).toHaveValue("Lot 7 Bushmans Rd");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("exposes a named listbox controlled by the combobox", async () => {
+    render(<Harness />);
+    const input = typeAddress("12 Smith");
+    await advance();
+    const listbox = screen.getByRole("listbox", { name: "Address suggestions" });
+
+    expect(input).toHaveAttribute("aria-controls", listbox.id);
+    expect(input).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("resolves only once for the pointerdown followed by click browser sequence", async () => {
+    const resolve = vi.fn().mockResolvedValue("12 Smith Street, Richmond VIC 3121, Australia");
+    render(<Harness resolve={resolve} />);
+    typeAddress("12 Smith");
+    await advance();
+    const option = screen.getByRole("option", { name: /Richmond/ });
+
+    fireEvent.pointerDown(option);
+    fireEvent.click(option);
+    await act(async () => {});
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the legacy AddressAutocomplete on Photon without calling Google adapters", async () => {
+    searchAddresses.mockResolvedValue([
+      { id: "photon-1", label: "12 Smith Street, Richmond VIC 3121" },
+    ]);
+    function PhotonHarness() {
+      const [address, setAddress] = useState("");
+      return <AddressAutocomplete value={address} onChange={setAddress} debounceMs={0} ariaLabel="Address" />;
+    }
+    render(<PhotonHarness />);
+
+    const input = screen.getByRole("combobox", { name: "Address" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "12 Smith" } });
+    await advance(0);
+
+    expect(screen.getByRole("option", { name: /Richmond/ })).toBeInTheDocument();
+    expect(searchAddresses).toHaveBeenCalled();
+    expect(defaultAutocomplete).not.toHaveBeenCalled();
+    expect(defaultResolve).not.toHaveBeenCalled();
   });
 
   it("shows compliant Google Maps attribution only while predictions are displayed", async () => {
