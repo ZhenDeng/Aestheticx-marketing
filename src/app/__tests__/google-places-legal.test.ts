@@ -43,7 +43,8 @@ function expectBoundedGoogleDisclosure(source: string) {
   expect(google).toMatch(/Google session token/i);
   expect(google).toMatch(/Australian (?:address )?suggestions/i);
   expect(google).toMatch(/processing may occur outside Australia/i);
-  expect(google).toMatch(/selected address.*stored only.*(?:patient|profile).*transaction/i);
+  expect(google).toMatch(/selected address.*stored only.*patient transaction/i);
+  expect(google).not.toMatch(/\bprofile transaction\b/i);
   expect(google).toMatch(/Google content is not cached/i);
   expect(google).toContain("Google Places / Google Maps is not used for advertising or tracking by AestheticX.");
   expect(google).toMatch(/<a\s+href="https:\/\/policies\.google\.com\/privacy"[^>]*>[\s\S]*?<\/a>/);

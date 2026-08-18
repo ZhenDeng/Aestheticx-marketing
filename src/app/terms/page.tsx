@@ -64,8 +64,8 @@ export default function Terms() {
                 protected AestheticX proxy for Google Places / Google Maps. Google processes
                 partial address text and a Google session token to return Australian address
                 suggestions. If a suggestion is selected, Google resolves the selected address,
-                which is then stored only as part of the relevant patient or profile
-                transaction. Google content is not cached. Google Places / Google Maps is not
+                which is then stored only as part of the relevant patient transaction. Google
+                content is not cached. Google Places / Google Maps is not
                 used for advertising or tracking by AestheticX. The AestheticX address proxy and
                 primary record storage are in Australia, but Google processing is separate and
                 processing may occur outside Australia. Your use of Google content is also
