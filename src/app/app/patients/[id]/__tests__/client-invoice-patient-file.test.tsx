@@ -80,6 +80,14 @@ describe("patient file — Invoice client", () => {
     expect(within(section).getByText(/INV-/)).toBeInTheDocument();
   });
 
+  it("keeps Invoice client in the primary column so an expanded authorisation aside cannot push it down", async () => {
+    const id = findPatientId("Claire Donovan");
+    await renderFile(id);
+
+    const section = screen.getByRole("heading", { name: /invoice client/i }).closest("section")!;
+    expect(section.closest('[data-testid="patient-primary-column"]')).not.toBeNull();
+  });
+
   it("deletes an issued record via the confirm-to-delete action (02/08)", async () => {
     const id = findPatientId("Claire Donovan");
     await renderFile(id);
