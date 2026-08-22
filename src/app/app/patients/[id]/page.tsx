@@ -233,7 +233,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
   // min-content, so a long name / address / phone wraps instead of overflowing at ~320px.
   return (
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1.4fr_1fr]">
-      <div>
+      <div data-testid="patient-primary-column">
         <Link href={isAdminViewer ? "/app/admin/patients" : "/app/patients"} className="text-sm text-ink-soft hover:text-ink">
           ← {isAdminViewer ? "Patient lookup" : "All patients"}
         </Link>
@@ -436,11 +436,14 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         {/* Billing matrix: wallet balance + top-up + checkout, gated inside the component
             by the isolation guard (renders nothing without commercial access). */}
         <PatientAccountSection patient={patient} />
+        {/* Keep client invoicing in the primary column. If it is a separate grid row, the
+            spanning authorisations aside can resize that row when expanded and create a
+            misleading gap after consent forms. */}
+        <ClientInvoiceSection patient={patient} />
       </div>
 
-      {/* The aside spans both rows so Invoice client (the third grid child) lands under the
-          left column on desktop, while the single mobile column keeps DOM order and puts it
-          at the very bottom of the page (01/08 feedback). */}
+      {/* The aside spans the primary column's content height on desktop, while the single
+          mobile column keeps DOM order and puts this rail after the patient details. */}
       <aside className="lg:row-span-2">
         <div className="rounded-card border border-line bg-card p-5 shadow-card" style={{ borderColor: "var(--color-tint)" }}>
           <button onClick={() => setShowAuths((v) => !v)} aria-expanded={showAuths} className="flex w-full items-center justify-between gap-2 text-left">
@@ -616,11 +619,6 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
         )}
         <p className="mt-3 text-xs text-ink-faint">Formal name on documents: {fullName(patient)}</p>
       </aside>
-
-      {/* Manual client invoicing — works in demo and live (spec: 2026-07-24). Grid-placed into
-          the left column on desktop; last in the mobile flow. The grid gap supplies the top
-          spacing, so the component's default mt-8 is replaced by the placement classes. */}
-      <ClientInvoiceSection patient={patient} className="lg:col-start-1 lg:row-start-2" />
 
       {directionFor && (() => {
         const authorisation = active.find((a) => a.id === directionFor);
