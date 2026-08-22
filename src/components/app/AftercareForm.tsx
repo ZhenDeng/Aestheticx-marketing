@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
 import {
-  AFTERCARE_CATEGORIES, aftercareBody, aftercareDisplayName, aftercareEmail, type AftercareCategory,
+  AFTERCARE_CATEGORIES, aftercareBody, aftercareDisplayName, aftercareEmail, withMedicationDetails,
+  type AftercareCategory,
 } from "@/lib/demo/aftercare";
 import { mailtoHref } from "@/lib/demo/remoteSigning";
 import { fullName, type Identity } from "@/lib/demo/types";
@@ -44,7 +45,9 @@ export function AftercareForm({
 
   // Composed from the CURRENT textarea contents, so the practitioner's edits are what leaves.
   // The selection also picks the subject: one category → its per-treatment line.
-  const email = aftercareEmail(patient ? fullName(patient) : "", content, selected);
+  const composedContent = withMedicationDetails(content, includeMeds ? lastMeds : []);
+  const email = aftercareEmail(patient ? fullName(patient) : "", content, selected,
+    includeMeds ? lastMeds : []);
   const href = mailtoHref(recipient, email.subject, email.body);
 
   const label = `Email${selected.length ? ` · ${selected.length} ${selected.length === 1 ? "category" : "categories"}` : ""}`;
@@ -60,7 +63,7 @@ export function AftercareForm({
   // silently drop it. Staying open also leaves the composed text selectable if no client opened.
   function recordSend() {
     if (!canSend || recorded) return; // the anchor only renders when canSend, but guard anyway
-    store.sendAftercare({ patientID, content, medications: includeMeds ? lastMeds : [], categories: selected, identity });
+    store.sendAftercare({ patientID, content: composedContent, medications: includeMeds ? lastMeds : [], categories: selected, identity });
     setRecorded(true);
   }
 

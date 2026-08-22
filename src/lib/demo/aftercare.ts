@@ -1,3 +1,5 @@
+import type { TreatmentMedication } from "@/lib/demo/types";
+
 // Template texts from the owner's 19/07 "aftercare template all treatment" document,
 // content verbatim. The document's bulleted bold-labelled points render as "• " list lines
 // ("   ◦ " for the 5-5-5 rule's nested product-specific points) — the prefill is plain text
@@ -157,6 +159,33 @@ export function aftercareBody(categories: AftercareCategory[]): string {
 }
 
 /**
+ * Adds the selected treatment medication details to the composed body. The section is inserted
+ * before the practitioner-contact closing so the closing remains the final line of the email.
+ * Blank optional fields are omitted, and records with no medication name are ignored.
+ */
+export function withMedicationDetails(body: string, medications: TreatmentMedication[]): string {
+  const populated = medications.filter((medication) => medication.name.trim().length > 0);
+  if (populated.length === 0) return body;
+
+  const lines = populated.map((medication) => {
+    const details = [
+      medication.name.trim(),
+      medication.dosage?.trim() ? `Dosage: ${medication.dosage.trim()}` : null,
+      medication.batch?.trim() ? `Batch: ${medication.batch.trim()}` : null,
+      medication.expiry?.trim() ? `Expiry: ${medication.expiry.trim()}` : null,
+    ].filter((part): part is string => part !== null);
+    return `• ${details.join(" · ")}`;
+  });
+  const section = `Treatment details:\n${lines.join("\n")}`;
+  const closingMarker = `\n\n${AFTERCARE_CLOSING}`;
+  const closingIndex = body.lastIndexOf(closingMarker);
+  if (closingIndex >= 0) {
+    return `${body.slice(0, closingIndex)}\n\n${section}${body.slice(closingIndex)}`;
+  }
+  return `${body}\n\n${section}`;
+}
+
+/**
  * The owner's per-treatment subject line when exactly one category is selected; a generic
  * form otherwise (the document has no combined-treatment subject, and concatenating several
  * would overflow a subject line).
@@ -178,10 +207,12 @@ export function aftercareSubject(categories: AftercareCategory[]): string {
 /** Subject + body for the mailto prefill, mirroring remoteSigning's consentEmail. */
 export function aftercareEmail(
   patientName: string, body: string, categories: AftercareCategory[],
+  medications: TreatmentMedication[] = [],
 ): { subject: string; body: string } {
   const name = patientName.trim();
+  const composedBody = withMedicationDetails(body, medications);
   return {
     subject: aftercareSubject(categories),
-    body: [name ? `Dear ${name},` : "Dear patient,", "", body].join("\n"),
+    body: [name ? `Dear ${name},` : "Dear patient,", "", composedBody].join("\n"),
   };
 }

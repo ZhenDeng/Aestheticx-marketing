@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { emptyState } from "@/lib/demo/backend";
 import { AFTERCARE_CLOSING, aftercareTemplate } from "@/lib/demo/aftercare";
-import type { DemoState, Identity, Patient } from "@/lib/demo/types";
+import type { DemoState, Identity, Note, Patient } from "@/lib/demo/types";
 
 // 19/07: aftercare hands off to the practitioner's own mail client (same as "Send a consent to
 // sign") instead of being sent server-side through Resend. The form composes a mailto prefill
@@ -23,11 +23,12 @@ function patient(email: string): Patient {
 
 const sendAftercare = vi.fn();
 let state: DemoState;
+let visibleNotes: Note[] = [];
 vi.mock("@/lib/demo/store", () => ({
   useDemoStore: () => ({
     state,
     sendAftercare,
-    visibleNotesForPatient: () => [], // no prior treatment note → no medication attach row
+    visibleNotesForPatient: () => visibleNotes,
   }),
 }));
 
@@ -45,6 +46,7 @@ function bodyOf(href: string): string {
 
 beforeEach(() => {
   state = { ...emptyState(), patients: { p1: patient("amara@x.test") } };
+  visibleNotes = [];
   sendAftercare.mockClear();
 });
 
@@ -202,6 +204,39 @@ describe("AftercareForm", () => {
     expect(sendAftercare).toHaveBeenCalledWith(
       expect.objectContaining({ content: "Hand written instructions." }),
     );
+  });
+
+  it("puts checked treatment medication details in the email and recorded content", async () => {
+    visibleNotes = [{
+      id: "tx-1", patientID: "p1", kind: "treatment", title: "Treatment", body: "Done",
+      createdAt: 1, authorID: nurse.user.id, authorBadge: "Nurse", consumedAuthorisationIDs: [],
+      medications: [{ name: "Letybo", dosage: "16U", batch: "C4815-A", expiry: "03/27" }],
+    }];
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+
+    expect(screen.getByRole("checkbox", { name: /attach this treatment/i })).toBeChecked();
+    expect(bodyOf(mailtoLink().getAttribute("href")!)).toContain(
+      "Letybo · Dosage: 16U · Batch: C4815-A · Expiry: 03/27",
+    );
+    await user.click(mailtoLink());
+    expect(sendAftercare.mock.calls[0][0].content).toContain("Treatment details:");
+    expect(sendAftercare.mock.calls[0][0].content).toContain("Letybo");
+  });
+
+  it("leaves treatment medication details out when the checkbox is cleared", async () => {
+    visibleNotes = [{
+      id: "tx-1", patientID: "p1", kind: "treatment", title: "Treatment", body: "Done",
+      createdAt: 1, authorID: nurse.user.id, authorBadge: "Nurse", consumedAuthorisationIDs: [],
+      medications: [{ name: "Letybo", dosage: "16U", batch: "C4815-A", expiry: "03/27" }],
+    }];
+    const user = userEvent.setup();
+    render(<AftercareForm patientID="p1" identity={nurse} onDone={vi.fn()} />);
+    await user.click(screen.getByRole("checkbox", { name: /attach this treatment/i }));
+
+    expect(bodyOf(mailtoLink().getAttribute("href")!)).not.toContain("Treatment details:");
+    await user.click(mailtoLink());
+    expect(sendAftercare.mock.calls[0][0].content).not.toContain("Treatment details:");
   });
 
   // 19/07 owner templates: a single selection also drives the per-treatment subject line.
