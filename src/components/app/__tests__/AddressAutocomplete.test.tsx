@@ -15,6 +15,7 @@ vi.mock("@/lib/firebase/addressLookup", () => ({
 }));
 
 import { AddressAutocomplete, GoogleAddressAutocomplete } from "@/components/app/AddressAutocomplete";
+import { SuggestingInput } from "@/components/app/SuggestingInput";
 
 const SESSION_ONE = "d9428888-122b-4a8f-a585-89e1f51ed487";
 const SESSION_TWO = "745dce9c-2ad7-4948-a456-8de53be4fe4e";
@@ -387,6 +388,80 @@ describe("AddressAutocomplete", () => {
     expect(defaultResolve).not.toHaveBeenCalled();
   });
 
+  it("shows linked OpenStreetMap attribution only while Photon suggestions are exposed", async () => {
+    searchAddresses.mockResolvedValue([
+      { id: "photon-1", label: "12 Smith Street, Richmond VIC 3121" },
+    ]);
+    function PhotonHarness() {
+      const [address, setAddress] = useState("");
+      return <AddressAutocomplete value={address} onChange={setAddress} debounceMs={0} ariaLabel="Address" />;
+    }
+    render(<PhotonHarness />);
+
+    const input = screen.getByRole("combobox", { name: "Address" });
+    expect(screen.queryByRole("link", { name: "© OpenStreetMap contributors" })).not.toBeInTheDocument();
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "12 Smith" } });
+    await advance(0);
+
+    const attribution = screen.getByRole("link", { name: "© OpenStreetMap contributors" });
+    expect(attribution).toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
+    expect(screen.getByRole("listbox").parentElement).toContainElement(attribution);
+
+    act(() => input.focus());
+    act(() => attribution.focus());
+    expect(attribution).toHaveFocus();
+    expect(screen.getByRole("link", { name: "© OpenStreetMap contributors" })).toBeInTheDocument();
+
+    act(() => attribution.blur());
+    expect(screen.queryByRole("link", { name: "© OpenStreetMap contributors" })).not.toBeInTheDocument();
+  });
+
+  it("hides Photon attribution when its suggestion popup is dismissed", async () => {
+    searchAddresses.mockResolvedValue([
+      { id: "photon-1", label: "12 Smith Street, Richmond VIC 3121" },
+    ]);
+    function PhotonHarness() {
+      const [address, setAddress] = useState("");
+      return <AddressAutocomplete value={address} onChange={setAddress} debounceMs={0} ariaLabel="Address" />;
+    }
+    render(<PhotonHarness />);
+
+    const input = screen.getByRole("combobox", { name: "Address" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "12 Smith" } });
+    await advance(0);
+    expect(screen.getByRole("link", { name: "© OpenStreetMap contributors" })).toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("link", { name: "© OpenStreetMap contributors" })).not.toBeInTheDocument();
+  });
+
+  it("does not invent provider attribution for generic suggestion lists", () => {
+    function GenericHarness() {
+      const [value, setValue] = useState("");
+      return (
+        <SuggestingInput
+          value={value}
+          onChangeText={setValue}
+          onSelect={(suggestion) => setValue(suggestion.label)}
+          suggestions={[{ id: "catalog-1", label: "Generic catalog item" }]}
+          ariaLabel="Catalog"
+        />
+      );
+    }
+    render(<GenericHarness />);
+
+    const input = screen.getByRole("combobox", { name: "Catalog" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "Generic" } });
+
+    expect(screen.getByRole("option", { name: "Generic catalog item" })).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();
+  });
+
   it("shows compliant Google Maps attribution only while predictions are displayed", async () => {
     const autocomplete = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce(PREDICTIONS);
     render(<Harness autocomplete={autocomplete} />);
@@ -406,5 +481,6 @@ describe("AddressAutocomplete", () => {
       whiteSpace: "nowrap",
     });
     expect(screen.getByRole("listbox").parentElement).toContainElement(attribution);
+    expect(screen.queryByRole("link", { name: "© OpenStreetMap contributors" })).not.toBeInTheDocument();
   });
 });

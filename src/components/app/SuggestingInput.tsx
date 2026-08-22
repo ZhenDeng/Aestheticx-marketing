@@ -16,8 +16,13 @@ export interface Suggestion {
   detail?: string;
 }
 
+export interface SuggestionAttribution {
+  label: string;
+  href: string;
+}
+
 export function SuggestingInput({
-  value, onChangeText, onSelect, suggestions, placeholder, className, ariaLabel,
+  value, onChangeText, onSelect, suggestions, placeholder, className, ariaLabel, attribution,
 }: {
   value: string;
   onChangeText: (text: string) => void;
@@ -26,6 +31,8 @@ export function SuggestingInput({
   placeholder?: string;
   className?: string;
   ariaLabel?: string;
+  /** Provider credit shown only while this caller's suggestion list is open. */
+  attribution?: SuggestionAttribution;
 }) {
   const listId = useId();
   const [focused, setFocused] = useState(false);
@@ -41,8 +48,43 @@ export function SuggestingInput({
     onSelect(s);
   }
 
+  const listbox = (
+    <ul
+      id={listId}
+      role="listbox"
+      aria-label={ariaLabel ? `${ariaLabel} suggestions` : "Suggestions"}
+      className={attribution
+        ? "max-h-56 overflow-auto py-1"
+        : "absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-inner border border-line bg-card py-1 shadow-card"}
+    >
+      {suggestions.map((s, i) => (
+        <li
+          key={s.id}
+          id={`${listId}-${i}`}
+          role="option"
+          aria-selected={i === active}
+          // mousedown, not click: it fires before the input's blur closes the list.
+          onMouseDown={(e) => { e.preventDefault(); choose(s); }}
+          onMouseEnter={() => setActive(i)}
+          className={`cursor-pointer px-3 py-1.5 text-sm text-ink ${i === active ? "bg-paper" : ""}`}
+        >
+          {s.label}
+          {s.detail && <span className="text-ink-soft"> · {s.detail}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+          setFocused(false);
+        }
+      }}
+    >
       <input
         role="combobox"
         aria-expanded={open}
@@ -56,7 +98,6 @@ export function SuggestingInput({
         className={className}
         onChange={(e) => { setDismissed(false); setActive(-1); onChangeText(e.target.value); }}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -72,30 +113,20 @@ export function SuggestingInput({
           }
         }}
       />
-      {open && (
-        <ul
-          id={listId}
-          role="listbox"
-          aria-label={ariaLabel ? `${ariaLabel} suggestions` : "Suggestions"}
-          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-inner border border-line bg-card py-1 shadow-card"
-        >
-          {suggestions.map((s, i) => (
-            <li
-              key={s.id}
-              id={`${listId}-${i}`}
-              role="option"
-              aria-selected={i === active}
-              // mousedown, not click: it fires before the input's blur closes the list.
-              onMouseDown={(e) => { e.preventDefault(); choose(s); }}
-              onMouseEnter={() => setActive(i)}
-              className={`cursor-pointer px-3 py-1.5 text-sm text-ink ${i === active ? "bg-paper" : ""}`}
+      {open && (attribution ? (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-inner border border-line bg-card shadow-card">
+          {listbox}
+          <div className="border-t border-line px-3 py-1.5 text-right text-xs text-ink-soft">
+            <a
+              href={attribution.href}
+              rel="license"
+              className="underline decoration-line underline-offset-2 hover:text-ink hover:decoration-ink"
             >
-              {s.label}
-              {s.detail && <span className="text-ink-soft"> · {s.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+              {attribution.label}
+            </a>
+          </div>
+        </div>
+      ) : listbox)}
     </div>
   );
 }

@@ -110,6 +110,14 @@ export default function Privacy() {
                   public-intake address fields still use Photon. They send partial address text
                   and any derived bias coordinates directly from your browser to
                   photon.komoot.io. These requests do not use the protected Google proxy.
+                  Photon uses OpenStreetMap data; see the{" "}
+                  <a
+                    href="https://www.openstreetmap.org/copyright"
+                    className="text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+                  >
+                    OpenStreetMap copyright and license
+                  </a>
+                  .
                 </li>
                 <li>
                   Emails the practice asks us to send (such as aftercare instructions or

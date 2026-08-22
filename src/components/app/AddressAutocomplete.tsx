@@ -9,6 +9,11 @@ import {
   type AddressPrediction,
 } from "@/lib/firebase/addressLookup";
 
+const PHOTON_ATTRIBUTION = {
+  label: "© OpenStreetMap contributors",
+  href: "https://www.openstreetmap.org/copyright",
+};
+
 type AutocompleteAddress = (input: string, sessionToken: string) => Promise<AddressPrediction[]>;
 type ResolveAddress = (placeId: string, input: string, sessionToken: string) => Promise<string>;
 
@@ -345,6 +350,7 @@ function LegacyAddressAutocomplete({
       placeholder={placeholder}
       className={className}
       ariaLabel={ariaLabel}
+      attribution={PHOTON_ATTRIBUTION}
     />
   );
 }

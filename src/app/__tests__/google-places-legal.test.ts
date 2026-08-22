@@ -59,6 +59,9 @@ function expectLegacyPhotonDisclosure(source: string) {
   expect(photon).toMatch(/partial address text/i);
   expect(photon).toMatch(/derived bias coordinates/i);
   expect(photon).toMatch(/photon\.komoot\.io/i);
+  expect(photon).toMatch(
+    /<a\s+href="https:\/\/www\.openstreetmap\.org\/copyright"[^>]*>\s*OpenStreetMap copyright and license\s*<\/a>/,
+  );
 }
 
 describe("address providers are disclosed by surface", () => {
