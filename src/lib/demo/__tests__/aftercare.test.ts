@@ -165,4 +165,20 @@ describe("aftercareEmail", () => {
     expect(aftercareEmail("   ", "BODY", []).body).toBe("Dear patient,\n\nBODY");
     expect(aftercareEmail("", "BODY", []).subject).toBe("Your Aftercare Guide");
   });
+
+  it("includes selected treatment medication details in the email body", () => {
+    const email = aftercareEmail("Amara Boyd", aftercareBody(["antiwrinkle"]), ["antiwrinkle"], [
+      { name: "Letybo", dosage: "16U", batch: "C4815-A", expiry: "03/27" },
+    ]);
+
+    expect(email.body).toContain("Treatment details:");
+    expect(email.body).toContain("Letybo · Dosage: 16U · Batch: C4815-A · Expiry: 03/27");
+    expect(email.body.indexOf("Treatment details:")).toBeLessThan(email.body.indexOf(AFTERCARE_CLOSING));
+    expect(email.body.endsWith(AFTERCARE_CLOSING)).toBe(true);
+  });
+
+  it("does not add a medication section when no treatment details are selected", () => {
+    const email = aftercareEmail("Amara Boyd", aftercareBody(["antiwrinkle"]), ["antiwrinkle"], []);
+    expect(email.body).not.toContain("Treatment details:");
+  });
 });
