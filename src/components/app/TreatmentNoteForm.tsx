@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useDemoStore } from "@/lib/demo/store";
 import { usableAuthorisations } from "@/lib/demo/backend";
-import { unitSuffix } from "@/lib/demo/catalog";
+import { medicationLabel, unitSuffix } from "@/lib/demo/catalog";
 import { NoteAttachmentsInput } from "@/components/app/NoteAttachments";
 import { MedicationCombobox } from "@/components/app/MedicationCombobox";
 import { routeLabel, type Identity, type NoteAttachment, type TreatmentMedication } from "@/lib/demo/types";
@@ -55,7 +55,7 @@ export function TreatmentNoteForm({
     const consumed: TreatmentMedication[] = [...ticked].map((id) => {
       const a = usable.find((x) => x.id === id)!;
       const e = edits[id] ?? { batch: "", expiry: "", dosage: "" };
-      return { name: a.medication.name, batch: e.batch, expiry: e.expiry, dosage: e.dosage };
+      return { name: medicationLabel(a.medication), batch: e.batch, expiry: e.expiry, dosage: e.dosage };
     });
     const medications = [...consumed, ...manualMeds.filter((m) => m.name.trim() !== "")];
     store.saveTreatmentNote({
@@ -84,7 +84,7 @@ export function TreatmentNoteForm({
               <li key={a.id} className="rounded-inner border border-line px-3 py-2">
                 <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink">
                   <input type="checkbox" checked={ticked.has(a.id)} onChange={() => toggle(a.id)} />
-                  <span className="font-medium">{a.medication.name}</span>
+                  <span className="font-medium">{medicationLabel(a.medication)}</span>
                   {/* 15/07 feedback: show the approved dosing + route where the nurse selects. */}
                   <span className="text-ink-soft">· {a.medication.dosage} {unitSuffix(a.medication.unit)}</span>
                   {routeLabel(a.medication.route) && <span className="text-ink-soft">· {routeLabel(a.medication.route)}</span>}

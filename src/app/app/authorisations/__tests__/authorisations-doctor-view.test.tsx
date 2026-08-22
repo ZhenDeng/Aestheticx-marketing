@@ -18,7 +18,7 @@ const request: AuthorisationRequest = {
   nurse: { id: "nurse-1", name: "Zhexia" },
   doctorID: "doc-1",
   context: { kind: "independent" },
-  items: [{ name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] }],
+  items: [{ name: "S", dosage: "1", category: "collagenStimulator", brand: "Ellanse", unit: "millilitres", areas: ["Face"] }],
   status: "pending",
   createdAt: 1,
   patientSummary: {
@@ -53,5 +53,11 @@ describe("Authorisations doctor view — reviewer file access", () => {
   it("surfaces the clinical alert on the card at a glance", () => {
     render(<AuthorisationsPage />);
     expect(screen.getByText(/Pregnant/)).toBeInTheDocument();
+  });
+
+  it("shows the full branded product name in the review request", () => {
+    render(<AuthorisationsPage />);
+    expect(screen.getByText(/Ellanse S/)).toBeInTheDocument();
+    expect(screen.queryByText(/^S ·/)).not.toBeInTheDocument();
   });
 });

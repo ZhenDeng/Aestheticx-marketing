@@ -57,7 +57,7 @@ import { fullName, displayName, identityBadge, emptyDraft, emergencyContactFromD
 import type { AftercareCategory } from "./aftercare";
 import { monthKey } from "./billing";
 import { canDeleteInvoice, computeInvoice, computeInclusiveTotals, computeManualInvoice, formatAUD, scriptsFromBillable, GST_RATE, type Invoice, type InvoiceParty } from "./invoicing";
-import { PRODUCT_CATEGORIES, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
+import { PRODUCT_CATEGORIES, medicationLabel, productSlug, unitSuffix, type CatalogProduct } from "./catalog";
 import { formTemplate, type FormTemplateKind, type SigningChannel } from "./forms";
 import { identityKey } from "./identityPrefs";
 import { EMERGENCY_VALIDITY_MONTHS, applyEmergencyAuthorisations, emergencyID, emergencyKindsFor } from "./emergency";
@@ -2726,7 +2726,7 @@ export function counterpartyMonthDetail(
         ? fullName(patient)
         : state.requests[first.requestID]?.patientSummary?.fullName ?? "Patient";
       const detail = auths
-        .map((a) => `${a.medication.name} ${a.medication.dosage} ${unitSuffix(a.medication.unit)}`.trim())
+        .map((a) => `${medicationLabel(a.medication)} ${a.medication.dosage} ${unitSuffix(a.medication.unit)}`.trim())
         .join(" · ");
       return {
         requestID: first.requestID,
