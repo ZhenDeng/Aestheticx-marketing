@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   PRODUCT_CATALOG, productsInCategory, brandsInCategory, productsInBrand,
-  searchProducts, productById, productLabel, treatmentAreasFor, quantityCaption,
+  searchProducts, productById, productLabel, medicationLabel, treatmentAreasFor, quantityCaption,
   unitSuffix, effectiveCatalog, type CatalogProduct,
 } from "@/lib/demo/catalog";
 import { resolveRecentlyUsed } from "@/lib/demo/requestBuilder";
@@ -70,6 +70,11 @@ describe("labels, areas, captions", () => {
   it("labels branded vs unbranded products", () => {
     expect(productLabel({ id: "x", category: "haFiller", brand: "Juvederm", name: "Voluma", unit: "millilitres", isActive: true })).toBe("Juvederm · Voluma");
     expect(productLabel({ id: "y", category: "skinBooster", name: "Profhilo", unit: "millilitres", isActive: true })).toBe("Profhilo");
+  });
+
+  it("labels branded medications with their full product name", () => {
+    expect(medicationLabel({ name: "S", dosage: "1", category: "collagenStimulator", brand: "Ellanse", unit: "millilitres", areas: ["Face"] })).toBe("Ellanse S");
+    expect(medicationLabel({ name: "Botox", dosage: "48", category: "neurotoxin", unit: "units", areas: ["Forehead"] })).toBe("Botox");
   });
   it("returns the right treatment-area list per category/unit", () => {
     expect(treatmentAreasFor("neurotoxin", "units")).toContain("Glabella");

@@ -5,7 +5,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { useConsultCall } from "@/components/app/ConsultCall";
-import { unitSuffix } from "@/lib/demo/catalog";
+import { medicationLabel, unitSuffix } from "@/lib/demo/catalog";
 import type { AuthorisationRequest, Identity } from "@/lib/demo/types";
 
 // While a request is open the addressed doctor gets read-only access to the patient's full
@@ -52,7 +52,7 @@ function DoctorReviewInbox({ doctor, store, consult }: { doctor: Identity; store
             <PatientReviewCard request={r} />
             <ul className="mt-3 flex flex-col gap-1 text-sm text-ink">
               {r.items.map((it, i) => (
-                <li key={i}>{it.name} · {it.dosage} {unitSuffix(it.unit)} · {it.areas.join(", ")}</li>
+                <li key={i}>{medicationLabel(it)} · {it.dosage} {unitSuffix(it.unit)} · {it.areas.join(", ")}</li>
               ))}
             </ul>
             <div className="mt-4 flex gap-3">
@@ -89,7 +89,7 @@ function NurseRequests({ identity, store, consult }: { identity: Identity; store
           <li key={request.id} className="flex items-center justify-between rounded-inner border border-line bg-card px-5 py-4">
             <span>
               <Link href={`/app/patients/${patient.id}`} className="font-medium text-ink hover:underline">{patient.givenName} {patient.lastName}</Link>
-              <span className="block text-sm text-ink-soft">{request.items.map((i) => i.name).join(", ")}</span>
+              <span className="block text-sm text-ink-soft">{request.items.map(medicationLabel).join(", ")}</span>
             </span>
             <span className="flex items-center gap-3">
               {request.status === "needsEdit" && (

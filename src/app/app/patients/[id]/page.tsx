@@ -24,7 +24,7 @@ import { templateDisplayName } from "@/lib/demo/forms";
 import { dayLabel } from "@/lib/demo/calendar";
 import { emergencyKindLabel } from "@/lib/demo/direction";
 import { displayName, emergencyContactLine, fullName, hasAlert, routeLabel, type AppointmentStatus, type NoteAttachment, type Patient } from "@/lib/demo/types";
-import { unitSuffix } from "@/lib/demo/catalog";
+import { medicationLabel, unitSuffix } from "@/lib/demo/catalog";
 
 const APPT_STATUS_LABEL: Record<AppointmentStatus, string> = {
   awaitingConfirmation: "Awaiting", confirmed: "Confirmed", completed: "Completed", noShow: "No show", cancelled: "Cancelled",
@@ -453,7 +453,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
             {active.map((a) => (
               <li key={a.id}>
                 <p className="flex items-baseline justify-between gap-2">
-                  <span className="font-medium text-ink">{a.medication.name}</span>
+                  <span className="font-medium text-ink">{medicationLabel(a.medication)}</span>
                   {/* iOS AuthorisationCard's direction affordance. Labelled for the document it
                       produces, not the regulation clause — "68C" alone read as jargon (18/07
                       feedback). The citation stays on hover, in the accessible name, and in the
@@ -512,7 +512,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                 {openRequests.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2">
                     <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-sm text-ink-soft">{r.items.map((i) => i.name).join(", ")}</span>
+                      <span className="truncate text-sm text-ink-soft">{r.items.map(medicationLabel).join(", ")}</span>
                       {r.status === "needsEdit" && <span className="micro" style={{ color: "var(--color-danger)" }}>Needs edit</span>}
                     </span>
                     <span className="flex flex-none items-center gap-2">
@@ -524,7 +524,7 @@ export default function PatientFilePage({ params }: { params: Promise<{ id: stri
                       )}
                       {r.status === "pending" && (
                         <Link href={`/app/patients/${id}/request?edit=${r.id}`}
-                          aria-label={`Edit pending request (${r.items.map((i) => i.name).join(", ")})`}
+                          aria-label={`Edit pending request (${r.items.map(medicationLabel).join(", ")})`}
                           className="rounded-btn border border-line px-3 py-1.5 text-sm text-ink hover:border-tint">
                           Edit
                         </Link>

@@ -11,7 +11,7 @@ import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { heldIdentities, prescriberIdentity } from "@/lib/demo/identity";
 import { incomingCallFromSignal, callDisplayName, LIVEKIT_URL, type IncomingCall } from "@/lib/demo/calls";
-import { unitSuffix } from "@/lib/demo/catalog";
+import { medicationLabel, unitSuffix } from "@/lib/demo/catalog";
 import type { AuthorisationRequest, Identity } from "@/lib/demo/types";
 import type { Room } from "livekit-client";
 
@@ -206,7 +206,7 @@ function CallReviewPanel({ request, doctor, store }: { request: AuthorisationReq
       <p className="micro mt-3">Requested items</p>
       <ul className="mt-1 flex flex-col gap-1 text-sm text-ink">
         {request.items.map((it, i) => (
-          <li key={i}>{it.name} · {it.dosage} {unitSuffix(it.unit)}{it.areas.length ? ` · ${it.areas.join(", ")}` : ""}</li>
+          <li key={i}>{medicationLabel(it)} · {it.dosage} {unitSuffix(it.unit)}{it.areas.length ? ` · ${it.areas.join(", ")}` : ""}</li>
         ))}
       </ul>
       <div className="mt-4">

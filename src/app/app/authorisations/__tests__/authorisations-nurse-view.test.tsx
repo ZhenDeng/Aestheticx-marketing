@@ -23,7 +23,7 @@ function req(id: string, status: AuthorisationRequest["status"]): AuthorisationR
     nurse: { id: "nurse-1", name: "Zhexia" },
     doctorID: "doc-1",
     context: { kind: "independent" },
-    items: [{ name: "Botox", dosage: "20", category: "neurotoxin", unit: "units", areas: ["Glabella"] }],
+    items: [{ name: "S", dosage: "1", category: "collagenStimulator", brand: "Ellanse", unit: "millilitres", areas: ["Face"] }],
     status,
     createdAt: 1,
   };

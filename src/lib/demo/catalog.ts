@@ -1,6 +1,6 @@
 // Static prescribing catalog, ported verbatim from iOS AXDomain/ProductCatalogSeed.swift
 // + PrescribingProducts.swift. Data, not logic — super-admin/deploy-time maintained.
-import type { ProductCategory, ProductUnit } from "./types";
+import type { MedicationItem, ProductCategory, ProductUnit } from "./types";
 
 export interface CatalogProduct {
   id: string;
@@ -138,6 +138,13 @@ export function productById(id: string, catalog: CatalogProduct[] = PRODUCT_CATA
 
 export function productLabel(p: CatalogProduct): string {
   return p.brand ? `${p.brand} · ${p.name}` : p.name;
+}
+
+/** Full product name used in authorisations and treatment records. */
+export function medicationLabel(item: Pick<MedicationItem, "brand" | "name">): string {
+  const name = item.name.trim();
+  const brand = item.brand?.trim() ?? "";
+  return brand && name ? `${brand} ${name}` : brand || name;
 }
 
 export function quantityCaption(unit: ProductUnit): string {
