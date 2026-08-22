@@ -56,26 +56,20 @@ test("a11y — authenticated dashboard (nurse)", async ({ page }) => {
   expect(violations, JSON.stringify(violations.map((v) => v.id), null, 2)).toEqual([]);
 });
 
-// The address combobox, scanned with its suggestion list OPEN — the state that carries the
-// combobox/listbox/option roles and aria-activedescendant. Scanning it closed would miss
-// exactly the markup this check exists for.
-test("a11y — patient form with the address suggestion list open", async ({ page }) => {
-  await page.route("**/photon.komoot.io/**", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ features: [{ properties: {
-      housenumber: "12", street: "Smith Street", suburb: "Richmond",
-      state: "Victoria", postcode: "3121", countrycode: "AU",
-    } }] }),
-  }));
-
+// Demo mode deliberately keeps the new-patient address as free text. The live authenticated
+// form owns the Google combobox; its open-list accessibility contract is covered by the
+// component suite, which can provide the authenticated callable adapters without exposing a
+// production identity to browser tests.
+test("a11y — demo patient form with a free-text address", async ({ page }) => {
   await loginAsDemo(page, DEMO.nurse);
   await page.getByRole("navigation").getByRole("link", { name: "Patients", exact: true }).click();
   await page.getByRole("link", { name: "New patient" }).click();
 
-  const address = page.getByRole("combobox", { name: /address/i });
-  await address.fill("12 Smith");
-  await expect(page.getByRole("option", { name: /Richmond VIC 3121/ })).toBeVisible();
+  const address = page.getByRole("textbox", { name: /address/i });
+  await expect(address).toHaveAttribute("autocomplete", "street-address");
+  await address.fill("Lot 7 Bushmans Road, Dungog NSW 2420");
+  await expect(address).toHaveValue("Lot 7 Bushmans Road, Dungog NSW 2420");
+  await expect(page.getByRole("listbox", { name: /address suggestions/i })).toHaveCount(0);
 
   const violations = await scan(page);
   expect(violations, JSON.stringify(violations.map((v) => v.id), null, 2)).toEqual([]);

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/privacy" },
 };
 
-const UPDATED = "4 July 2026";
+const UPDATED = "19 August 2026";
 
 export default function Privacy() {
   return (
@@ -79,6 +79,45 @@ export default function Privacy() {
                   Firebase Authentication), encrypted in transit and at rest, with role-based
                   access controls so records are visible only to the treating practice&rsquo;s
                   authorised users.
+                </li>
+                <li>
+                  <strong>Live signed-in PatientForm.</strong> The live signed-in PatientForm
+                  uses the protected AestheticX proxy for Google Places / Google Maps. Google
+                  processes partial address text and a Google session token to return Australian
+                  address suggestions. If a suggestion is selected, Google resolves the selected
+                  address, which is then stored only as part of the relevant patient transaction.
+                  Google content is not cached. Google Places / Google Maps is not
+                  used for advertising or tracking by AestheticX. The AestheticX address proxy
+                  and primary record storage are in Australia, but Google processing is separate
+                  and processing may occur outside Australia. Read{" "}
+                  <a
+                    href="https://policies.google.com/privacy"
+                    className="text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+                  >
+                    Google&rsquo;s Privacy Policy
+                  </a>{" "}
+                  and the{" "}
+                  <a
+                    href="https://cloud.google.com/maps-platform/terms"
+                    className="text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+                  >
+                    Google Maps Platform Terms
+                  </a>
+                  .
+                </li>
+                <li>
+                  <strong>Legacy address fields.</strong> The profile, administration, and
+                  public-intake address fields still use Photon. They send partial address text
+                  and any derived bias coordinates directly from your browser to
+                  photon.komoot.io. These requests do not use the protected Google proxy.
+                  Photon uses OpenStreetMap data; see the{" "}
+                  <a
+                    href="https://www.openstreetmap.org/copyright"
+                    className="text-ink underline decoration-line underline-offset-4 hover:decoration-ink"
+                  >
+                    OpenStreetMap copyright and license
+                  </a>
+                  .
                 </li>
                 <li>
                   Emails the practice asks us to send (such as aftercare instructions or

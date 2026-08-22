@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useDemoAuth } from "@/lib/demo/auth";
 import { useDemoStore } from "@/lib/demo/store";
 import { missingFields } from "@/lib/demo/backend";
+import { GoogleAddressAutocomplete } from "@/components/app/AddressAutocomplete";
 import { PatientDraftFields } from "@/components/app/PatientDraftFields";
-import { useAddressBias } from "@/components/app/useAddressBias";
 import { emergencyContactFromDraft, type Patient, type PatientDraft } from "@/lib/demo/types";
 
 export function PatientForm({ mode, initial, existing, create, onCancel, compact, title, submitLabel }: {
@@ -20,12 +20,11 @@ export function PatientForm({ mode, initial, existing, create, onCancel, compact
   /** Heading/button overrides for reuse surfaces (pending form-link review). */
   title?: string; submitLabel?: string;
 }) {
-  const { identity } = useDemoAuth();
+  const { identity, mode: authMode } = useDemoAuth();
   const store = useDemoStore();
   const router = useRouter();
   const [draft, setDraft] = useState<PatientDraft>(initial);
   const [error, setError] = useState<string | null>(null);
-  const near = useAddressBias();
   if (!identity) return null;
 
   const invalid = missingFields(draft).size > 0;
@@ -61,7 +60,16 @@ export function PatientForm({ mode, initial, existing, create, onCancel, compact
       {compact
         ? <h2 className="font-display text-lg text-ink">{title ?? (mode === "create" ? "New patient from lead" : "Edit patient")}</h2>
         : <h1 className="font-display text-3xl text-ink">{heading}</h1>}
-      <PatientDraftFields draft={draft} onChange={setDraft} near={near} />
+      <PatientDraftFields
+        draft={draft}
+        onChange={setDraft}
+        renderAddress={({ value, onChange, className }) => authMode === "live" ? (
+          <GoogleAddressAutocomplete value={value} onChange={onChange} className={className} />
+        ) : (
+          <input className={className} autoComplete="street-address" value={value}
+            onChange={(event) => onChange(event.target.value)} />
+        )}
+      />
       {error && <p className="mt-4 text-sm" style={{ color: "var(--color-rose)" }}>{error}</p>}
       <div className="mt-6 flex gap-3">
         <button type="submit" disabled={invalid}

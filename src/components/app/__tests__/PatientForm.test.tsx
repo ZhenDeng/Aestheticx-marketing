@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { emptyDraft, type Identity, type Patient, type PatientDraft } from "@/lib/demo/types";
+import { PatientDraftFields } from "@/components/app/PatientDraftFields";
 
 // PatientForm (in components/app, 23.8% dir coverage) is the clinical create/edit surface. It
 // gates submit on missingFields (real helper), creates or updates via the store, and routes to
@@ -14,17 +16,19 @@ const back = vi.fn();
 vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push, back }) }));
 
 let identity: Identity | null;
-vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity }) }));
+let authMode: "demo" | "live";
+vi.mock("@/lib/demo/auth", () => ({ useDemoAuth: () => ({ identity, mode: authMode }) }));
+
+const autocompleteAddress = vi.fn();
+const resolveAddress = vi.fn();
+vi.mock("@/lib/firebase/addressLookup", () => ({
+  autocompleteAddress: (...args: unknown[]) => autocompleteAddress(...args),
+  resolveAddress: (...args: unknown[]) => resolveAddress(...args),
+}));
 
 const createPatient = vi.fn(() => "p-new");
 const updatePatient = vi.fn();
-// The address field biases its suggestions by the signed-in user's own recorded state, so the
-// form now reads their profile (see useAddressBias).
-const profileForUser = vi.fn(() => ({
-  ahpra: "", abn: "", phone: "", address: "14 Acland St, St Kilda VIC 3182",
-  principalPlace: "", premises: [],
-}));
-vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ createPatient, updatePatient, profileForUser }) }));
+vi.mock("@/lib/demo/store", () => ({ useDemoStore: () => ({ createPatient, updatePatient }) }));
 
 import { PatientForm } from "@/components/app/PatientForm";
 
@@ -45,13 +49,48 @@ const existing: Patient = {
 
 beforeEach(() => {
   identity = nurse;
+  authMode = "demo";
   push.mockClear();
   back.mockClear();
   createPatient.mockClear();
   updatePatient.mockClear();
+  autocompleteAddress.mockReset();
+  autocompleteAddress.mockResolvedValue([
+    { placeId: "place-1", label: "12 Smith Street, Richmond VIC 3121, Australia" },
+  ]);
+  resolveAddress.mockReset();
+  resolveAddress.mockResolvedValue("Unit 5/12 Smith Street, Richmond VIC 3121, Australia");
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("PatientForm", () => {
+  it("keeps the shared patient field grid while allowing its address control to be injected", () => {
+    function DraftFieldsHarness() {
+      const [draft, setDraft] = useState(validDraft());
+      return (
+        <PatientDraftFields
+          draft={draft}
+          onChange={setDraft}
+          renderAddress={({ value, onChange, className }) => (
+            <input aria-label="Slotted address" className={className} value={value}
+              onChange={(event) => onChange(event.target.value)} />
+          )}
+        />
+      );
+    }
+    render(<DraftFieldsHarness />);
+
+    const address = screen.getByRole("textbox", { name: "Slotted address" });
+    fireEvent.change(address, { target: { value: "22 Shared Grid Road" } });
+    expect(address).toHaveValue("22 Shared Grid Road");
+    expect(screen.getByLabelText(/date of birth/i)).toHaveValue("1990-05-02");
+    expect(screen.getByLabelText(/emergency contact relationship/i)).toBeInTheDocument();
+  });
+
   it("renders nothing without an identity", () => {
     identity = null;
     const { container } = render(<PatientForm mode="create" initial={emptyDraft()} />);
@@ -61,6 +100,85 @@ describe("PatientForm", () => {
   it("disables submit while required fields are missing", () => {
     render(<PatientForm mode="create" initial={emptyDraft()} />);
     expect(screen.getByRole("button", { name: /create patient/i })).toBeDisabled();
+  });
+
+  it("keeps demo mode as a native street-address textbox without lookup", () => {
+    render(<PatientForm mode="create" initial={validDraft()} />);
+
+    const address = screen.getByRole("textbox", { name: /address/i });
+    expect(address).toHaveAttribute("autocomplete", "street-address");
+    fireEvent.change(address, { target: { value: "12 Smith" } });
+    expect(autocompleteAddress).not.toHaveBeenCalled();
+  });
+
+  it("creates a live patient with the resolved address instead of the prediction label", async () => {
+    authMode = "live";
+    vi.useFakeTimers();
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("d9428888-122b-4a8f-a585-89e1f51ed487");
+    render(<PatientForm mode="create" initial={validDraft()} />);
+
+    const address = screen.getByRole("combobox", { name: /address/i });
+    fireEvent.focus(address);
+    fireEvent.input(address, { target: { value: "Unit 5/12 Smith" }, inputType: "insertText" });
+    await act(async () => vi.advanceTimersByTime(250));
+    fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /create patient/i }));
+
+    expect(createPatient).toHaveBeenCalledTimes(1);
+    const [saved] = createPatient.mock.calls[0] as [PatientDraft, Identity];
+    expect(saved.address).toBe("Unit 5/12 Smith Street, Richmond VIC 3121, Australia");
+    expect(saved.address).not.toBe("12 Smith Street, Richmond VIC 3121, Australia");
+  });
+
+  it("merges a delayed resolved address into the latest patient field edits", async () => {
+    authMode = "live";
+    vi.useFakeTimers();
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("d9428888-122b-4a8f-a585-89e1f51ed487");
+    let finishResolution!: (address: string) => void;
+    resolveAddress.mockReturnValue(new Promise<string>((resolve) => {
+      finishResolution = resolve;
+    }));
+    render(<PatientForm mode="create" initial={validDraft()} />);
+
+    const address = screen.getByRole("combobox", { name: /address/i });
+    fireEvent.focus(address);
+    fireEvent.input(address, { target: { value: "Unit 5/12 Smith" }, inputType: "insertText" });
+    await act(async () => vi.advanceTimersByTime(250));
+    fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
+
+    fireEvent.change(screen.getByLabelText(/^phone/i), { target: { value: "0499 111 222" } });
+    fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: "latest@x.test" } });
+    await act(async () => finishResolution("Unit 5/12 Smith Street, Richmond VIC 3121, Australia"));
+    fireEvent.click(screen.getByRole("button", { name: /create patient/i }));
+
+    expect(createPatient).toHaveBeenCalledTimes(1);
+    const [saved] = createPatient.mock.calls[0] as [PatientDraft, Identity];
+    expect(saved).toEqual(expect.objectContaining({
+      address: "Unit 5/12 Smith Street, Richmond VIC 3121, Australia",
+      phone: "0499 111 222",
+      email: "latest@x.test",
+    }));
+  });
+
+  it("updates a live patient with the resolved address instead of the prediction label", async () => {
+    authMode = "live";
+    vi.useFakeTimers();
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("d9428888-122b-4a8f-a585-89e1f51ed487");
+    render(<PatientForm mode="edit" initial={validDraft()} existing={existing} />);
+
+    const address = screen.getByRole("combobox", { name: /address/i });
+    fireEvent.focus(address);
+    fireEvent.input(address, { target: { value: "Unit 5/12 Smith" }, inputType: "insertText" });
+    await act(async () => vi.advanceTimersByTime(250));
+    fireEvent.click(screen.getByRole("option", { name: /Richmond/ }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(updatePatient).toHaveBeenCalledTimes(1);
+    const [saved] = updatePatient.mock.calls[0] as [Patient, Identity];
+    expect(saved.address).toBe("Unit 5/12 Smith Street, Richmond VIC 3121, Australia");
+    expect(saved.address).not.toBe("12 Smith Street, Richmond VIC 3121, Australia");
   });
 
   it("creates through the create override (not the plain store create) and routes to its id", async () => {
